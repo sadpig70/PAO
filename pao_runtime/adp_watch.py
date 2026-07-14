@@ -101,7 +101,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="adp-watch", description="One ADP mailbox watch slice")
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--root", default=".")
-    parser.add_argument("--interval", type=float, default=1.0)
+    parser.add_argument("--interval", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--lease-seconds", type=int, default=180)
     return parser

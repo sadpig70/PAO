@@ -19,7 +19,7 @@ OA (Orchestration Agent)
 
 - **OA**: approves registrations, publishes tasks and controls, collects results, and recovers expired leases
 - **LWAR**: stable execution identity that hides provider and model names (`LWAR1`, `LWAR2`, ...)
-- **ADP**: resident mailbox loop built from 1-second polling and 90-second watch slices
+- **ADP**: resident mailbox loop built from 5-second polling and 90-second watch slices
 - **File bus**: atomic JSON publish/claim flow with heartbeat, generation, and lease semantics
 
 ## Key Properties
@@ -68,7 +68,7 @@ python scripts/lwar.py response <request_id> --root .
 python scripts/adp_watch.py \
   --identity-file <identity_file> \
   --root . \
-  --interval 1 \
+  --interval 5 \
   --timeout 90
 ```
 

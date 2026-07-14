@@ -260,7 +260,7 @@ Each LWAR is started once by the user in an interactive or TUI session. The runt
 1. start the LWAR session and self-register
 2. receive OA approval for the `LWARn` identity
 3. run the ADP watcher
-4. poll the mailbox every second
+4. poll the mailbox every five seconds
 5. if no message arrives, emit `idle_timeout` after 90 seconds and exit
 6. immediately run the watcher again
 7. when a task appears, atomically move it `incoming -> claimed` and emit it on stdout

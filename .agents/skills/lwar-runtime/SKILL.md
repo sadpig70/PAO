@@ -90,7 +90,7 @@ Default watcher invocation:
 ```bash
 python -m pao_runtime.adp_watch \
   --identity-file IDENTITY_FILE \
-  --interval 1 \
+  --interval 5 \
   --timeout 90 \
   --lease-seconds 180
 ```

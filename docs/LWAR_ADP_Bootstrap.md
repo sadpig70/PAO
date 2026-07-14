@@ -58,7 +58,7 @@ Only when the event confirms identity adoption should the session continue. The 
 python scripts/adp_watch.py \
   --identity-file <identity_file> \
   --root . \
-  --interval 1 \
+  --interval 5 \
   --timeout 90
 ```
 
