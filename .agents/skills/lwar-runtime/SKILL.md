@@ -7,36 +7,36 @@ argument-hint: "register [number] | adp | status | on | drain | off | unregister
 
 # LWAR Runtime Skill v2 — ADP
 
-> ADP는 **Agent Daemon Process**다. 이미 실행된 LWAR 세션이 Python watcher를 반복 호출하여 자기 mailbox를 수신하고, 작업 수행 후 결과를 저장한 뒤 다시 watcher로 돌아가는 상주 루프다.
+> ADP is the **Agent Daemon Process**. An already-running LWAR session repeatedly invokes a Python watcher, receives its mailbox, performs work, stores a result, and returns to the watcher.
 
-## 1. 절대 규칙
+## 1. Absolute Rules
 
-1. 이 스킬과 [`references/adp-contract.md`](references/adp-contract.md)를 전체 읽는다.
-2. 승인된 `(lwar_id, instance_id, generation)`만 자기 정체성으로 사용한다.
-3. 외부 프로세스가 LWAR를 재실행할 것으로 기대하지 않는다. 현재 세션 안에서 ADP를 지속한다.
-4. `idle_timeout`과 `state_wait`에서는 설명을 생성하지 말고 즉시 같은 watcher를 재호출한다.
-5. `task_received`에서는 TaskContract 권한 안에서 수행하고 반드시 `complete`로 결과를 제출한다.
-6. 결과 제출 후 즉시 watcher로 복귀한다.
-7. `shutdown`만 ADP 종료 신호다.
+1. Read this skill and [`references/adp-contract.md`](references/adp-contract.md) in full.
+2. Use only the approved `(lwar_id, instance_id, generation)` as your runtime identity.
+3. Do not assume an external process will relaunch the LWAR. Keep ADP alive inside the current session.
+4. On `idle_timeout` and `state_wait`, generate no extra explanation. Re-run the same watcher immediately.
+5. On `task_received`, operate only within the TaskContract authority bounds and always submit a result with `complete`.
+6. Return to the watcher immediately after result submission.
+7. Only `shutdown` terminates ADP.
 
-## 2. 명령 계약
+## 2. Command Contract
 
-| 사용자 명령 | 행동 |
+| User command | Action |
 |---|---|
-| `/lwar-register` | 자동 번호 등록 요청 |
-| `/lwar-register 5` | `LWAR5` 지정 요청 |
-| `/lwar-adp` | 승인된 identity로 ADP 시작 |
-| `/lwar-status` | registry·heartbeat 확인 |
-| `/lwar-on` | `on` 전이 요청 |
-| `/lwar-drain` | `draining` 전이 요청 |
-| `/lwar-off` | `off` 전이 요청 |
-| `/lwar-unregister` | `off` 이후 `deregistered` 요청 |
+| `/lwar-register` | Request automatic slot registration |
+| `/lwar-register 5` | Request the `LWAR5` slot |
+| `/lwar-adp` | Start ADP with an approved identity |
+| `/lwar-status` | Inspect registry and heartbeat |
+| `/lwar-on` | Request transition to `on` |
+| `/lwar-drain` | Request transition to `draining` |
+| `/lwar-off` | Request transition to `off` |
+| `/lwar-unregister` | Request `deregistered` after `off` |
 
-`/lwar-regite`는 `/lwar-register`의 오타 호환 alias다.
+`/lwar-regite` remains an accepted typo alias for `/lwar-register`.
 
-## 3. 등록
+## 3. Registration
 
-실제 runtime 정보만 사용하며 모르는 값을 추측하지 않는다.
+Use only actual runtime metadata. Do not guess unknown values.
 
 ```bash
 python -m pao_runtime.lwar_cli register \
@@ -49,15 +49,15 @@ python -m pao_runtime.lwar_cli register \
   --capability testing
 ```
 
-stdout의 `request_id`를 기억한다. OA가 승인한 뒤 다음을 실행한다.
+Remember the `request_id` returned on stdout. After OA approves it, run:
 
 ```bash
 python -m pao_runtime.lwar_cli response REQUEST_ID
 ```
 
-`event=identity_adopted`일 때 출력된 `identity_file`이 이후 ADP의 유일한 identity 입력이다. `pending`이면 승인된 것으로 간주하지 않는다.
+When `event=identity_adopted`, the printed `identity_file` becomes the only valid identity input for later ADP calls. If the response is `pending`, do not treat the identity as approved.
 
-## 4. ADP 중심 루프
+## 4. Core ADP Loop
 
 ```python
 def ADP(identity_file: Path) -> None:
@@ -68,7 +68,8 @@ def ADP(identity_file: Path) -> None:
         if event.event == "adp_error":
             report_error_and_stop(event)
         if event.event == "control":
-            if event.command == "shutdown": return
+            if event.command == "shutdown":
+                return
             handle_control(event)
             continue
         if event.event == "task_received":
@@ -78,13 +79,13 @@ def ADP(identity_file: Path) -> None:
             continue
 
     # acceptance_criteria:
-    #   - watcher timeout은 LWAR 세션 종료가 아니다.
-    #   - timeout 후 다른 추론 없이 watcher를 다시 실행한다.
-    #   - Task 수신과 결과 제출 사이에 다른 Task를 claim하지 않는다.
-    #   - 성공·실패·blocked 모두 ResultContract로 제출한다.
+    #   - watcher timeout does not terminate the LWAR session.
+    #   - after timeout, the watcher is re-run without extra reasoning.
+    #   - between task receipt and result submission, no second task is claimed.
+    #   - succeeded, failed, and blocked outcomes are all submitted as ResultContract payloads.
 ```
 
-Watcher 기본 호출:
+Default watcher invocation:
 
 ```bash
 python -m pao_runtime.adp_watch \
@@ -94,32 +95,32 @@ python -m pao_runtime.adp_watch \
   --lease-seconds 180
 ```
 
-## 5. stdout event 처리
+## 5. Stdout Event Handling
 
-| `event` | 즉시 행동 |
+| `event` | Immediate action |
 |---|---|
-| `idle_timeout` | 같은 watcher 재호출 |
-| `state_wait` | 같은 watcher 재호출; Task 수행 금지 |
-| `task_received` | `task` 수행 → 결과 제출 |
-| `control:ping` | watcher 재호출 |
-| `control:drain` | 현재 작업 완료 후 lifecycle `draining` 요청 |
-| `control:cancel` | 해당 Task 중단·cancelled 결과 제출 |
-| `control:shutdown` | ADP 종료 |
-| `adp_error` | 오류 보고 후 ADP 중지 |
+| `idle_timeout` | Re-run the same watcher |
+| `state_wait` | Re-run the same watcher; do not execute tasks |
+| `task_received` | Execute the `task`, then submit the result |
+| `control:ping` | Re-run the watcher |
+| `control:drain` | Finish current work, then request lifecycle `draining` |
+| `control:cancel` | Stop that task and submit a `cancelled` result |
+| `control:shutdown` | Stop ADP |
+| `adp_error` | Report the error, then stop ADP |
 
-## 6. 작업 수행과 결과 제출
+## 6. Task Execution and Result Submission
 
-- `cwd`, `permissions`, `completion_criteria`를 먼저 확인한다.
-- Task가 허용하지 않은 경로·명령·network를 사용하지 않는다.
-- 정확한 검증은 실제 명령과 코드로 수행하고 근거를 `evidence`에 기록한다.
-- 결과 초안은 `mailbox/LWARn/work/{task_id}/result.json`에 작성한다.
+- Inspect `cwd`, `permissions`, and `completion_criteria` first.
+- Do not use paths, commands, or network access that the task does not allow.
+- Perform exact verification through real commands and code, and record evidence under `evidence`.
+- Write the draft result to `mailbox/LWARn/work/{task_id}/result.json`.
 
-결과 초안:
+Draft result format:
 
 ```json
 {
   "status": "succeeded",
-  "summary": "작업 요약",
+  "summary": "Task summary",
   "evidence": {"commands": [], "tests_passed": 0, "tests_failed": 0},
   "artifacts": [],
   "next_action": "validate",
@@ -128,7 +129,7 @@ python -m pao_runtime.adp_watch \
 }
 ```
 
-제출:
+Submit with:
 
 ```bash
 python -m pao_runtime.lwar_cli complete \
@@ -137,7 +138,7 @@ python -m pao_runtime.lwar_cli complete \
   --result-file mailbox/LWARn/work/TASK_ID/result.json
 ```
 
-`event=result_submitted`을 확인한 후 watcher를 재호출한다.
+After confirming `event=result_submitted`, re-run the watcher.
 
 ## 7. Lifecycle
 
@@ -148,12 +149,12 @@ python -m pao_runtime.lwar_cli state on --identity-file IDENTITY_FILE
 python -m pao_runtime.lwar_cli state deregistered --identity-file IDENTITY_FILE
 ```
 
-요청 후 OA reconcile과 `/lwar-status` 확인 전에는 상태가 확정됐다고 간주하지 않는다. `deregistered`는 `off`에서만 요청한다.
+Do not assume the state is final until OA reconciles it and `/lwar-status` confirms it. Request `deregistered` only from `off`.
 
-## 8. 금지 행동
+## 8. Forbidden Actions
 
-- 승인 전에 `LWARn`을 자칭하지 않는다.
-- registry·incoming·lease 파일을 직접 수정하지 않는다.
-- idle stdout을 장문으로 재서술하여 context를 오염시키지 않는다.
-- claimed Task를 결과 없이 방치하지 않는다.
-- ADP 중에 사용자 또는 OA의 `shutdown` 없이 자의적으로 종료하지 않는다.
+- Do not claim an `LWARn` identity before approval.
+- Do not modify registry, incoming, or lease files by hand.
+- Do not pollute context by restating idle stdout messages at length.
+- Do not abandon a claimed task without a result.
+- Do not stop ADP on your own without a user or OA `shutdown`.

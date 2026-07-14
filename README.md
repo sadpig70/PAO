@@ -2,9 +2,9 @@
 
 # PAO
 
-**Persistent Agent Orchestration** — 서로 다른 장기 실행 AI runtime을 `LWARn`이라는 단일 외부 identity와 파일 기반 메시지 버스로 조율하는 로컬 오케스트레이션 시스템입니다.
+**Persistent Agent Orchestration** is a local orchestration system that coordinates heterogeneous long-running AI runtimes behind a single external identity model, `LWARn`, over a file-based message bus.
 
-PAO는 vendor CLI를 강제로 비대화형 실행하지 않습니다. 사용자가 시작한 각 runtime 세션이 **ADP(Agent Daemon Process)** watcher를 반복 호출하여 작업을 수신하고, 같은 대화 문맥에서 실행 결과를 반환합니다.
+PAO does not force vendor CLIs into non-interactive execution. Each runtime session is started by the user, then repeatedly calls an **ADP (Agent Daemon Process)** watcher to receive work and return results inside the same conversational context.
 
 ## Architecture
 
@@ -17,23 +17,23 @@ OA (Orchestration Agent)
   └─ Result JSON ← mailbox/LWARn/outgoing/
 ```
 
-- **OA** — 등록 승인, Task 게시, control 전달, Result 회수 및 lease 복구
-- **LWAR** — provider/model 이름을 감춘 실행 identity (`LWAR1`, `LWAR2`, ...)
-- **ADP** — 1초 polling과 90초 watch slice를 반복하는 resident mailbox loop
-- **File bus** — 원자 JSON publish/claim, heartbeat, generation, lease 기반 전달
+- **OA**: approves registrations, publishes tasks and controls, collects results, and recovers expired leases
+- **LWAR**: stable execution identity that hides provider and model names (`LWAR1`, `LWAR2`, ...)
+- **ADP**: resident mailbox loop built from 1-second polling and 90-second watch slices
+- **File bus**: atomic JSON publish/claim flow with heartbeat, generation, and lease semantics
 
-## Key properties
+## Key Properties
 
-- `/lwar-register [number]` 자기등록과 최저 가용 번호 자동 할당
-- `lwar_id + instance_id + generation`으로 stale message 격리
-- `on → draining → off → deregistered` lifecycle
-- TUI를 포함한 장기 실행 runtime 지원
-- provider 비종속 Task/Result contract
-- 만료 lease 복구와 alias 재사용 generation 증가
+- `/lwar-register [number]` self-registration with optional automatic lowest-number allocation
+- stale-message isolation by `lwar_id + instance_id + generation`
+- lifecycle transitions: `on → draining → off → deregistered`
+- support for long-running runtimes, including TUIs
+- provider-neutral task and result contracts
+- lease recovery plus generation bumps when aliases are reused
 
-## Quick start
+## Quick Start
 
-### 1. LWAR registration
+### 1. Register an LWAR
 
 ```bash
 python scripts/lwar.py register \
@@ -45,7 +45,7 @@ python scripts/lwar.py register \
   --root .
 ```
 
-숫자를 지정하려면 `register 1`처럼 입력합니다. 생략하면 OA가 가장 작은 가용 번호를 할당합니다.
+To request a specific slot, use `register 1`. If omitted, OA assigns the lowest available number.
 
 ### 2. OA approval
 
@@ -54,7 +54,7 @@ python scripts/oa.py reconcile --root .
 python scripts/lwar.py response <request_id> --root .
 ```
 
-### 3. ADP watch slice
+### 3. Run an ADP watch slice
 
 ```bash
 python scripts/adp_watch.py \
@@ -64,7 +64,7 @@ python scripts/adp_watch.py \
   --timeout 90
 ```
 
-`idle_timeout` 또는 `state_wait`이면 같은 LWAR 세션이 watcher를 즉시 다시 호출합니다. `task_received`이면 Task를 수행하고 `lwar.py complete`로 Result를 제출합니다.
+If the watcher reports `idle_timeout` or `state_wait`, the same LWAR session should immediately invoke it again. If it reports `task_received`, execute the task and submit the result with `lwar.py complete`.
 
 ## Documentation
 
@@ -82,4 +82,4 @@ python -m unittest discover -s tests -v
 python -m py_compile pao_runtime/*.py scripts/*.py tests/*.py
 ```
 
-현재 통합 테스트는 등록, 충돌 거부, 전체 Task/Result 흐름, idle timeout, off-state 차단, stale lease 복구, shutdown control 및 generation 증가를 검증합니다.
+The current integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, and generation increments.

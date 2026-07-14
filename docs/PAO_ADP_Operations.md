@@ -1,67 +1,87 @@
-# PAO ADP 운영 가이드
+# PAO ADP Operations Guide
 
-## 구성요소
+## Purpose
 
-- `OA`: Task 계획·등록 승인·메시지 게시·결과 검증
-- `LWAR`: 장기 실행되는 이종 Agent runtime
-- `ADP`: LWAR 세션 내부의 `Watch → Execute → Report` 루프
-- `pao_runtime`: 파일 I/O와 상태 전이를 강제하는 Python 도구
+This document describes how an LWAR session keeps running as an ADP-driven worker, how OA interacts with it, and what operators should expect during normal and failure conditions.
 
-## 최초 구동
+## Runtime Model
 
-### 1. LWAR 세션 시작
+- the user starts an LWAR session manually
+- the session registers and receives an approved identity
+- the session repeatedly invokes `python scripts/adp_watch.py`
+- the watcher performs deterministic mailbox I/O and exits with an event
+- the LWAR agent handles the event, executes tasks when required, submits results, and calls the watcher again
 
-각 runtime을 평소 대화형 방식으로 실행하고 `.agents/skills/lwar-runtime/SKILL.md`를 로드한다.
+This model supports runtimes that do not expose a reliable non-interactive command mode.
 
-### 2. LWAR 등록 요청
-
-```bash
-python -m pao_runtime.lwar_cli register --runtime-name "Runtime" --model "Model" --adapter-id runtime --vendor-family vendor --interface tui
-```
-
-### 3. OA 승인
-
-```bash
-python -m pao_runtime.oa_cli reconcile
-```
-
-### 4. LWAR identity 채택
-
-```bash
-python -m pao_runtime.lwar_cli response REQUEST_ID
-```
-
-### 5. ADP 시작
-
-```bash
-python -m pao_runtime.adp_watch --identity-file IDENTITY_FILE --interval 1 --timeout 90
-```
-
-LWAR는 stdout event를 처리한 후 같은 명령으로 반드시 복귀한다.
-
-## 정상 작업 흐름
+## Standard Loop
 
 ```text
-OA task draft
-  → oa_cli send
-  → mailbox/LWARn/incoming
-  → adp_watch atomic claim
-  → stdout task_received
-  → LWAR 작업 수행
-  → lwar_cli complete
-  → mailbox/LWARn/outgoing
-  → oa_cli collect
-  → OA 검증
+register -> approved identity -> watch
+watch idle/state_wait -> watch again
+watch task_received -> execute -> submit result -> watch again
+watch control -> handle -> watch again
+watch shutdown -> stop
 ```
 
-## Runtime별 차이
+## Event Semantics
 
-모든 runtime은 같은 Python 명령과 mailbox 계약을 사용한다. 차이는 각 runtime에서 스킬을 로드하고 shell 명령을 실행하는 UI 방식뿐이다. 비대화형 실행 옵션은 요구하지 않는다.
+| Event | Meaning | Required reaction |
+|------|---------|-------------------|
+| `idle_timeout` | no message arrived during the watch slice | immediately re-run the watcher |
+| `state_wait` | lifecycle state does not allow work | re-run the watcher without executing tasks |
+| `task_received` | a task was atomically claimed | execute it and submit a result |
+| `control` | OA issued a command | handle it according to the command |
+| `adp_error` | watcher-level error | report and stop |
 
-## 운영 주의
+## Control Commands
 
-- `var/`, `mailbox/`, `control/`은 실행 중 생성되는 상태다.
-- source control에는 실행 상태를 커밋하지 않는다.
-- idle timeout은 오류가 아니다.
-- context 오염을 막기 위해 idle event를 설명하지 않고 즉시 재호출한다.
-- heartbeat와 lease를 기반으로 장애를 판단한다.
+| Command | Meaning | LWAR behavior |
+|---------|---------|---------------|
+| `ping` | health probe | continue watching |
+| `drain` | finish current work, then stop accepting new work | request lifecycle `draining` after current task |
+| `cancel` | stop one task | submit a cancelled result for that task |
+| `shutdown` | terminate ADP | stop the loop |
+
+## Result Submission
+
+Every claimed task must end with one normalized result:
+
+- `succeeded`
+- `failed`
+- `blocked`
+- `cancelled`
+
+The result must include:
+
+- summary
+- evidence
+- exit code
+- artifacts if any
+- error details if applicable
+
+## Failure Cases
+
+### Watcher exits, session survives
+
+The session simply invokes the watcher again.
+
+### Session dies
+
+Heartbeat becomes stale. OA eventually detects the failure and may recover claimed tasks after lease expiry.
+
+### Lease expires
+
+OA moves the task back to `incoming` so another valid runtime instance can claim it.
+
+### Slot is reused
+
+`generation` and `instance_id` prevent stale messages or results from being accepted as current work.
+
+## Operator Guidance
+
+- do not hand-edit mailbox state
+- verify heartbeat and lifecycle before publishing work
+- do not treat `exit_code=0` alone as task success
+- inspect evidence and completion criteria before approval
+- prefer generation-safe identity files over hard-coded slot assumptions

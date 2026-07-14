@@ -3,7 +3,7 @@
 # Environment
 - Bash: invoke `bash` from `PATH`.
 - PowerShell 7: invoke `pwsh` from `PATH` (UTF-8). Old PowerShell 5.1 forbidden.
-- Respond in Korean; keep code / commands / identifiers in English. Address the user as 정욱님.
+- Respond in Korean; keep code / commands / identifiers in English. Address the user as `Jeonguk-nim`.
 - **Self-contained**: use ONLY this workspace's .agents/skills — never global skills.
 - Python: run `python` (on PATH); calling the interpreter by absolute path is forbidden.
 
