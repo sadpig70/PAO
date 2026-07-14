@@ -332,7 +332,7 @@ Auto-archive via `{SKILL_DIR}/discovery/archive-discovery.py`:
 python "{SKILL_DIR}/discovery/archive-discovery.py"
 
 # To archive from a different project root, cd there first
-cd "D:/MyProject" && python "{SKILL_DIR}/discovery/archive-discovery.py"
+cd "<project-root>" && python "{SKILL_DIR}/discovery/archive-discovery.py"
 ```
 
 ### Archive Trigger Rules

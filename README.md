@@ -42,7 +42,7 @@ python scripts/lwar.py register \
   --adapter-id runtime \
   --vendor-family vendor \
   --interface tui \
-  --root D:/PAO
+  --root .
 ```
 
 숫자를 지정하려면 `register 1`처럼 입력합니다. 생략하면 OA가 가장 작은 가용 번호를 할당합니다.
@@ -50,8 +50,8 @@ python scripts/lwar.py register \
 ### 2. OA approval
 
 ```bash
-python scripts/oa.py reconcile --root D:/PAO
-python scripts/lwar.py response <request_id> --root D:/PAO
+python scripts/oa.py reconcile --root .
+python scripts/lwar.py response <request_id> --root .
 ```
 
 ### 3. ADP watch slice
@@ -59,7 +59,7 @@ python scripts/lwar.py response <request_id> --root D:/PAO
 ```bash
 python scripts/adp_watch.py \
   --identity-file <identity_file> \
-  --root D:/PAO \
+  --root . \
   --interval 1 \
   --timeout 90
 ```

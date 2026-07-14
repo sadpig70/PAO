@@ -1,11 +1,11 @@
 # PAO ADP command wrappers
 
-These wrappers make the PAO tools callable from any current working directory.
+These wrappers provide repository-root entry points for the PAO tools.
 
 ```bash
-python D:/PAO/scripts/oa.py --help
-python D:/PAO/scripts/lwar.py --help
-python D:/PAO/scripts/adp_watch.py --help
+python scripts/oa.py --help
+python scripts/lwar.py --help
+python scripts/adp_watch.py --help
 ```
 
-Pass `--root D:/PAO` when the current directory is not the PAO workspace.
+Run commands from the repository root and pass `--root .` when an explicit root is useful.

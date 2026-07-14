@@ -39,7 +39,7 @@ Task draft를 먼저 작성한다.
   "goal": "요청 목표",
   "instructions": "구체 지시",
   "completion_criteria": ["검증 기준"],
-  "cwd": "D:/workspace/project",
+  "cwd": "workspace/project",
   "timeout_s": 90,
   "priority": 5,
   "permissions": {"read": [], "write": [], "network": false}

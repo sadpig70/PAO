@@ -342,7 +342,7 @@ tasks/done/{task_id}.json
     "변경 파일과 변경 이유 보고",
     "미해결 위험 요소 보고"
   ],
-  "cwd": "D:/workspace/project",
+  "cwd": "workspace/project",
   "input_files": [
     "tests/test_auth.py",
     "src/auth.py"
@@ -352,8 +352,8 @@ tasks/done/{task_id}.json
   "max_retries": 3,
   "priority": 5,
   "permissions": {
-    "read": ["D:/workspace/project"],
-    "write": ["D:/workspace/project/src"],
+    "read": ["workspace/project"],
+    "write": ["workspace/project/src"],
     "network": false
   },
   "adapter_options": {},

@@ -31,7 +31,7 @@ def task_name(
     # 입력 파라미터 — 수행에 필요한 모든 컨텍스트
     target_crate: Path,
     existing_pattern: Path,      # 참고할 기존 코드
-    workspace_root: Path = "D:\\project\\ocwr",
+    workspace_root: Path = Path("."),
 ) -> TaskResult:
     """한 줄 태스크 설명"""
 
@@ -231,7 +231,7 @@ def format_pg_task_spec(spec: TaskSpec) -> str:
 ### Before (자연어 프롬프트)
 
 ```
-Implement a Discord channel adapter for the OCWR Rust project at D:\openclaw\ocwr.
+Implement a Discord channel adapter for the OCWR Rust project in the current repository.
 The channel adapter framework is in crates/ocwr_channels/src/adapter.rs — read it first...
 Create DiscordAdapter struct that contains bot token, HTTP client, Discord API base URL...
 Implement send_message, send_embed, add_reaction, delete_message...
@@ -242,7 +242,7 @@ Add unit tests, run cargo check, run clippy...
 
 ```python
 def implement_discord_adapter(
-    channels_crate: Path = "D:\\openclaw\\ocwr\\crates\\ocwr_channels",
+    channels_crate: Path = Path("crates/ocwr_channels"),
 ) -> AdapterResult:
     """Discord REST API 채널 어댑터 구현"""
 

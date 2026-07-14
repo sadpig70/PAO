@@ -5,8 +5,8 @@
 ## 공통 전달문
 
 ```text
-당신은 PAO의 LWAR이다. D:/PAO/AGENTS.md와
-D:/PAO/.agents/skills/lwar-runtime/SKILL.md를 전부 읽고 그 계약을 따른다.
+당신은 PAO의 LWAR이다. 저장소 루트의 AGENTS.md와
+.agents/skills/lwar-runtime/SKILL.md를 전부 읽고 그 계약을 따른다.
 
 1. 아래의 register 명령을 실행한다. 숫자가 없으면 빈 LWAR 번호를 요청한다.
 2. stdout의 request_id를 기억하고 OA가 승인할 때까지 기다린다.
@@ -26,28 +26,28 @@ OA 명령이나 다른 LWAR의 mailbox를 직접 조작하지 않는다.
 
 ```bash
 # Codex CLI / GPT 5.5 Sol
-python D:/PAO/scripts/lwar.py register --runtime-name "Codex CLI" --model "GPT 5.5 Sol" --adapter-id codex --vendor-family openai --interface cli --capability code --capability shell --root D:/PAO
+python scripts/lwar.py register --runtime-name "Codex CLI" --model "GPT 5.5 Sol" --adapter-id codex --vendor-family openai --interface cli --capability code --capability shell --root .
 
 # Antigravity / Gemini 3.5 Flash
-python D:/PAO/scripts/lwar.py register --runtime-name "Antigravity" --model "Gemini 3.5 Flash" --adapter-id antigravity --vendor-family google --interface agent --capability code --root D:/PAO
+python scripts/lwar.py register --runtime-name "Antigravity" --model "Gemini 3.5 Flash" --adapter-id antigravity --vendor-family google --interface agent --capability code --root .
 
 # Claude Code CLI / Opus 4.8
-python D:/PAO/scripts/lwar.py register --runtime-name "Claude Code CLI" --model "Opus 4.8" --adapter-id claude-code --vendor-family anthropic --interface cli --capability code --capability shell --root D:/PAO
+python scripts/lwar.py register --runtime-name "Claude Code CLI" --model "Opus 4.8" --adapter-id claude-code --vendor-family anthropic --interface cli --capability code --capability shell --root .
 
 # Grok Build / Grok 4.5
-python D:/PAO/scripts/lwar.py register --runtime-name "Grok Build" --model "Grok 4.5" --adapter-id grok-build --vendor-family xai --interface build --capability code --root D:/PAO
+python scripts/lwar.py register --runtime-name "Grok Build" --model "Grok 4.5" --adapter-id grok-build --vendor-family xai --interface build --capability code --root .
 
 # Kimi CLI / Kimi Code 2.7
-python D:/PAO/scripts/lwar.py register --runtime-name "Kimi CLI" --model "Kimi Code 2.7" --adapter-id kimi --vendor-family moonshot --interface cli --capability code --capability shell --root D:/PAO
+python scripts/lwar.py register --runtime-name "Kimi CLI" --model "Kimi Code 2.7" --adapter-id kimi --vendor-family moonshot --interface cli --capability code --capability shell --root .
 
 # DeepSeek TUI / DeepSeek V4 Pro
-python D:/PAO/scripts/lwar.py register --runtime-name "DeepSeek TUI" --model "DeepSeek V4 Pro" --adapter-id deepseek --vendor-family deepseek --interface tui --capability code --root D:/PAO
+python scripts/lwar.py register --runtime-name "DeepSeek TUI" --model "DeepSeek V4 Pro" --adapter-id deepseek --vendor-family deepseek --interface tui --capability code --root .
 
 # Qwen CLI / Qwen MAX 3.7
-python D:/PAO/scripts/lwar.py register --runtime-name "Qwen CLI" --model "Qwen MAX 3.7" --adapter-id qwen --vendor-family alibaba --interface cli --capability code --capability shell --root D:/PAO
+python scripts/lwar.py register --runtime-name "Qwen CLI" --model "Qwen MAX 3.7" --adapter-id qwen --vendor-family alibaba --interface cli --capability code --capability shell --root .
 
 # OpenCode CLI / GLM 5.2
-python D:/PAO/scripts/lwar.py register --runtime-name "OpenCode CLI" --model "GLM 5.2" --adapter-id opencode --vendor-family zhipu --interface cli --capability code --capability shell --root D:/PAO
+python scripts/lwar.py register --runtime-name "OpenCode CLI" --model "GLM 5.2" --adapter-id opencode --vendor-family zhipu --interface cli --capability code --capability shell --root .
 ```
 
 ## 승인과 ADP 진입
@@ -55,14 +55,14 @@ python D:/PAO/scripts/lwar.py register --runtime-name "OpenCode CLI" --model "GL
 OA가 등록 요청을 처리한다.
 
 ```bash
-python D:/PAO/scripts/oa.py reconcile --root D:/PAO
+python scripts/oa.py reconcile --root .
 ```
 
 LWAR는 자기 `request_id`로 identity를 채택한다. 출력된 `identity_file`을 다음 명령에 사용한다.
 
 ```bash
-python D:/PAO/scripts/lwar.py response <request_id> --root D:/PAO
-python D:/PAO/scripts/adp_watch.py --identity-file <identity_file> --root D:/PAO --interval 1 --timeout 90
+python scripts/lwar.py response <request_id> --root .
+python scripts/adp_watch.py --identity-file <identity_file> --root . --interval 1 --timeout 90
 ```
 
 `adp_watch.py`는 daemon 자체가 아니라 한 번의 감시 slice다. 장기 생명주기는 AI runtime 세션이 보유하며, 매 stdout event 뒤 다음 행동을 판단하고 watcher를 다시 호출한다.
@@ -74,11 +74,11 @@ python D:/PAO/scripts/adp_watch.py --identity-file <identity_file> --root D:/PAO
   "status": "succeeded",
   "summary": "요청한 작업을 완료했다.",
   "evidence": {"tests": ["python -m unittest discover -s tests -v"]},
-  "artifacts": ["D:/PAO/path/to/output.md"],
+  "artifacts": ["path/to/output.md"],
   "next_action": "validate"
 }
 ```
 
 ```bash
-python D:/PAO/scripts/lwar.py complete --identity-file <identity_file> --task-id <task_id> --result-file <result.json> --root D:/PAO
+python scripts/lwar.py complete --identity-file <identity_file> --task-id <task_id> --result-file <result.json> --root .
 ```
