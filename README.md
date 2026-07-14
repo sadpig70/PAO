@@ -83,3 +83,7 @@ python -m py_compile pao_runtime/*.py scripts/*.py tests/*.py
 ```
 
 The current integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, and generation increments.
+
+## License
+
+This project is licensed under the MIT License. See [LICENSE](LICENSE).
