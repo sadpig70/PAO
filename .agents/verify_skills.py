@@ -7,7 +7,7 @@ Tests (per DESIGN-skill-redesign.md acceptance_criteria):
   T2 mode coverage    : pgf v2.6 re-tiering dropped NO original mode (names preserved).
   T3 regression       : a real existing PG doc (.pgf/DESIGN-SISAIHardening.md) stays valid under pg v1.4.
 
-Run:  python _workspace/skills/verify_skills.py
+Run:  python .agents/verify_skills.py
 Exit 0 iff all pass.
 """
 import os

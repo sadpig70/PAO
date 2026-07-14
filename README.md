@@ -68,9 +68,9 @@ python scripts/adp_watch.py \
 
 ## Documentation
 
-- [Technical specification](_workspace/PAO_TechSpec.md)
-- [ADP operations guide](_workspace/PAO_ADP_Operations.md)
-- [Runtime bootstrap prompts](_workspace/LWAR_ADP_Bootstrap.md)
+- [Technical specification](docs/PAO_TechSpec.md)
+- [ADP operations guide](docs/PAO_ADP_Operations.md)
+- [Runtime bootstrap prompts](docs/LWAR_ADP_Bootstrap.md)
 - [Canonical architecture](.pgf/DESIGN-PAO.md)
 - [ADP design](.pgf/DESIGN-PAOADP.md)
 - [Verification review](.pgf/REVIEW-PAOADP.md)
