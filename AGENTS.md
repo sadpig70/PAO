@@ -4,8 +4,13 @@
 - Bash: invoke `bash` from `PATH`.
 - PowerShell 7: invoke `pwsh` from `PATH` (UTF-8). Old PowerShell 5.1 forbidden.
 - Respond in Korean; keep code / commands / identifiers in English. Address the user as `Jeonguk-nim`.
-- **Self-contained**: use ONLY this workspace's .agents/skills — never global skills.
+- **Self-contained (development mode)**: when working on the PAO codebase in this repository, use ONLY this workspace's .agents/skills — never global skills.
 - Python: run `python` (on PATH); calling the interpreter by absolute path is forbidden.
+
+# Deployment modes
+
+- **Development** (this repository): local skills, explicit `--root`, `python -m pao_runtime.*`.
+- **Operation** (any project workspace): copy the two skills into your global skills directory (`~/.agents/skills` by convention, or wherever your runtime loads them), set `PAO_HOME` (code) and `PAO_ROOT` (central bus), then invoke `python "$PAO_HOME/scripts/*.py"` — the wrappers bootstrap their own import path, so no pip install is needed. CLIs resolve the bus as `--root` > `PAO_ROOT` > cwd; tasks execute in their own `cwd`. `pip install -e` and `pao install-skills` remain optional conveniences.
 
 # Execution hygiene
 - Avoid complex nested quoting in PowerShell one-liners. Prefer Git Bash for `rg`, `diff`, and shell pipelines, or use a short `python -c` command with simple quoting.

@@ -299,7 +299,18 @@ Every task must declare:
 
 LWARs must not exceed the declared authority. OA must verify actual behavior through evidence collection.
 
-## 15. Evolution Path
+## 15. Deployment Modes
+
+Since 0.3 the runtime is workspace-independent. Skill distribution is deliberately manual-first: users copy the OA and LWAR skill contracts into whichever global skills directory their runtime loads (`~/.agents/skills` is the emerging cross-runtime convention) — no installer required.
+
+- the bus root resolves as explicit `--root` > `PAO_ROOT` environment variable > current directory
+- `python "$PAO_HOME/scripts/*.py"` works from any directory with no installation; the wrappers bootstrap their own import path
+- optional: `pip install -e PAO_HOME` provides the `pao`, `pao-oa`, `pao-lwar`, and `pao-adp-watch` console scripts
+- optional: `pao install-skills` performs the same skill copy as doing it by hand (default target `~/.agents/skills`)
+- the bus stays central (one registry, one `LWARn` identity space per machine) while each task executes in its own `cwd`, enabling cross-project orchestration
+- `send` rejects tasks whose `cwd` does not exist, failing fast on stale workspace paths
+
+## 16. Evolution Path
 
 Planned future steps include:
 

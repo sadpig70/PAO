@@ -11,6 +11,7 @@ from .common import (
     emit,
     load_json,
     new_id,
+    resolve_root,
     utc_now,
     validate_instance_id,
     validate_lwar_id,
@@ -36,7 +37,7 @@ def slug(value: str) -> str:
 
 
 def command_register(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     request_id = new_id("lwar-reg")
     instance_id = args.instance_id or new_id("lwar-instance")
     validate_instance_id(instance_id)
@@ -83,7 +84,7 @@ def command_register(args: argparse.Namespace) -> int:
 
 
 def command_response(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     response_path = root / "control" / "registration" / "responses" / f"{args.request_id}.json"
     if not response_path.is_file():
         emit({"event": "registration_pending", "request_id": args.request_id})
@@ -119,7 +120,7 @@ def command_response(args: argparse.Namespace) -> int:
 
 
 def command_state(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     identity = load_json(Path(args.identity_file).resolve())
     request_id = new_id("lwar-state")
     request = {
@@ -144,7 +145,7 @@ def command_state(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     identity_path = Path(args.identity_file).resolve()
     identity = load_json(identity_path)
     registry_path = root / "var" / "registry" / "lwar_registry.json"
@@ -176,7 +177,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_complete(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     identity = load_json(Path(args.identity_file).resolve())
     lwar_id = validate_lwar_id(identity["lwar_id"])
@@ -235,30 +236,30 @@ def build_parser() -> argparse.ArgumentParser:
     register.add_argument("--interface", required=True, choices=("cli", "tui", "agent", "build"))
     register.add_argument("--capability", action="append", default=[], type=slug)
     register.add_argument("--instance-id")
-    register.add_argument("--root", default=".")
+    register.add_argument("--root", default=None)
     register.set_defaults(handler=command_register)
 
     response = subparsers.add_parser("response")
     response.add_argument("request_id")
-    response.add_argument("--root", default=".")
+    response.add_argument("--root", default=None)
     response.set_defaults(handler=command_response)
 
     state = subparsers.add_parser("state")
     state.add_argument("state", choices=("on", "draining", "off", "deregistered"))
     state.add_argument("--identity-file", required=True)
-    state.add_argument("--root", default=".")
+    state.add_argument("--root", default=None)
     state.set_defaults(handler=command_state)
 
     status = subparsers.add_parser("status")
     status.add_argument("--identity-file", required=True)
-    status.add_argument("--root", default=".")
+    status.add_argument("--root", default=None)
     status.set_defaults(handler=command_status)
 
     complete = subparsers.add_parser("complete")
     complete.add_argument("--identity-file", required=True)
     complete.add_argument("--task-id", required=True)
     complete.add_argument("--result-file", required=True)
-    complete.add_argument("--root", default=".")
+    complete.add_argument("--root", default=None)
     complete.set_defaults(handler=command_complete)
     return parser
 

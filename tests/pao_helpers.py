@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import unittest
@@ -11,13 +12,17 @@ REPO = Path(__file__).parents[1]
 class PaoTestCase(unittest.TestCase):
     """Shared subprocess harness for PAO integration suites."""
 
-    def run_module(self, module, *args, expected=None):
+    def run_module(self, module, *args, expected=None, env=None, cwd=None):
+        merged_env = None
+        if env is not None:
+            merged_env = {**os.environ, **env}
         completed = subprocess.run(
             [sys.executable, "-m", module, *args],
-            cwd=REPO,
+            cwd=cwd or REPO,
             check=False,
             capture_output=True,
             text=True,
+            env=merged_env,
         )
         if expected is not None:
             self.assertEqual(completed.returncode, expected, completed.stderr + completed.stdout)

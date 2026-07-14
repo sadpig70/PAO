@@ -10,6 +10,7 @@ from .common import (
     emit,
     load_json,
     new_id,
+    resolve_root,
     utc_now,
     validate_lwar_id,
     validate_task_id,
@@ -39,7 +40,7 @@ def load_active_slot(root: Path, lwar_id: str, require_on: bool = False) -> tupl
 
 
 def command_reconcile(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     service = RegistryService(root, tombstone_retention_s=args.tombstone_retention)
     counts = service.reconcile()
     audit.record(root, "oa", {"event": "oa_reconcile_complete", **counts})
@@ -63,7 +64,7 @@ def _check_dependencies(ledger: TaskLedger, depends_on: list[str]) -> None:
 
 
 def command_send(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     source = load_json(Path(args.task_file).resolve())
@@ -131,6 +132,8 @@ def command_send(args: argparse.Namespace) -> int:
         "attempt": int(source.get("attempt", 1)),
         "created_at": utc_now(),
     }
+    if not Path(task["cwd"]).is_dir():
+        raise SystemExit(f"task cwd does not exist: {task['cwd']}")
     if transport.task_pending(lwar_id, task_id):
         raise SystemExit(f"task already exists for {lwar_id}: {task_id}")
     target = transport.publish_task(task)
@@ -145,7 +148,7 @@ def command_send(args: argparse.Namespace) -> int:
 
 
 def command_control(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     registry, slot = load_active_slot(root, args.lwar_id)
     control_id = new_id("control")
@@ -172,7 +175,7 @@ def command_control(args: argparse.Namespace) -> int:
 
 
 def command_collect(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     registry = RegistryService(root).load_registry()
@@ -220,7 +223,7 @@ def command_collect(args: argparse.Namespace) -> int:
 
 
 def command_recover(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
@@ -279,7 +282,7 @@ def command_recover(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     service = RegistryService(root)
     registry = service.load_registry()
@@ -305,7 +308,7 @@ def command_status(args: argparse.Namespace) -> int:
 
 
 def command_dead(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     if args.requeue:
@@ -343,7 +346,7 @@ def command_dead(args: argparse.Namespace) -> int:
 
 
 def command_validate(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     ledger = TaskLedger(root)
     entry = ledger.get(validate_task_id(args.task_id), args.workflow_id)
     if entry is None:
@@ -391,7 +394,7 @@ def command_validate(args: argparse.Namespace) -> int:
 
 
 def command_prune(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     if args.older_than_days <= 0:
         raise SystemExit("--older-than-days must be positive")
@@ -416,7 +419,7 @@ def command_prune(args: argparse.Namespace) -> int:
 
 
 def command_workflow_status(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     ledger = TaskLedger(root)
     entries = ledger.workflow_entries(args.workflow_id)
     by_status: dict[str, int] = {}
@@ -451,7 +454,7 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     reconcile = subparsers.add_parser("reconcile")
-    reconcile.add_argument("--root", default=".")
+    reconcile.add_argument("--root", default=None)
     reconcile.add_argument("--tombstone-retention", type=int, default=300)
     reconcile.set_defaults(handler=command_reconcile)
 
@@ -466,7 +469,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     send.add_argument("--stale-after", type=float, default=STALE_AFTER_S_DEFAULT)
     send.add_argument("--task-file", required=True)
-    send.add_argument("--root", default=".")
+    send.add_argument("--root", default=None)
     send.set_defaults(handler=command_send)
 
     control = subparsers.add_parser("control")
@@ -474,46 +477,46 @@ def build_parser() -> argparse.ArgumentParser:
     control.add_argument("--command", required=True, choices=("shutdown", "ping", "cancel", "drain"))
     control.add_argument("--task-id")
     control.add_argument("--reason")
-    control.add_argument("--root", default=".")
+    control.add_argument("--root", default=None)
     control.set_defaults(handler=command_control)
 
     collect = subparsers.add_parser("collect")
     collect.add_argument("--lwar-id")
     collect.add_argument("--archive", action="store_true")
-    collect.add_argument("--root", default=".")
+    collect.add_argument("--root", default=None)
     collect.set_defaults(handler=command_collect)
 
     recover = subparsers.add_parser("recover")
     recover.add_argument("--lwar-id")
-    recover.add_argument("--root", default=".")
+    recover.add_argument("--root", default=None)
     recover.set_defaults(handler=command_recover)
 
     status = subparsers.add_parser("status")
-    status.add_argument("--root", default=".")
+    status.add_argument("--root", default=None)
     status.add_argument("--stale-after", type=float, default=STALE_AFTER_S_DEFAULT)
     status.set_defaults(handler=command_status)
 
     dead = subparsers.add_parser("dead")
     dead.add_argument("--lwar-id")
     dead.add_argument("--requeue", metavar="TASK_ID")
-    dead.add_argument("--root", default=".")
+    dead.add_argument("--root", default=None)
     dead.set_defaults(handler=command_dead)
 
     validate = subparsers.add_parser("validate")
     validate.add_argument("--task-id", required=True)
     validate.add_argument("--workflow-id")
-    validate.add_argument("--root", default=".")
+    validate.add_argument("--root", default=None)
     validate.set_defaults(handler=command_validate)
 
     prune = subparsers.add_parser("prune")
     prune.add_argument("--older-than-days", type=float, required=True)
     prune.add_argument("--lwar-id")
-    prune.add_argument("--root", default=".")
+    prune.add_argument("--root", default=None)
     prune.set_defaults(handler=command_prune)
 
     workflow_status = subparsers.add_parser("workflow-status")
     workflow_status.add_argument("--workflow-id", required=True)
-    workflow_status.add_argument("--root", default=".")
+    workflow_status.add_argument("--root", default=None)
     workflow_status.set_defaults(handler=command_workflow_status)
     return parser
 

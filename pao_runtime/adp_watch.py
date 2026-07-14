@@ -6,7 +6,7 @@ from pathlib import Path
 from typing import Any
 
 from . import audit
-from .common import emit, load_json
+from .common import emit, load_json, resolve_root
 from .transport import FileTransport
 
 
@@ -25,7 +25,7 @@ def load_verified_identity(root: Path, identity_path: Path) -> tuple[dict[str, A
 
 
 def watch(args: argparse.Namespace) -> int:
-    root = Path(args.root).resolve()
+    root = resolve_root(args.root)
     transport = FileTransport(root)
     identity_path = Path(args.identity_file).resolve()
     try:
@@ -100,7 +100,7 @@ def watch(args: argparse.Namespace) -> int:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="adp-watch", description="One ADP mailbox watch slice")
     parser.add_argument("--identity-file", required=True)
-    parser.add_argument("--root", default=".")
+    parser.add_argument("--root", default=None)
     parser.add_argument("--interval", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--lease-seconds", type=int, default=180)

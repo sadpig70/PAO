@@ -1,0 +1,31 @@
+{
+  "project": "PAOPortable",
+  "workplan": ".pgf/WORKPLAN-PAOPortable.md",
+  "design": "_workspace/DESIGN-PAOPortable.md",
+  "started_at": "2026-07-15T01:00:00+09:00",
+  "updated_at": "2026-07-15T02:20:00+09:00",
+  "iteration": 2,
+  "revision": "skill-first distribution: manual copy to ~/.agents/skills is the primary path; pip and install-skills demoted to optional conveniences; scripts/pao.py wrapper added",
+  "design_review": {"critical": 0, "high": 0, "carried_over": ["permissions enforcement", "behavior_contract runtime check"]},
+  "nodes": {
+    "ResolveRootHelper": {"status": "done"},
+    "CliRootDefaults": {"status": "done"},
+    "PyprojectManifest": {"status": "done"},
+    "ConsoleScripts": {"status": "done"},
+    "PaoCli": {"status": "done"},
+    "SkillDocsUpdate": {"status": "done"},
+    "AgentsDualMode": {"status": "done"},
+    "ReadmeUpdate": {"status": "done"},
+    "CwdValidation": {"status": "done"},
+    "RootResolutionTests": {"status": "done"},
+    "InstallerTests": {"status": "done"},
+    "PackagingTests": {"status": "done"},
+    "CwdGuardTests": {"status": "done"}
+  },
+  "summary": {"total": 13, "done": 13, "in-progress": 0, "designing": 0, "blocked": 0},
+  "verification": {
+    "tests": "38/38 passed (30 legacy unmodified + 8 new)",
+    "compile": "python -m py_compile pao_runtime/*.py scripts/*.py tests/*.py — clean",
+    "e2e_smoke": "operation mode: foreign cwd + PAO_ROOT full cycle (register/auto-send/watch/complete/collect/validate) — passed"
+  }
+}

@@ -9,6 +9,18 @@ argument-hint: "reconcile | send | control | collect | recover | status"
 
 > OA is the **Orchestration Agent**. OA does not launch LWARs. It approves registrations, publishes mailbox tasks, and validates and integrates results. Long-running execution is owned by each LWAR's ADP.
 
+## 0. Bus Root Resolution and Invocation
+
+All commands resolve the bus root as: explicit `--root` > `PAO_ROOT` environment variable > current directory. In operation mode (any project workspace), set `PAO_ROOT` once and omit `--root`.
+
+Invocation forms, all equivalent:
+
+- `python "$PAO_HOME/scripts/oa.py" ...` — works from any directory with no installation (the wrapper bootstraps its import path)
+- `python -m pao_runtime.oa_cli ...` — inside this repository, or anywhere after `pip install -e`
+- `pao-oa ...` — optional console script from `pip install -e`
+
+Diagnose version and root resolution with `python "$PAO_HOME/scripts/pao.py" info` (or `pao info`).
+
 ## 1. Core Loop
 
 ```text

@@ -1,0 +1,21 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pao-runtime"
+version = "0.3.0"
+description = "PAO - Persistent Agent Orchestration runtime for heterogeneous AI agent runtimes over a file bus"
+readme = "README.md"
+requires-python = ">=3.10"
+license = {text = "MIT"}
+authors = [{name = "Jung Wook Yang"}]
+
+[project.scripts]
+pao = "pao_runtime.pao_cli:main"
+pao-oa = "pao_runtime.oa_cli:main"
+pao-lwar = "pao_runtime.lwar_cli:main"
+pao-adp-watch = "pao_runtime.adp_watch:main"
+
+[tool.setuptools]
+packages = ["pao_runtime"]

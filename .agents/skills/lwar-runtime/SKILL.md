@@ -9,6 +9,10 @@ argument-hint: "register [number] | adp | status | on | drain | off | unregister
 
 > ADP is the **Agent Daemon Process**. An already-running LWAR session repeatedly invokes a Python watcher, receives its mailbox, performs work, stores a result, and returns to the watcher.
 
+> **Bus root resolution**: every command resolves the bus as explicit `--root` > `PAO_ROOT` environment variable > current directory. In operation mode (LWAR session in a project workspace), set `PAO_ROOT` to the central bus and omit `--root`. Task execution still happens in each task's own `cwd`.
+>
+> **Invocation forms** (equivalent): `python "$PAO_HOME/scripts/lwar.py"` and `python "$PAO_HOME/scripts/adp_watch.py"` work from any directory with no installation; `python -m pao_runtime.*` works in-repo or after `pip install -e`; `pao-lwar` / `pao-adp-watch` are optional pip console scripts.
+
 ## 1. Absolute Rules
 
 1. Read this skill and [`references/adp-contract.md`](references/adp-contract.md) in full.

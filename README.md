@@ -39,6 +39,40 @@ OA (Orchestration Agent)
 - append-only audit log (`var/audit/events.jsonl`) and archive pruning (`prune`)
 - replaceable message plane: the `Transport` protocol with `FileTransport` as the local implementation
 
+## Installation and Deployment Modes
+
+PAO runs in two modes:
+
+- **Development mode** — work inside this repository; commands run as `python -m pao_runtime.*` or `python scripts/*.py` with an explicit `--root`.
+- **Operation mode** — orchestrate from any project workspace against one central bus. No pip install required:
+
+### 1. Copy the skills to your global skills directory
+
+Copy `.agents/skills/oa-runtime` and `.agents/skills/lwar-runtime` into whichever global skills path your runtime loads — `~/.agents/skills` is the emerging cross-runtime convention, `~/.claude/skills` for Claude Code, or any location you prefer. A plain copy is all there is to it; `pao install-skills` does exactly the same copy if you prefer a command.
+
+### 2. Set two environment variables
+
+```bash
+setx PAO_HOME <path-to-this-repository>   # where the runtime code lives
+setx PAO_ROOT <central-bus-dir>           # bus root used when --root is omitted
+```
+
+### 3. Run from any workspace
+
+The `scripts/*.py` wrappers bootstrap their own import path, so no installation is needed:
+
+```bash
+python "$PAO_HOME/scripts/lwar.py" register --runtime-name "Runtime" ...
+python "$PAO_HOME/scripts/oa.py" status
+python "$PAO_HOME/scripts/adp_watch.py" --identity-file <identity_file>
+```
+
+### Optional: pip console scripts
+
+If you prefer short commands, `pip install -e <PAO_HOME>` provides `pao`, `pao-oa`, `pao-lwar`, and `pao-adp-watch`, and makes `python -m pao_runtime.*` importable from any directory. This is a convenience, not a requirement. `pao info` diagnoses version and root resolution either way.
+
+Root resolution precedence: explicit `--root` > `PAO_ROOT` environment variable > current directory. The bus (`mailbox/`, `var/`, `control/`) stays central while each task executes in its own `cwd` — any project workspace can host an OA or LWAR session.
+
 ## Quick Start
 
 ### 1. Register an LWAR

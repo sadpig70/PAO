@@ -16,6 +16,16 @@ INSTANCE_ID_RE = re.compile(r"^lwar-instance-[a-f0-9]{32}$")
 TASK_ID_RE = re.compile(r"^task-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
+def resolve_root(value: str | None) -> Path:
+    """Resolve the bus root: explicit --root, then PAO_ROOT env, then cwd."""
+    if value:
+        return Path(value).resolve()
+    env_value = os.environ.get("PAO_ROOT", "").strip()
+    if env_value:
+        return Path(env_value).resolve()
+    return Path.cwd()
+
+
 def utc_now() -> str:
     return datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
 
