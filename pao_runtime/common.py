@@ -91,6 +91,8 @@ MAILBOX_DIRS = (
     "archive/results",
     "archive/control",
     "failed",
+    "dead",
+    "quarantine",
     "work",
 )
 

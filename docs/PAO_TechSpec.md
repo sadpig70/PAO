@@ -155,6 +155,8 @@ The transport layer must support at least:
 
 Implementations may use files, MCP, databases, or brokers as long as they preserve these semantics.
 
+Since 0.3, these semantics are codified as the `Transport` protocol in `pao_runtime/transport.py`; `FileTransport` is its filesystem implementation, and orchestration code (`oa_cli`, `lwar_cli`, `adp_watch`) references only the protocol surface.
+
 ### Initial `FileTransport`
 
 The first implementation uses the local filesystem because it is simple to build, easy to debug, human-inspectable, serverless, and sufficient for a single workstation.
@@ -177,12 +179,14 @@ mailbox/
     work/
     archive/
     failed/
+    dead/
+    quarantine/
     heartbeat.json
-tasks/
-results/
-artifacts/
-logs/
-registry/
+var/
+  registry/
+  identities/
+  tasks/          # OA task ledger, per workflow
+  audit/          # append-only events.jsonl
 ```
 
 ## 9. File Rules
@@ -276,6 +280,13 @@ PAO must recover from:
 - stale identities after slot reuse
 
 OA recovery returns expired claimed tasks to the queue and never trusts stale generation output as current work.
+
+Concretely, since 0.3:
+
+- each requeue increments `attempt`; exceeding `max_retries` dead-letters the task into `dead/` (manual `dead --requeue` resets the budget)
+- `collect` quarantines stale-generation and duplicate results instead of accepting them
+- claim leases are aligned with the task's `timeout_s` so long tasks cannot expire mid-execution
+- every published task is tracked in the OA ledger (`var/tasks/`), giving `validate` and `workflow-status` a durable state source
 
 ## 14. Security and Control
 

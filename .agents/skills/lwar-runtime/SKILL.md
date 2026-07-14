@@ -95,6 +95,10 @@ python -m pao_runtime.adp_watch \
   --lease-seconds 180
 ```
 
+When a task is claimed, the watcher aligns the lease with the task budget:
+`effective_lease_s = max(--lease-seconds, timeout_s + 30)`. Long tasks keep
+their lease for the whole declared execution window.
+
 ## 5. Stdout Event Handling
 
 | `event` | Immediate action |

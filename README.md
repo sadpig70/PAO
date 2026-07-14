@@ -30,6 +30,14 @@ OA (Orchestration Agent)
 - support for long-running runtimes, including TUIs
 - provider-neutral task and result contracts
 - lease recovery plus generation bumps when aliases are reused
+- retry budget enforcement with a dead-letter queue (`dead/`, `oa_cli dead --requeue`)
+- stale and duplicate result quarantine at collection time
+- claim leases aligned with each task's `timeout_s`
+- durable OA task ledger (`var/tasks/`) with `validate` and `workflow-status` commands
+- capability- and load-based automatic routing (`send --auto --require-capability`)
+- `depends_on` task gating for simple workflow DAGs
+- append-only audit log (`var/audit/events.jsonl`) and archive pruning (`prune`)
+- replaceable message plane: the `Transport` protocol with `FileTransport` as the local implementation
 
 ## Quick Start
 
@@ -82,7 +90,7 @@ python -m unittest discover -s tests -v
 python -m py_compile pao_runtime/*.py scripts/*.py tests/*.py
 ```
 
-The current integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, and generation increments.
+The current integration suite (30 tests) verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, and `depends_on` gating.
 
 ## License
 

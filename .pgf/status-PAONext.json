@@ -1,0 +1,35 @@
+{
+  "project": "PAONext",
+  "workplan": ".pgf/WORKPLAN-PAONext.md",
+  "design": "_workspace/DESIGN-PAONext.md",
+  "started_at": "2026-07-14T23:30:00+09:00",
+  "updated_at": "2026-07-15T00:20:00+09:00",
+  "iteration": 2,
+  "nodes": {
+    "RetryBudget": {"status": "done"},
+    "DeadLetterQueue": {"status": "done"},
+    "DuplicateResultGuard": {"status": "done"},
+    "TaskLeaseAlignment": {"status": "done"},
+    "TaskLedger": {"status": "done"},
+    "LedgerHooks": {"status": "done"},
+    "HeartbeatMonitor": {"status": "done"},
+    "ValidateCommand": {"status": "done"},
+    "CapabilityIndex": {"status": "done"},
+    "LoadSignal": {"status": "done"},
+    "AutoRoute": {"status": "done"},
+    "RetryPathTests": {"status": "done"},
+    "GuardTests": {"status": "done"},
+    "FlowTests": {"status": "done"},
+    "ArchiveRetention": {"status": "done"},
+    "AuditLog": {"status": "done"},
+    "TransportProtocol": {"status": "done"},
+    "FileTransportAdapter": {"status": "done"},
+    "DependsOnContract": {"status": "done"},
+    "WorkflowStatus": {"status": "done"}
+  },
+  "summary": {"total": 20, "done": 20, "in-progress": 0, "designing": 0, "blocked": 0},
+  "verification": {
+    "tests": "30/30 passed (7 legacy unmodified + 23 new)",
+    "compile": "python -m py_compile pao_runtime/*.py scripts/*.py tests/*.py — clean"
+  }
+}

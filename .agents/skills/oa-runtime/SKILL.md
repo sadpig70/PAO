@@ -48,9 +48,14 @@ Write a task draft first.
 
 ```bash
 python -m pao_runtime.oa_cli send --lwar-id LWAR1 --task-file TASK_DRAFT.json
+python -m pao_runtime.oa_cli send --auto --require-capability coding --task-file TASK_DRAFT.json
 ```
 
 The OA tool binds `instance_id`, `generation`, and `registry_version` from the registry into the task. OA must not edit mailbox files directly.
+
+- `--auto` routes by capability and load: only `on` LWARs holding every `--require-capability` are eligible; ties break toward the lowest backlog, then the lowest LWAR number. No eligible LWAR is an explicit error — never fall back to an arbitrary LWAR.
+- A task draft may declare `depends_on: ["task-..."]`. Publication is blocked until every dependency is `completed` with a `succeeded` result in the task ledger.
+- Every publication is recorded in the task ledger at `var/tasks/{workflow_id}/{task_id}.json`.
 
 ## 4. Monitoring and Collection
 
@@ -59,10 +64,17 @@ python -m pao_runtime.oa_cli status
 python -m pao_runtime.oa_cli collect
 python -m pao_runtime.oa_cli collect --archive
 python -m pao_runtime.oa_cli recover
+python -m pao_runtime.oa_cli dead
+python -m pao_runtime.oa_cli dead --lwar-id LWAR1 --requeue TASK_ID
+python -m pao_runtime.oa_cli validate --task-id TASK_ID
+python -m pao_runtime.oa_cli workflow-status --workflow-id WORKFLOW_ID
 ```
 
-- A stale heartbeat signals an LWAR failure.
-- When a lease expires, `recover` returns the claimed task to `incoming`.
+- `status` computes heartbeat staleness (`heartbeat_stale`, default threshold 120s via `--stale-after`).
+- `collect` quarantines stale-generation and duplicate results into `quarantine/` and marks accepted tasks `completed` in the ledger.
+- `recover` increments `attempt` on each requeue; when `attempt` exceeds `max_retries`, the task is dead-lettered into `dead/` instead of looping forever.
+- `dead --requeue` republishes a dead task with `attempt` reset to 1.
+- `validate` reports mechanical checks (status, exit code, evidence presence) plus the `completion_criteria` checklist; semantic verification remains OA's judgment.
 - Never approve success from `exit_code=0` alone.
 - Validate `completion_criteria`, evidence, artifacts, and actual test results.
 
@@ -77,7 +89,16 @@ python -m pao_runtime.oa_cli control --lwar-id LWAR1 --command shutdown
 
 `shutdown` requests ADP termination only. Deregistration is handled separately through lifecycle requests and `reconcile`.
 
-## 6. Forbidden Actions
+## 6. Maintenance
+
+```bash
+python -m pao_runtime.oa_cli prune --older-than-days 14
+```
+
+- `prune` removes archived tasks/results/control, `failed/`, and `quarantine/` files older than the cutoff. `dead/` is never pruned automatically — dead tasks require an explicit decision (`dead --requeue` or manual removal).
+- Every OA, LWAR, and ADP action is mirrored to the append-only audit log at `var/audit/events.jsonl`.
+
+## 7. Forbidden Actions
 
 - Do not inject tasks by directly driving a vendor CLI or TUI.
 - Do not expose provider names in external mailbox paths.

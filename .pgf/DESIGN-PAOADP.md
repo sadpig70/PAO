@@ -9,15 +9,15 @@ PAOADP // ADP-centered resident execution design (in-progress) @v:0.2
         StateWaitSlice // Re-run watcher when lifecycle is not executable (done)
         TaskSlice // Claim, execute, and complete a task (done)
         ControlSlice // Handle ping, drain, cancel, and shutdown (done)
-    ResultFlow // Normalize and submit results (in-progress)
+    ResultFlow // Normalize and submit results (done)
         DraftResult // Write result draft in work area (done)
         SubmitResult // Move result into outgoing contract flow (done)
-        ArchiveResult // Store archived result payloads (designing)
-    RecoveryFlow // Protect against stale claims and stale identities (in-progress)
+        ArchiveResult // Store archived result payloads (done)
+    RecoveryFlow // Protect against stale claims and stale identities (done)
         HeartbeatUpdate // Refresh liveness state (done)
-        LeaseExpiry // Return expired tasks to incoming (done)
+        LeaseExpiry // Return expired tasks to incoming with retry budget (done)
         GenerationGuard // Reject stale-generation payloads (done)
-        DuplicateResultGuard // Prevent blind replay approval (designing)
+        DuplicateResultGuard // Prevent blind replay approval (done)
 
 ```python
 def adp(identity_file: Path) -> None:

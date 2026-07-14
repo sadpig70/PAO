@@ -7,6 +7,7 @@
     "schema_version": {"const": "pao.task.v1"},
     "task_id": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"},
     "workflow_id": {"type": "string"},
+    "depends_on": {"type": "array", "items": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"}},
     "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
     "instance_id": {"type": "string", "pattern": "^lwar-instance-[a-f0-9]{32}$"},
     "generation": {"type": "integer", "minimum": 1},

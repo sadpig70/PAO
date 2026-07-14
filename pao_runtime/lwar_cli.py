@@ -4,19 +4,19 @@ import argparse
 import json
 import re
 from pathlib import Path
-from typing import Any
 
+from . import audit
 from .common import (
     atomic_write_json,
     emit,
     load_json,
-    mailbox_root,
     new_id,
     utc_now,
     validate_instance_id,
     validate_lwar_id,
     validate_task_id,
 )
+from .transport import FileTransport
 
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
@@ -64,6 +64,11 @@ def command_register(args: argparse.Namespace) -> int:
     pending_path = root / "var" / "identities" / f"{instance_id}.pending.json"
     atomic_write_json(request_path, request)
     atomic_write_json(pending_path, {"request_id": request_id, "instance_id": instance_id, "profile": profile})
+    audit.record(
+        root,
+        "lwar",
+        {"event": "registration_requested", "request_id": request_id, "instance_id": instance_id},
+    )
     emit(
         {
             "event": "registration_requested",
@@ -104,6 +109,11 @@ def command_response(args: argparse.Namespace) -> int:
     identity_path = root / "var" / "identities" / f"{instance_id}.json"
     atomic_write_json(identity_path, identity)
     pending_path.unlink(missing_ok=True)
+    audit.record(
+        root,
+        "lwar",
+        {"event": "identity_adopted", "lwar_id": identity["lwar_id"], "generation": identity["generation"]},
+    )
     emit({"event": "identity_adopted", "identity_file": str(identity_path), **identity})
     return 0
 
@@ -124,6 +134,11 @@ def command_state(args: argparse.Namespace) -> int:
     }
     request_path = root / "control" / "lifecycle" / "requests" / f"{request_id}.json"
     atomic_write_json(request_path, request)
+    audit.record(
+        root,
+        "lwar",
+        {"event": "lifecycle_requested", "lwar_id": request["lwar_id"], "requested_state": args.state},
+    )
     emit({"event": "lifecycle_requested", "request_id": request_id, "requested_state": args.state})
     return 0
 
@@ -147,7 +162,6 @@ def command_status(args: argparse.Namespace) -> int:
     identity["state"] = slot["state"]
     identity["registry_version"] = registry["registry_version"]
     atomic_write_json(identity_path, identity)
-    heartbeat_path = mailbox_root(root, identity["lwar_id"]) / "heartbeat.json"
     emit(
         {
             "event": "lwar_status",
@@ -155,27 +169,19 @@ def command_status(args: argparse.Namespace) -> int:
             "state": slot["state"],
             "generation": slot["generation"],
             "registry_version": registry["registry_version"],
-            "heartbeat": load_json(heartbeat_path) if heartbeat_path.is_file() else None,
+            "heartbeat": FileTransport(root).read_heartbeat(identity["lwar_id"]),
         }
     )
     return 0
 
 
-def _find_claimed_task(mailbox: Path, task_id: str) -> tuple[Path, dict[str, Any]]:
-    for path in sorted((mailbox / "claimed").glob("*.json")):
-        task = load_json(path)
-        if task.get("task_id") == task_id:
-            return path, task
-    raise FileNotFoundError(f"claimed task not found: {task_id}")
-
-
 def command_complete(args: argparse.Namespace) -> int:
     root = Path(args.root).resolve()
+    transport = FileTransport(root)
     identity = load_json(Path(args.identity_file).resolve())
     lwar_id = validate_lwar_id(identity["lwar_id"])
     task_id = validate_task_id(args.task_id)
-    mailbox = mailbox_root(root, lwar_id)
-    claimed_path, task = _find_claimed_task(mailbox, task_id)
+    claimed_path, task = transport.find_claimed_task(lwar_id, task_id)
     if task["instance_id"] != identity["instance_id"] or task["generation"] != identity["generation"]:
         raise SystemExit("task identity does not match this LWAR identity")
     result = load_json(Path(args.result_file).resolve())
@@ -205,23 +211,12 @@ def command_complete(args: argparse.Namespace) -> int:
         "error": result.get("error"),
         "submitted_at": utc_now(),
     }
-    outgoing = mailbox / "outgoing" / f"{task_id}.result.json"
-    atomic_write_json(outgoing, normalized)
-    archive = mailbox / "archive" / "tasks" / claimed_path.name
-    archive.parent.mkdir(parents=True, exist_ok=True)
-    claimed_path.replace(archive)
-    (mailbox / "leases" / f"{task_id}.json").unlink(missing_ok=True)
-    atomic_write_json(
-        mailbox / "heartbeat.json",
-        {
-            "schema_version": "pao.heartbeat.v1",
-            "lwar_id": lwar_id,
-            "instance_id": identity["instance_id"],
-            "generation": identity["generation"],
-            "status": "idle",
-            "current_task_id": None,
-            "last_seen": utc_now(),
-        },
+    outgoing = transport.submit_result(identity, claimed_path, normalized)
+    transport.write_heartbeat(identity, "idle", None)
+    audit.record(
+        root,
+        "lwar",
+        {"event": "result_submitted", "lwar_id": lwar_id, "task_id": task_id, "status": normalized["status"]},
     )
     emit({"event": "result_submitted", "task_id": task_id, "result_file": str(outgoing), "action": "watch_again"})
     return 0
