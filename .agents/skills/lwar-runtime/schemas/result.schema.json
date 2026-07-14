@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.result.v1",
+  "type": "object",
+  "required": ["schema_version", "task_id", "lwar_id", "instance_id", "generation", "status", "summary", "evidence", "artifacts", "exit_code", "submitted_at"],
+  "properties": {
+    "schema_version": {"const": "pao.result.v1"},
+    "task_id": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
+    "instance_id": {"type": "string", "pattern": "^lwar-instance-[a-f0-9]{32}$"},
+    "generation": {"type": "integer", "minimum": 1},
+    "status": {"enum": ["succeeded", "failed", "blocked", "cancelled"]},
+    "summary": {"type": "string"},
+    "evidence": {"type": "object"},
+    "artifacts": {"type": "array", "items": {"type": "string"}},
+    "exit_code": {"type": "integer"},
+    "submitted_at": {"type": "string", "format": "date-time"}
+  }
+}

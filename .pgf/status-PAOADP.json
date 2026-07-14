@@ -1,0 +1,24 @@
+{
+  "project": "PAOADP",
+  "workplan": ".pgf/WORKPLAN-PAOADP.md",
+  "design": ".pgf/DESIGN-PAOADP.md",
+  "review": ".pgf/REVIEW-PAOADP.md",
+  "started_at": "2026-07-14T00:00:00+09:00",
+  "updated_at": "2026-07-14T19:41:08+09:00",
+  "iteration": 12,
+  "nodes": {
+    "DefineProtocol": {"status": "done"},
+    "ImplementCommon": {"status": "done"},
+    "ImplementRegistry": {"status": "done"},
+    "ImplementOATools": {"status": "done"},
+    "ImplementWatcher": {"status": "done"},
+    "ImplementLwarTools": {"status": "done"},
+    "DefineSchemas": {"status": "done"},
+    "UpdateLwarSkill": {"status": "done"},
+    "CreateOASkill": {"status": "done"},
+    "UpdateArchitecture": {"status": "done"},
+    "BuildTests": {"status": "done"},
+    "VerifySystem": {"status": "done"}
+  },
+  "summary": {"total": 12, "done": 12, "in-progress": 0, "designing": 0, "blocked": 0}
+}
