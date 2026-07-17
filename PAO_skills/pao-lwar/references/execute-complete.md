@@ -34,7 +34,9 @@ The submission tool echoes `attempt` and `claim_token` into the result from the 
 python "<PAO_SKILL>/scripts/lwar.py" complete \
   --identity-file IDENTITY_FILE \
   --task-id TASK_ID \
-  --result-file mailbox/LWARn/work/TASK_ID/result.json
+  --result-file "<BUS_ROOT>/mailbox/LWARn/work/TASK_ID/result.json"
 ```
+
+`--result-file` and `--identity-file` resolve against the **process working directory**, not the bus root — pass absolute paths unless your working directory is the bus root.
 
 After confirming `event=result_submitted`, return to the watcher immediately (see [adp-loop.md](adp-loop.md)).
