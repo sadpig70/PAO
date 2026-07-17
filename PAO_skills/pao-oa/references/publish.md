@@ -19,6 +19,7 @@ Write a task draft file first:
 ```
 
 - `cwd` must exist; `send` rejects tasks whose `cwd` does not exist.
+- State match strictness in `completion_criteria` (e.g. whether a trailing newline is acceptable) — LWARs default to byte-exact when a criterion says "exactly".
 - A draft may declare `depends_on: ["task-..."]`. Publication is blocked until every dependency is `completed` with a `succeeded` result in the task ledger.
 
 ## Commands

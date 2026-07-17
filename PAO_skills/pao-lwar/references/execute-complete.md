@@ -5,6 +5,7 @@ Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0).
 ## Execution rules
 
 - Inspect `cwd`, `permissions`, and `completion_criteria` first.
+- When a criterion says content must be "exactly" some value, produce it byte-exact with no trailing newline unless the task states otherwise, and record the exact bytes written in `evidence`.
 - Do not use paths, commands, or network access that the task does not allow.
 - Perform exact verification through real commands and code, and record evidence under `evidence`.
 - Write the draft result to `mailbox/LWARn/work/{task_id}/result.json` (path relative to the bus root).

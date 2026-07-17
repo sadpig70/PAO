@@ -23,7 +23,7 @@ python "<PAO_SKILL>/scripts/lwar.py" state deregistered --identity-file IDENTITY
 
 - Transitions follow `on → draining → off → deregistered`. Request `deregistered` only from `off`.
 - Lifecycle commands are **requests**: the registry state changes only after OA runs `reconcile` and approves. Do not assume a state is final until a status inspection confirms it.
-- `draining`: finish current work, accept no new tasks, then request `off` when idle.
+- `draining`: finish current work, accept no new tasks. Who ends it depends on who started it: after an **OA-initiated** `control:drain`, keep watching until `shutdown` (OA owns the stop); request `off` yourself only in the **self-initiated** context-exhaustion handoff below.
 - Deregistration frees the numeric slot; a future reuse of the slot bumps `generation`, and your old identity becomes permanently stale.
 
 ## Context-exhaustion handoff

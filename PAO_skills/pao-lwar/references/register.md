@@ -31,6 +31,13 @@ After OA approves the request (OA runs `reconcile`), fetch the response:
 python "<PAO_SKILL>/scripts/lwar.py" response REQUEST_ID
 ```
 
-- When `event=identity_adopted`, the printed `identity_file` becomes the **only** valid identity input for later ADP calls.
+`response` exit codes and stdout events:
+
+| Code | `event` | Meaning |
+|---:|---|---|
+| `0` | `identity_adopted` | The printed `identity_file` becomes the **only** valid identity input for later ADP calls |
+| `2` | `registration_pending` | OA has not reconciled yet — poll again after a short wait |
+| `3` | `registration_rejected` | Fail closed: inspect `reason`, do not retry the same request |
+
 - If the response is `pending`, do not treat the identity as approved; retry after OA reconciles.
 - Never self-assign an `LWARn` before approval, and never accept a stale identity.

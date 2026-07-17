@@ -49,7 +49,7 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 | `0` | `task_received` | Execute the task, then submit the result |
 | `10` | `idle_timeout`, `state_wait` | Re-run the same watcher immediately |
 | `20` | `control:ping` | Re-run the watcher |
-| `20` | `control:drain` | Finish current work, then request lifecycle `draining` |
+| `20` | `control:drain` | Finish current work, then request lifecycle `draining` (read [lifecycle.md](lifecycle.md) first) and **keep watching** until `shutdown` |
 | `20` | `control:cancel` | Stop that task and submit a `cancelled` result |
 | `20` | `control:shutdown` | Stop ADP |
 | `30` | `adp_error` | Report the error, then stop ADP |
