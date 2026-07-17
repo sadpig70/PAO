@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
+from typing import Any
 
 from . import __version__, audit
 from .common import (
@@ -11,7 +13,9 @@ from .common import (
     emit,
     load_json,
     new_id,
+    path_within,
     resolve_root,
+    snapshot_artifact,
     utc_now,
     validate_instance_id,
     validate_lwar_id,
@@ -177,6 +181,58 @@ def command_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def normalize_artifacts(
+    root: Path, task: dict[str, Any], artifacts: list[Any]
+) -> tuple[list[Any], list[str]]:
+    """Resolve, bound-check, and snapshot declared artifacts.
+
+    Every declared artifact must exist as a regular file. Bounds (cwd +
+    permissions.write roots) are enforced when the task declares write roots;
+    tasks published by pre-0.6 OAs (write=[]) get a string passthrough with a
+    warning instead — the optional-first rollout pattern. Snapshots are
+    content-addressed under var/artifacts/, so later verification never
+    depends on the live workspace file.
+    """
+    cwd = Path(task.get("cwd", ".")).resolve()
+    permissions = task.get("permissions") or {}
+    write_roots = [Path(p) for p in permissions.get("write", []) if isinstance(p, str)]
+    max_bytes = permissions.get("max_artifact_bytes")
+    if not isinstance(max_bytes, int) or max_bytes <= 0:
+        max_bytes = None
+    store = root / "var" / "artifacts"
+    entries: list[Any] = []
+    warnings: list[str] = []
+    for item in artifacts:
+        raw = item.get("path") if isinstance(item, dict) else item
+        if not isinstance(raw, str) or not raw:
+            raise SystemExit("artifact entries must be non-empty path strings")
+        resolved = (Path(raw) if os.path.isabs(raw) else cwd / raw).resolve()
+        if not resolved.is_file():
+            raise SystemExit(f"declared artifact is not a regular file: {resolved}")
+        in_bounds = path_within(resolved, cwd) or any(
+            path_within(resolved, write_root) for write_root in write_roots
+        )
+        if not in_bounds:
+            if not write_roots:
+                warnings.append(f"outside_declared_roots:{resolved}")
+                entries.append(str(resolved))
+                continue
+            raise SystemExit(f"artifact outside allowed write roots: {resolved}")
+        try:
+            digest, size, snapshot = snapshot_artifact(resolved, store, max_bytes)
+        except ValueError as error:
+            raise SystemExit(str(error))
+        entries.append(
+            {
+                "path": str(resolved),
+                "sha256": digest,
+                "size_bytes": size,
+                "snapshot": snapshot.relative_to(root).as_posix(),
+            }
+        )
+    return entries, warnings
+
+
 def command_complete(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     transport = FileTransport(root)
@@ -205,6 +261,7 @@ def command_complete(args: argparse.Namespace) -> int:
         raise SystemExit("result evidence must be an object")
     if not isinstance(result.get("artifacts", []), list):
         raise SystemExit("result artifacts must be an array")
+    artifacts, artifact_warnings = normalize_artifacts(root, task, result.get("artifacts", []))
     normalized = {
         "schema_version": "pao.result.v1",
         "task_id": task_id,
@@ -216,7 +273,7 @@ def command_complete(args: argparse.Namespace) -> int:
         "status": result["status"],
         "summary": result["summary"],
         "evidence": result["evidence"],
-        "artifacts": result.get("artifacts", []),
+        "artifacts": artifacts,
         "next_action": result.get("next_action", "validate"),
         "exit_code": result.get("exit_code", 0 if result["status"] == "succeeded" else 1),
         "error": result.get("error"),
@@ -226,6 +283,8 @@ def command_complete(args: argparse.Namespace) -> int:
         "claim_token": task.get("claim_token"),
         "submitted_at": utc_now(),
     }
+    if artifact_warnings:
+        normalized["artifact_warnings"] = artifact_warnings
     try:
         outgoing = transport.submit_result(identity, claimed_path, normalized)
     except RuntimeError as error:

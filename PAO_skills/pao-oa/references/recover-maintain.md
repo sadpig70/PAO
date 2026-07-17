@@ -12,6 +12,7 @@ python "<PAO_SKILL>/scripts/oa.py" dead --lwar-id LWAR1 --requeue TASK_ID
 
 - `recover` returns claimed tasks with expired leases to `incoming`, incrementing `attempt`; when `attempt` exceeds `max_retries`, the task is dead-lettered into `dead/` instead of looping forever.
 - Each recovery writes an `interruption` record (`status: interrupted`, `recorded_by: oa_reconciler`) into the task's ledger entry: a vanished LWAR is recorded as interrupted, never inferred as success.
+- `recover` also reconciles rejected tasks parked in `failed/` (claim-guard authority violations, schema rejections): their non-terminal ledger entries transition to `failed` with the rejection reason, so nothing sits at `published` forever.
 - `dead --requeue` republishes a dead task with `attempt` **incremented** (never reset — attempt is the collect-side fencing key and must stay monotonic). A requeued dead task gets one execution chance per explicit decision; a further lease expiry dead-letters it again. `dead/` is never pruned automatically.
 
 ## Control

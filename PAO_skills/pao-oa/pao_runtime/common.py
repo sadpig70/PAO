@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import os
 import re
@@ -88,6 +89,71 @@ def validate_task_id(value: str) -> str:
     if not TASK_ID_RE.fullmatch(value):
         raise ValueError("task_id must start with task- and contain only safe filename characters")
     return value
+
+
+BUS_CONTROL_SUBDIRS = ("mailbox", "var", "control")
+
+
+def path_within(child: Path, parent: Path) -> bool:
+    """Case-insensitive-on-Windows containment check; cross-drive/UNC → False."""
+    try:
+        child_key = os.path.normcase(str(Path(child).resolve()))
+        parent_key = os.path.normcase(str(Path(parent).resolve()))
+    except OSError:
+        return False
+    if child_key == parent_key:
+        return True
+    return child_key.startswith(parent_key.rstrip("\\/") + os.sep)
+
+
+def runtime_bundle_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def authority_denied_reason(path: Path, root: Path) -> str | None:
+    """Deny the bus control surfaces and the runtime bundle — never their ancestors."""
+    for name in BUS_CONTROL_SUBDIRS:
+        if path_within(path, root / name):
+            return f"inside_bus_{name}"
+    if path_within(path, runtime_bundle_root()):
+        return "inside_runtime_bundle"
+    return None
+
+
+def snapshot_artifact(source: Path, store: Path, max_bytes: int | None) -> tuple[str, int, Path]:
+    """Copy-while-hashing into the content-addressed store (single pass, capped)."""
+    store.mkdir(parents=True, exist_ok=True)
+    digest = hashlib.sha256()
+    total = 0
+    temporary = ""
+    try:
+        with source.open("rb") as reader, tempfile.NamedTemporaryFile(
+            mode="wb", dir=store, prefix=".pao-", suffix=".tmp", delete=False
+        ) as writer:
+            temporary = writer.name
+            while chunk := reader.read(1 << 20):
+                total += len(chunk)
+                if max_bytes is not None and total > max_bytes:
+                    raise ValueError(f"artifact exceeds max_artifact_bytes ({max_bytes}): {source}")
+                digest.update(chunk)
+                writer.write(chunk)
+            writer.flush()
+            os.fsync(writer.fileno())
+        destination = store / digest.hexdigest()
+        os.replace(temporary, destination)
+        temporary = ""
+        return digest.hexdigest(), total, destination
+    finally:
+        if temporary and os.path.exists(temporary):
+            os.unlink(temporary)
+
+
+def sha256_file(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 MAILBOX_DIRS = (

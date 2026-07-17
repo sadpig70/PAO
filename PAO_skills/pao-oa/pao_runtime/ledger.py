@@ -107,6 +107,17 @@ class TaskLedger:
         self._write(entry)
         return entry
 
+    def record_validation(
+        self, task_id: str, workflow_id: str | None, decision: dict[str, Any]
+    ) -> dict[str, Any] | None:
+        """Attach an OA ValidationDecision; the result payload stays immutable."""
+        entry = self.get(task_id, workflow_id)
+        if entry is None:
+            return None
+        entry["validation"] = decision
+        self._write(entry)
+        return entry
+
     def workflow_entries(self, workflow_id: str) -> list[dict[str, Any]]:
         directory = self.base / workflow_id
         if not directory.is_dir():

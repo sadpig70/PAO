@@ -39,7 +39,7 @@ Exactly one OA session should mutate the bus at a time. At session start, set a 
 export PAO_OA_ID=oa-$(date +%s)
 ```
 
-Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json`; a session holding a different `PAO_OA_ID` is rejected as a read-only observer until the lease expires (TTL 900s). Read commands (`status`, `validate`, `workflow-status`, `dead` listing, `info`) never touch the lease. Sessions that skip `PAO_OA_ID` share the `oa-default` holder and get **no** mutual exclusion — setting the id is what activates the guarantee.
+Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json`; a session holding a different `PAO_OA_ID` is rejected as a read-only observer until the lease expires (TTL 900s). Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch the lease. Sessions that skip `PAO_OA_ID` share the `oa-default` holder and get **no** mutual exclusion — setting the id is what activates the guarantee.
 
 ## 2. Core Loop
 

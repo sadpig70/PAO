@@ -10,11 +10,13 @@ from . import audit
 from .common import (
     FileLock,
     atomic_write_json,
+    authority_denied_reason,
     emit,
     load_json,
     new_id,
     parse_utc,
     resolve_root,
+    sha256_file,
     utc_now,
     validate_lwar_id,
     validate_task_id,
@@ -138,8 +140,21 @@ def command_send(args: argparse.Namespace) -> int:
         raise SystemExit("timeout_s must be positive")
     if not isinstance(source.get("completion_criteria", []), list):
         raise SystemExit("completion_criteria must be an array")
-    if not isinstance(source.get("permissions", {}), dict):
-        raise SystemExit("permissions must be an object")
+    permissions = source.get("permissions")
+    if permissions is not None:
+        if not isinstance(permissions, dict):
+            raise SystemExit("permissions must be an object")
+        for key in ("read", "write"):
+            entries = permissions.get(key, [])
+            if not isinstance(entries, list) or any(not isinstance(e, str) for e in entries):
+                raise SystemExit(f"permissions.{key} must be an array of paths")
+        if "network" in permissions and not isinstance(permissions["network"], bool):
+            raise SystemExit("permissions.network must be a boolean")
+        max_artifact_bytes = permissions.get("max_artifact_bytes")
+        if max_artifact_bytes is not None and (
+            not isinstance(max_artifact_bytes, int) or max_artifact_bytes <= 0
+        ):
+            raise SystemExit("permissions.max_artifact_bytes must be a positive integer")
     depends_on = source.get("depends_on", [])
     if not isinstance(depends_on, list):
         raise SystemExit("depends_on must be an array of task ids")
@@ -159,22 +174,31 @@ def command_send(args: argparse.Namespace) -> int:
         "goal": source["goal"],
         "instructions": source.get("instructions", source["goal"]),
         "completion_criteria": source.get("completion_criteria", []),
-        "cwd": source.get("cwd", str(root)),
+        "cwd": str(Path(source.get("cwd", str(root))).resolve()),
         "input_files": source.get("input_files", []),
         "expected_output": source.get("expected_output", "ResultContract"),
         "timeout_s": timeout_s,
         "max_retries": int(source.get("max_retries", 3)),
         "priority": priority,
-        "permissions": source.get(
-            "permissions",
-            {"read": [str(root)], "write": [], "network": False},
-        ),
         "adapter_options": source.get("adapter_options", {}),
         "attempt": int(source.get("attempt", 1)),
         "created_at": utc_now(),
     }
+    task["permissions"] = permissions if permissions is not None else {
+        "read": [task["cwd"]],
+        "write": [task["cwd"]],
+        "network": False,
+    }
     if not Path(task["cwd"]).is_dir():
         raise SystemExit(f"task cwd does not exist: {task['cwd']}")
+    denied = authority_denied_reason(Path(task["cwd"]), root)
+    if denied:
+        raise SystemExit(f"task cwd violates authority bounds: {denied}")
+    for key in ("read", "write"):
+        for entry in task["permissions"].get(key, []):
+            denied = authority_denied_reason(Path(entry), root)
+            if denied:
+                raise SystemExit(f"permissions.{key} path violates authority bounds: {denied} ({entry})")
     if transport.task_pending(lwar_id, task_id):
         raise SystemExit(f"task already exists for {lwar_id}: {task_id}")
     target = transport.publish_task(task)
@@ -214,6 +238,32 @@ def command_control(args: argparse.Namespace) -> int:
     )
     emit({"event": "control_published", "lwar_id": args.lwar_id, "command": args.command, "message_file": str(path)})
     return 0
+
+
+def artifact_verification(root: Path, artifacts: list[Any]) -> dict[str, Any]:
+    """Verify the immutable snapshots recorded by `complete`.
+
+    Legacy string artifacts carry no snapshot and are skipped. The size is
+    compared before hashing so a swapped store file cannot force an unbounded
+    read (DoS guard).
+    """
+    failures = []
+    checked = 0
+    for item in artifacts or []:
+        if not isinstance(item, dict):
+            continue
+        checked += 1
+        snapshot_rel = item.get("snapshot")
+        snapshot = (root / snapshot_rel) if snapshot_rel else None
+        if snapshot is None or not snapshot.is_file():
+            failures.append(f"artifact_snapshot_missing:{item.get('path')}")
+            continue
+        if snapshot.stat().st_size != item.get("size_bytes"):
+            failures.append(f"artifact_size_mismatch:{item.get('path')}")
+            continue
+        if sha256_file(snapshot) != item.get("sha256"):
+            failures.append(f"artifact_hash_mismatch:{item.get('path')}")
+    return {"verified": not failures, "checked": checked, "failures": failures}
 
 
 def command_collect(args: argparse.Namespace) -> int:
@@ -267,6 +317,19 @@ def command_collect(args: argparse.Namespace) -> int:
                     {"lwar_id": lwar_id, "task_id": result["task_id"], "reason": "duplicate_result", "file": str(destination)}
                 )
                 continue
+            verification = artifact_verification(root, result.get("artifacts"))
+            if not verification["verified"]:
+                destination = transport.quarantine_result(lwar_id, path, "artifact_tampered")
+                quarantined.append(
+                    {
+                        "lwar_id": lwar_id,
+                        "task_id": result["task_id"],
+                        "reason": "artifact_tampered",
+                        "failures": verification["failures"],
+                        "file": str(destination),
+                    }
+                )
+                continue
             final_path = path
             if args.archive:
                 final_path = transport.archive_result(lwar_id, path)
@@ -289,6 +352,7 @@ def command_recover(args: argparse.Namespace) -> int:
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
     recovered = []
     dead_lettered = []
+    failed_reconciled = []
     now = datetime.now(timezone.utc)
     for lwar_id in targets:
         for lease_path, lease in transport.expired_leases(lwar_id, now):
@@ -335,10 +399,31 @@ def command_recover(args: argparse.Namespace) -> int:
                     )
                     recovered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
             lease_path.unlink(missing_ok=True)
+        # Reconcile rejected tasks parked in failed/ so their ledger entries do
+        # not sit at `published` forever (claim-guard and schema rejections).
+        for _task_path, task, reason in transport.failed_entries(lwar_id):
+            task_id = task.get("task_id")
+            if not task_id:
+                continue
+            entry = ledger.get(task_id, task.get("workflow_id"))
+            if entry is None or entry.get("status") in {"failed", "dead", "completed"}:
+                continue
+            ledger.transition(
+                task_id,
+                "failed",
+                workflow_id=task.get("workflow_id"),
+                detail=f"rejected:{reason}",
+            )
+            failed_reconciled.append({"lwar_id": lwar_id, "task_id": task_id, "reason": reason})
     audit.record(
         root,
         "oa",
-        {"event": "stale_leases_recovered", "count": len(recovered), "dead_lettered": len(dead_lettered)},
+        {
+            "event": "stale_leases_recovered",
+            "count": len(recovered),
+            "dead_lettered": len(dead_lettered),
+            "failed_reconciled": len(failed_reconciled),
+        },
     )
     emit(
         {
@@ -346,6 +431,7 @@ def command_recover(args: argparse.Namespace) -> int:
             "count": len(recovered),
             "tasks": recovered,
             "dead_lettered": dead_lettered,
+            "failed_reconciled": failed_reconciled,
         }
     )
     return 0
@@ -447,8 +533,28 @@ def command_validate(args: argparse.Namespace) -> int:
         {"criterion": criterion, "verdict": "manual_check_required"}
         for criterion in entry.get("completion_criteria", [])
     ]
-    mechanical_pass = checks["status_succeeded"] and checks["evidence_present"] and checks["exit_code_matches_status"]
+    verification = artifact_verification(root, result.get("artifacts"))
+    mechanical_pass = (
+        checks["status_succeeded"]
+        and checks["evidence_present"]
+        and checks["exit_code_matches_status"]
+        and verification["verified"]
+    )
     verdict = "ready_for_oa_review" if mechanical_pass else "attention_required"
+    if args.record:
+        # Persisting the decision is a mutation; plain reporting stays
+        # read-only so observer OAs can validate freely.
+        ensure_oa_writer(root)
+        decision = {
+            "schema_version": "pao.validation-decision.v1",
+            "verdict": verdict,
+            "checks": checks,
+            "criteria": criteria,
+            "artifact_verification": verification,
+            "decided_by": os.environ.get("PAO_OA_ID", "").strip() or "oa-default",
+            "decided_at": utc_now(),
+        }
+        ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
     audit.record(root, "oa", {"event": "validation_report", "task_id": args.task_id, "verdict": verdict})
     emit(
         {
@@ -458,6 +564,8 @@ def command_validate(args: argparse.Namespace) -> int:
             "goal": entry.get("goal"),
             "checks": checks,
             "criteria": criteria,
+            "artifact_verification": verification,
+            "recorded": bool(args.record),
             "verdict": verdict,
         }
     )
@@ -577,6 +685,11 @@ def build_parser() -> argparse.ArgumentParser:
     validate = subparsers.add_parser("validate")
     validate.add_argument("--task-id", required=True)
     validate.add_argument("--workflow-id")
+    validate.add_argument(
+        "--record",
+        action="store_true",
+        help="persist the decision into the task ledger (mutating: takes the writer lease)",
+    )
     validate.add_argument("--root", default=None)
     validate.set_defaults(handler=command_validate)
 

@@ -39,4 +39,6 @@ python "<PAO_SKILL>/scripts/lwar.py" complete \
 
 `--result-file` and `--identity-file` resolve against the **process working directory**, not the bus root — pass absolute paths unless your working directory is the bus root.
 
+Artifacts: declare them as path strings (relative paths resolve against the task `cwd`). The tool enforces that each declared artifact exists as a regular file inside the task `cwd` or a `permissions.write` root (and under `permissions.max_artifact_bytes` when set), then snapshots it into the content-addressed store `var/artifacts/<sha256>` and rewrites the entry as `{path, sha256, size_bytes, snapshot}` — never fabricate these fields yourself. OA verification checks the immutable snapshot, so changing the workspace file after submission is harmless. Tasks published by pre-0.6 OAs (no declared write roots) get a warning passthrough instead of a bounds failure.
+
 After confirming `event=result_submitted`, return to the watcher immediately (see [adp-loop.md](adp-loop.md)).

@@ -19,6 +19,8 @@ Write a task draft file first:
 ```
 
 - `cwd` must exist; `send` rejects tasks whose `cwd` does not exist.
+- **Authority bounds** (enforced, not advisory): `send` rejects a `cwd` or a `permissions.read`/`write` entry at-or-under the bus control surfaces (`mailbox/`, `var/`, `control/`) or the runtime bundle. The bus root itself and other subdirectories stay legal. The claim-side watcher re-checks the cwd deny-set against hand-planted tasks.
+- Omitted `permissions` defaults to `{"read": [cwd], "write": [cwd], "network": false}`. Optional `permissions.max_artifact_bytes` (positive integer) caps each artifact at submission.
 - State match strictness in `completion_criteria` (e.g. whether a trailing newline is acceptable) — LWARs default to byte-exact when a criterion says "exactly".
 - A draft may declare `depends_on: ["task-..."]`. Publication is blocked until every dependency is `completed` with a `succeeded` result in the task ledger.
 

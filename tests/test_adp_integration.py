@@ -85,6 +85,8 @@ class ADPIntegrationTests(unittest.TestCase):
             self.assertEqual(event["event"], "task_received")
             self.assertEqual(event["task_id"], published["task_id"])
 
+            # Declared artifacts must actually exist: complete snapshots them.
+            (root / "artifact.txt").write_text("artifact body", encoding="utf-8")
             result_draft = root / "result.json"
             result_draft.write_text(
                 json.dumps(

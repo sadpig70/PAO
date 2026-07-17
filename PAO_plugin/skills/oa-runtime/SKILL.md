@@ -21,7 +21,7 @@ Every example below invokes the CLI as `python "$PAO_HOME/scripts/oa.py"`, where
 
 The wrapper scripts bootstrap their own import path; no pip install is required in any mode. Diagnose version and root resolution with `python "$PAO_HOME/scripts/pao.py" info`. Before the first orchestration action of a session, run the pre-flight check and stop on failure: `python "$PAO_HOME/scripts/pao.py" doctor --role oa`. The bus assumes a single-host local filesystem.
 
-**Single-writer rule**: set a unique `PAO_OA_ID` environment variable once per OA session. Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json` (TTL 900s); a session with a different id is rejected as a read-only observer until expiry. Sessions without `PAO_OA_ID` share the `oa-default` holder and get no mutual exclusion.
+**Single-writer rule**: set a unique `PAO_OA_ID` environment variable once per OA session. Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json` (TTL 900s); a session with a different id is rejected as a read-only observer until expiry. Sessions without `PAO_OA_ID` share the `oa-default` holder and get no mutual exclusion.
 
 ## 1. Core Loop
 
@@ -67,6 +67,8 @@ python "$PAO_HOME/scripts/oa.py" send --auto --require-capability coding --task-
 
 The OA tool binds `instance_id`, `generation`, and `registry_version` from the registry into the task. OA must not edit mailbox files directly.
 
+**Authority bounds** (enforced): `send` rejects a `cwd` or `permissions.read`/`write` entry at-or-under the bus control surfaces (`mailbox/`, `var/`, `control/`) or the runtime bundle; the claim-side watcher re-checks the cwd deny-set. Omitted `permissions` defaults to `{"read": [cwd], "write": [cwd], "network": false}`; optional `permissions.max_artifact_bytes` caps each artifact.
+
 - `--auto` routes by capability and load: only `on` LWARs holding every `--require-capability` are eligible; ties break toward the lowest backlog, then the lowest LWAR number. No eligible LWAR is an explicit error — never fall back to an arbitrary LWAR.
 - A task draft may declare `depends_on: ["task-..."]`. Publication is blocked until every dependency is `completed` with a `succeeded` result in the task ledger.
 - Every publication is recorded in the task ledger at `var/tasks/{workflow_id}/{task_id}.json`.
@@ -89,7 +91,9 @@ python "$PAO_HOME/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 - A result is a **terminal submission, not a success claim** — only `status=succeeded` results are acceptance candidates; `failed`, `blocked`, `cancelled`, `interrupted`, `timed_out`, and `protocol_error` are collected for the record.
 - `recover` increments `attempt` on each requeue and writes an `interruption` record (`recorded_by: oa_reconciler`) into the ledger entry — a vanished LWAR is recorded as interrupted, never inferred as success; when `attempt` exceeds `max_retries`, the task is dead-lettered into `dead/` instead of looping forever.
 - `dead --requeue` republishes a dead task with `attempt` **incremented** (never reset — attempt is the collect-side fencing key and must stay monotonic).
-- `validate` reports mechanical checks (status, exit code, evidence presence) plus the `completion_criteria` checklist; semantic verification remains OA's judgment.
+- `collect` also verifies artifact provenance: artifact objects' content-addressed snapshots (`var/artifacts/<sha256>`) are size-checked then re-hashed; mismatches quarantine the result as `artifact_tampered`. Provenance detects post-submit mutation — it does not make artifacts trustworthy.
+- `validate` reports mechanical checks (status, exit code, evidence presence, artifact verification) plus the `completion_criteria` checklist; semantic verification remains OA's judgment. `validate --record` persists the ValidationDecision into the ledger (mutating; takes the writer lease) — plain `validate` stays observer-safe.
+- `recover` also reconciles rejected tasks parked in `failed/`: their non-terminal ledger entries transition to `failed` with the rejection reason.
 - Never approve success from `exit_code=0` alone.
 - Validate `completion_criteria`, evidence, artifacts, and actual test results.
 

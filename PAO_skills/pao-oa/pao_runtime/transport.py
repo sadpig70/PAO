@@ -7,6 +7,7 @@ from typing import Any, Protocol
 
 from .common import (
     atomic_write_json,
+    authority_denied_reason,
     claim_file,
     ensure_mailbox,
     load_json,
@@ -199,6 +200,13 @@ class FileTransport:
             if task["instance_id"] != identity["instance_id"] or task["generation"] != identity["generation"]:
                 self._reject_task(mailbox, source, "stale_identity")
                 continue
+            # Defense in depth against hand-planted tasks: the deny-set only —
+            # cwd existence is send's responsibility (lazy workspaces are legal).
+            if task.get("cwd"):
+                denied = authority_denied_reason(Path(task["cwd"]), self.root)
+                if denied:
+                    self._reject_task(mailbox, source, f"authority_violation:{denied}")
+                    continue
             destination = mailbox / "claimed" / source.name
             if not claim_file(source, destination):
                 continue
@@ -369,6 +377,21 @@ class FileTransport:
             path.with_suffix(".error.json").unlink(missing_ok=True)
             return task
         return None
+
+    def failed_entries(self, lwar_id: str) -> list[tuple[Path, dict[str, Any], str | None]]:
+        """Rejected tasks parked in failed/ with their rejection reasons."""
+        entries = []
+        for error_path in sorted((self._mailbox(lwar_id) / "failed").glob("*.error.json")):
+            task_path = error_path.parent / (error_path.name[: -len(".error.json")] + ".json")
+            if not task_path.is_file():
+                continue
+            try:
+                task = load_json(task_path)
+                error = load_json(error_path)
+            except Exception:
+                continue
+            entries.append((task_path, task, error.get("reason")))
+        return entries
 
     # -- observation and maintenance ----------------------------------------
 

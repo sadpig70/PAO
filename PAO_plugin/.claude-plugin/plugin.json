@@ -2,7 +2,7 @@
   "name": "pao",
   "displayName": "PAO — Persistent Agent Orchestration",
   "description": "Orchestrate heterogeneous long-running AI runtimes behind stable LWAR identities over a file-based message bus. Ships the OA and LWAR skill contracts plus the bundled stdlib-only Python runtime (no pip install required).",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "author": {
     "name": "Jung Wook Yang"
   },

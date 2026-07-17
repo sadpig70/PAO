@@ -59,6 +59,14 @@ claimed task file automatically — never set them in the draft. Pass
 `--result-file` (and `--identity-file`) as **absolute paths**: they resolve
 against the process working directory, not the bus root.
 
+Artifacts are declared as path strings (relative paths resolve against the
+task `cwd`). The tool enforces existence, containment in `cwd` |
+`permissions.write` roots, and `permissions.max_artifact_bytes`, then
+snapshots each file into `var/artifacts/<sha256>` and rewrites the entry as
+`{path, sha256, size_bytes, snapshot}` — never fabricate these fields. OA
+verifies the immutable snapshot; post-submit workspace changes are harmless.
+Pre-0.6 tasks (no declared write roots) get warning passthrough, not failure.
+
 ## Lease Alignment
 
 When a task is claimed, the watcher extends the lease to cover the task's own
