@@ -3,15 +3,34 @@ from __future__ import annotations
 import argparse
 import os
 import shutil
+import sys
+import time
 from pathlib import Path
 
 from . import __version__
-from .common import emit, resolve_root
+from .common import atomic_write_json, emit, load_json, resolve_root
 
 
 SKILL_NAMES = ("oa-runtime", "lwar-runtime")
-STANDALONE_SKILLS = ("pao-oa", "pao-lwar")
-GENERATED_DIRS = ("pao_runtime", "scripts")
+
+RUNTIME_MODULES = (
+    "adp_watch.py",
+    "audit.py",
+    "common.py",
+    "ledger.py",
+    "lwar_cli.py",
+    "oa_cli.py",
+    "pao_cli.py",
+    "registry.py",
+    "routing.py",
+    "transport.py",
+)
+WRAPPER_SCRIPTS = ("adp_watch.py", "lwar.py", "oa.py", "pao.py")
+ROLE_REFERENCES = {
+    "oa": {"reconcile.md", "publish.md", "collect-validate.md", "recover-maintain.md"},
+    "lwar": {"register.md", "adp-loop.md", "execute-complete.md", "lifecycle.md"},
+}
+LEFTOVER_TMP_AGE_S = 60
 
 
 def default_skills_source() -> Path | None:
@@ -53,6 +72,108 @@ def command_info(args: argparse.Namespace) -> int:
     return 0
 
 
+def _check(name: str, ok: bool, detail: object = None) -> dict:
+    entry: dict = {"check": name, "ok": bool(ok)}
+    if detail is not None:
+        entry["detail"] = detail
+    return entry
+
+
+def command_doctor(args: argparse.Namespace) -> int:
+    root = resolve_root(args.root)
+    package_dir = Path(__file__).resolve().parent
+    bundle = package_dir.parent  # the skill folder containing this runtime
+    checks = []
+
+    checks.append(
+        _check("python_version", sys.version_info >= (3, 9), sys.version.split()[0])
+    )
+    missing_modules = [name for name in RUNTIME_MODULES if not (package_dir / name).is_file()]
+    checks.append(_check("runtime_modules", not missing_modules, missing_modules or None))
+    missing_scripts = [
+        name for name in WRAPPER_SCRIPTS if not (bundle / "scripts" / name).is_file()
+    ]
+    checks.append(_check("wrapper_scripts", not missing_scripts, missing_scripts or None))
+    # Standalone bundles keep schemas/ and references/ at the bundle root;
+    # the plugin layout keeps schemas under skills/lwar-runtime/ and ships
+    # SKILL.md contracts instead of role reference files.
+    schemas = bundle / "schemas"
+    if not schemas.is_dir():
+        schemas = bundle / "skills" / "lwar-runtime" / "schemas"
+    checks.append(
+        _check(
+            "schemas_present",
+            schemas.is_dir() and any(schemas.glob("*.schema.json")),
+            str(schemas),
+        )
+    )
+    if args.role:
+        references = bundle / "references"
+        if references.is_dir():
+            present = {path.name for path in references.glob("*.md")}
+            expected = ROLE_REFERENCES[args.role]
+            checks.append(
+                _check("role_references", expected <= present, sorted(expected - present) or None)
+            )
+        else:
+            contract = bundle / "skills" / f"{args.role}-runtime" / "SKILL.md"
+            checks.append(_check("role_contract", contract.is_file(), str(contract)))
+
+    inside_skill = root == bundle or bundle in root.parents
+    checks.append(_check("root_outside_skill_dir", not inside_skill, str(root)))
+
+    if inside_skill:
+        # Never write probe files into the skill bundle itself.
+        checks.append(_check("bus_writable_atomic", False, "skipped — root resolves inside the skill directory"))
+    else:
+        probe = root / "var" / f".doctor-{os.getpid()}.probe.json"
+        renamed = probe.with_suffix(".renamed.json")
+        try:
+            atomic_write_json(probe, {"probe": True})
+            os.replace(probe, renamed)
+            renamed.unlink()
+            checks.append(_check("bus_writable_atomic", True))
+        except OSError as error:
+            checks.append(_check("bus_writable_atomic", False, str(error)))
+        finally:
+            probe.unlink(missing_ok=True)
+            renamed.unlink(missing_ok=True)
+
+    registry_path = root / "var" / "registry" / "lwar_registry.json"
+    if registry_path.is_file():
+        try:
+            load_json(registry_path)
+            checks.append(_check("registry_parses", True))
+        except Exception as error:
+            checks.append(_check("registry_parses", False, str(error)))
+    else:
+        checks.append(_check("registry_parses", True, "absent (fresh bus)"))
+
+    # Only aged temp files count: an in-flight atomic write briefly creates
+    # a .pao-*.tmp on a perfectly healthy bus.
+    cutoff = time.time() - LEFTOVER_TMP_AGE_S
+    leftovers = [
+        str(path)
+        for path in root.rglob(".pao-*.tmp")
+        if path.is_file() and path.stat().st_mtime < cutoff
+    ]
+    checks.append(_check("no_leftover_tmp", not leftovers, leftovers or None))
+
+    healthy = all(entry["ok"] for entry in checks)
+    emit(
+        {
+            "event": "doctor_report",
+            "version": __version__,
+            "role": args.role,
+            "root": str(root),
+            "bundle": str(bundle),
+            "healthy": healthy,
+            "checks": checks,
+        }
+    )
+    return 0 if healthy else 1
+
+
 def command_install_skills(args: argparse.Namespace) -> int:
     if args.source:
         source = Path(args.source).expanduser().resolve()
@@ -86,37 +207,14 @@ def command_install_skills(args: argparse.Namespace) -> int:
 
 
 def command_build_skills(args: argparse.Namespace) -> int:
-    package_root = Path(__file__).resolve().parents[1]
-    target = (
-        Path(args.target).expanduser().resolve()
-        if args.target
-        else package_root.parent / "PAO_skills"
+    # Direction inverted since 0.5.0: PAO_skills is the canonical source and
+    # the plugin is the generated mirror. Building skills FROM the plugin
+    # would clobber the canonical runtime, so this command fails closed.
+    raise SystemExit(
+        "build-skills is retired: PAO_skills is the canonical source since 0.5.0. "
+        "To sync the canonical runtime into the pao-oa mirror and the plugin, run "
+        "PAO_skills/sync_bundles.py [--to-plugin] from the repository root."
     )
-    schemas_source = package_root / "skills" / "lwar-runtime" / "schemas"
-    for required in (package_root / "pao_runtime", package_root / "scripts", schemas_source):
-        if not required.is_dir():
-            raise SystemExit(f"canonical source missing: {required}")
-    ignore = shutil.ignore_patterns("__pycache__", "*.pyc")
-
-    def replace(source: Path, destination: Path) -> None:
-        if destination.exists():
-            shutil.rmtree(destination)
-        shutil.copytree(source, destination, ignore=ignore)
-
-    built = []
-    for skill in STANDALONE_SKILLS:
-        skill_dir = target / skill
-        if not (skill_dir / "SKILL.md").is_file():
-            raise SystemExit(
-                f"authored skill not found: {skill_dir / 'SKILL.md'} "
-                "(build-skills only refreshes the generated layer of existing skills)"
-            )
-        for name in GENERATED_DIRS:
-            replace(package_root / name, skill_dir / name)
-        built.append({"skill": skill, "target": str(skill_dir)})
-    replace(schemas_source, target / "pao-lwar" / "schemas")
-    emit({"event": "standalone_skills_built", "count": len(built), "skills": built})
-    return 0
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -126,6 +224,15 @@ def build_parser() -> argparse.ArgumentParser:
     info = subparsers.add_parser("info", help="show runtime version and bus root resolution")
     info.add_argument("--root", default=None)
     info.set_defaults(handler=command_info)
+
+    doctor = subparsers.add_parser(
+        "doctor",
+        help="pre-flight health checks for the bundle and the bus root; "
+        "exit 1 means do not start registration, publishing, or ADP",
+    )
+    doctor.add_argument("--role", choices=("oa", "lwar"), default=None)
+    doctor.add_argument("--root", default=None)
+    doctor.set_defaults(handler=command_doctor)
 
     install = subparsers.add_parser(
         "install-skills",
@@ -138,10 +245,10 @@ def build_parser() -> argparse.ArgumentParser:
 
     build = subparsers.add_parser(
         "build-skills",
-        help="refresh the generated runtime layer (pao_runtime/, scripts/, schemas/) "
-        "of the standalone PAO_skills skills from the canonical source",
+        help="retired (fails closed): PAO_skills is canonical since 0.5.0 — "
+        "use PAO_skills/sync_bundles.py instead",
     )
-    build.add_argument("--target", default=None, help="standalone skills root (default: <package>/../../PAO_skills)")
+    build.add_argument("--target", default=None, help=argparse.SUPPRESS)
     build.set_defaults(handler=command_build_skills)
     return parser
 

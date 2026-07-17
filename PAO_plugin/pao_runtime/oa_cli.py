@@ -1,15 +1,19 @@
 from __future__ import annotations
 
 import argparse
+import os
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
 from . import audit
 from .common import (
+    FileLock,
+    atomic_write_json,
     emit,
     load_json,
     new_id,
+    parse_utc,
     resolve_root,
     utc_now,
     validate_lwar_id,
@@ -24,6 +28,41 @@ from .routing import (
     heartbeat_stale,
 )
 from .transport import FileTransport
+
+
+OA_WRITER_TTL_S = 900
+
+
+def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]:
+    """Single-writer guard for mutating OA commands.
+
+    The OA identity is `PAO_OA_ID` (set once per OA session). Sessions that do
+    not set it share the `oa-default` holder, so exclusion is only effective
+    between sessions with distinct ids. Best-effort: the TTL, not the lock,
+    bounds a crashed writer — a command outliving the TTL can be superseded.
+    """
+    oa_id = os.environ.get("PAO_OA_ID", "").strip() or "oa-default"
+    lease_path = root / "var" / "oa" / "writer_lease.json"
+    now = datetime.now(timezone.utc)
+    with FileLock(lease_path.parent / ".writer.lock"):
+        if lease_path.is_file():
+            lease = load_json(lease_path)
+            if lease.get("oa_id") != oa_id and parse_utc(lease["expires_at"]) > now:
+                raise SystemExit(
+                    f"another OA holds the writer lease: {lease.get('oa_id')} until "
+                    f"{lease['expires_at']} — this session is a read-only observer "
+                    "(set the matching PAO_OA_ID or wait for expiry)"
+                )
+        expires_at = (now + timedelta(seconds=ttl_s)).isoformat().replace("+00:00", "Z")
+        lease = {
+            "schema_version": "pao.oa-writer-lease.v1",
+            "oa_id": oa_id,
+            "exclusive": oa_id != "oa-default",
+            "refreshed_at": utc_now(),
+            "expires_at": expires_at,
+        }
+        atomic_write_json(lease_path, lease)
+    return lease
 
 
 def load_active_slot(root: Path, lwar_id: str, require_on: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -41,6 +80,7 @@ def load_active_slot(root: Path, lwar_id: str, require_on: bool = False) -> tupl
 
 def command_reconcile(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    ensure_oa_writer(root)
     service = RegistryService(root, tombstone_retention_s=args.tombstone_retention)
     counts = service.reconcile()
     audit.record(root, "oa", {"event": "oa_reconcile_complete", **counts})
@@ -65,6 +105,7 @@ def _check_dependencies(ledger: TaskLedger, depends_on: list[str]) -> None:
 
 def command_send(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    ensure_oa_writer(root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     source = load_json(Path(args.task_file).resolve())
@@ -149,6 +190,7 @@ def command_send(args: argparse.Namespace) -> int:
 
 def command_control(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    ensure_oa_writer(root)
     transport = FileTransport(root)
     registry, slot = load_active_slot(root, args.lwar_id)
     control_id = new_id("control")
@@ -176,6 +218,7 @@ def command_control(args: argparse.Namespace) -> int:
 
 def command_collect(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    ensure_oa_writer(root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     registry = RegistryService(root).load_registry()
@@ -197,6 +240,22 @@ def command_collect(args: argparse.Namespace) -> int:
                 )
                 continue
             entry = ledger.get(result["task_id"], result.get("workflow_id"))
+            ledger_attempt = entry.get("attempt") if entry else None
+            result_attempt = result.get("attempt")
+            if (
+                ledger_attempt is not None
+                and result_attempt is not None
+                and int(result_attempt) != int(ledger_attempt)
+            ):
+                # Attempt fence: the ledger's attempt is bumped by recover and
+                # dead-requeue, so a mismatched echo means this result belongs
+                # to a superseded claim. Legacy results without the echo skip
+                # the fence (optional-first rollout).
+                destination = transport.quarantine_result(lwar_id, path, "stale_attempt_result")
+                quarantined.append(
+                    {"lwar_id": lwar_id, "task_id": result["task_id"], "reason": "stale_attempt_result", "file": str(destination)}
+                )
+                continue
             if (
                 entry is not None
                 and entry.get("status") == "completed"
@@ -224,6 +283,7 @@ def command_collect(args: argparse.Namespace) -> int:
 
 def command_recover(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    ensure_oa_writer(root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
@@ -243,6 +303,14 @@ def command_recover(args: argparse.Namespace) -> int:
             attempt = int(task.get("attempt", 1)) + 1
             max_retries = int(task.get("max_retries", 3))
             task["attempt"] = attempt
+            # The interrupted terminal is recorded by OA, never inferred as a
+            # submitted result: the LWAR may have died without submitting.
+            interruption = {
+                "status": "interrupted",
+                "reason": "lease_expired",
+                "recorded_by": "oa_reconciler",
+                "recorded_at": utc_now(),
+            }
             if attempt > max_retries:
                 transport.dead_letter(lwar_id, claimed_path, task, "retry_budget_exhausted")
                 ledger.transition(
@@ -251,6 +319,7 @@ def command_recover(args: argparse.Namespace) -> int:
                     workflow_id=task.get("workflow_id"),
                     detail="retry_budget_exhausted",
                     attempt=attempt,
+                    interruption=interruption,
                 )
                 dead_lettered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
             else:
@@ -262,6 +331,7 @@ def command_recover(args: argparse.Namespace) -> int:
                         workflow_id=task.get("workflow_id"),
                         detail="lease_expired",
                         attempt=attempt,
+                        interruption=interruption,
                     )
                     recovered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
             lease_path.unlink(missing_ok=True)
@@ -314,6 +384,7 @@ def command_dead(args: argparse.Namespace) -> int:
     if args.requeue:
         if not args.lwar_id:
             raise SystemExit("--requeue requires --lwar-id")
+        ensure_oa_writer(root)
         task = transport.requeue_dead(args.lwar_id, validate_task_id(args.requeue))
         if task is None:
             raise SystemExit(f"dead task not found: {args.requeue}")
@@ -322,7 +393,7 @@ def command_dead(args: argparse.Namespace) -> int:
             "requeued",
             workflow_id=task.get("workflow_id"),
             detail="manual_requeue",
-            attempt=1,
+            attempt=int(task.get("attempt", 1)),
         )
         audit.record(root, "oa", {"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
         emit({"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
@@ -395,6 +466,7 @@ def command_validate(args: argparse.Namespace) -> int:
 
 def command_prune(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    ensure_oa_writer(root)
     transport = FileTransport(root)
     if args.older_than_days <= 0:
         raise SystemExit("--older-than-days must be positive")

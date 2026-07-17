@@ -35,6 +35,7 @@ def watch(args: argparse.Namespace) -> int:
         emit({"event": "adp_error", "error": str(error), "action": "stop"})
         return 30
     deadline = time.monotonic() + args.timeout
+    wait_s = args.interval
 
     while time.monotonic() < deadline:
         try:
@@ -62,6 +63,7 @@ def watch(args: argparse.Namespace) -> int:
 
         transport.write_heartbeat(identity, "watching" if slot["state"] == "on" else slot["state"], None)
         if slot["state"] == "on":
+            wait_s = args.interval
             claimed = transport.claim_task(identity, args.lease_seconds)
             if claimed is not None:
                 task, claimed_path = claimed
@@ -82,7 +84,11 @@ def watch(args: argparse.Namespace) -> int:
                     }
                 )
                 return 0
-        time.sleep(args.interval)
+        elif args.state_wait_backoff_max:
+            # Bounded backoff while the slot is not `on`: doubles per poll up
+            # to the cap, resets as soon as the state returns to `on`.
+            wait_s = min(wait_s * 2, args.state_wait_backoff_max)
+        time.sleep(wait_s if slot["state"] != "on" else args.interval)
 
     transport.write_heartbeat(identity, "idle" if slot["state"] == "on" else slot["state"], None)
     emit(
@@ -104,6 +110,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--interval", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--lease-seconds", type=int, default=180)
+    parser.add_argument(
+        "--state-wait-backoff-max",
+        type=float,
+        default=None,
+        help="cap for the doubling poll interval while the slot is not on (default: no backoff)",
+    )
     return parser
 
 
@@ -111,6 +123,8 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.interval <= 0 or args.timeout <= 0 or args.lease_seconds <= 0:
         raise SystemExit("interval, timeout, and lease-seconds must be positive")
+    if args.state_wait_backoff_max is not None and args.state_wait_backoff_max < args.interval:
+        raise SystemExit("--state-wait-backoff-max must be >= --interval")
     return watch(args)
 
 

@@ -2,12 +2,12 @@
 name: oa-runtime
 description: "PAO Orchestration Agent contract for approving LWAR registrations, publishing mailbox tasks and controls, collecting results, monitoring ADP heartbeat, and recovering stale leases. Load whenever acting as OA or managing PAO LWARs."
 user-invocable: true
-argument-hint: "reconcile | send | control | collect | recover | status"
+argument-hint: "info | doctor | status | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
 ---
 
-# OA Runtime Skill v1
+# OA Runtime Skill v1.1
 
-> OA is the **Orchestration Agent**. OA does not launch LWARs. It approves registrations, publishes mailbox tasks, and validates and integrates results. Long-running execution is owned by each LWAR's ADP.
+> OA is the **Orchestration Agent**. OA does not launch LWARs. It approves registrations, publishes mailbox tasks, and validates and integrates results. Long-running execution is owned by each LWAR's ADP. An **LWAR** (Long-running Worker Agent Runtime) is the stable execution identity (`LWAR1`, `LWAR2`, ...) that hides provider and model names.
 
 ## 0. Bus Root Resolution and Invocation
 
@@ -19,7 +19,9 @@ Every example below invokes the CLI as `python "$PAO_HOME/scripts/oa.py"`, where
 2. **Manual / foreign-runtime install** — set the `PAO_HOME` environment variable to the PAO repository path.
 3. **Inside the PAO repository** — `$PAO_HOME` is the repository's `PAO_plugin/` directory. `python -m pao_runtime.oa_cli` (from inside `PAO_plugin/`) and, after `pip install -e`, `pao-oa` remain equivalent alternatives here.
 
-The wrapper scripts bootstrap their own import path; no pip install is required in any mode. Diagnose version and root resolution with `python "$PAO_HOME/scripts/pao.py" info`.
+The wrapper scripts bootstrap their own import path; no pip install is required in any mode. Diagnose version and root resolution with `python "$PAO_HOME/scripts/pao.py" info`. Before the first orchestration action of a session, run the pre-flight check and stop on failure: `python "$PAO_HOME/scripts/pao.py" doctor --role oa`. The bus assumes a single-host local filesystem.
+
+**Single-writer rule**: set a unique `PAO_OA_ID` environment variable once per OA session. Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json` (TTL 900s); a session with a different id is rejected as a read-only observer until expiry. Sessions without `PAO_OA_ID` share the `oa-default` holder and get no mutual exclusion.
 
 ## 1. Core Loop
 
@@ -83,9 +85,10 @@ python "$PAO_HOME/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 ```
 
 - `status` computes heartbeat staleness (`heartbeat_stale`, default threshold 120s via `--stale-after`).
-- `collect` quarantines stale-generation and duplicate results into `quarantine/` and marks accepted tasks `completed` in the ledger.
-- `recover` increments `attempt` on each requeue; when `attempt` exceeds `max_retries`, the task is dead-lettered into `dead/` instead of looping forever.
-- `dead --requeue` republishes a dead task with `attempt` reset to 1.
+- `collect` quarantines stale-generation, stale-attempt, and duplicate results into `quarantine/` and marks accepted tasks `completed` in the ledger. Results echo the `attempt` of the claim they came from; a mismatch against the ledger (`stale_attempt_result`) means the result belongs to a superseded claim.
+- A result is a **terminal submission, not a success claim** — only `status=succeeded` results are acceptance candidates; `failed`, `blocked`, `cancelled`, `interrupted`, `timed_out`, and `protocol_error` are collected for the record.
+- `recover` increments `attempt` on each requeue and writes an `interruption` record (`recorded_by: oa_reconciler`) into the ledger entry — a vanished LWAR is recorded as interrupted, never inferred as success; when `attempt` exceeds `max_retries`, the task is dead-lettered into `dead/` instead of looping forever.
+- `dead --requeue` republishes a dead task with `attempt` **incremented** (never reset — attempt is the collect-side fencing key and must stay monotonic).
 - `validate` reports mechanical checks (status, exit code, evidence presence) plus the `completion_criteria` checklist; semantic verification remains OA's judgment.
 - Never approve success from `exit_code=0` alone.
 - Validate `completion_criteria`, evidence, artifacts, and actual test results.
@@ -117,3 +120,4 @@ python "$PAO_HOME/scripts/oa.py" prune --older-than-days 14
 - Do not publish new tasks to an `off` or `draining` LWAR.
 - Do not approve results from a stale identity as current-generation output.
 - Do not rewrite failed validation as success.
+- Do not edit mailbox, registry, or lease files by hand; act only through the bundled CLI.

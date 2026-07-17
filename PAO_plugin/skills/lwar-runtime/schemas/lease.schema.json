@@ -9,6 +9,7 @@
     "lwar_id": {"type": "string"},
     "instance_id": {"type": "string"},
     "generation": {"type": "integer", "minimum": 1},
+    "claim_token": {"type": "string", "pattern": "^claim-[a-f0-9]{32}$"},
     "claimed_file": {"type": "string"},
     "effective_lease_s": {"type": "integer", "minimum": 1},
     "leased_at": {"type": "string", "format": "date-time"},

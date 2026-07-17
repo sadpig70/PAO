@@ -11,6 +11,7 @@ from .common import (
     ensure_mailbox,
     load_json,
     mailbox_root,
+    new_id,
     parse_utc,
     utc_now,
 )
@@ -201,6 +202,11 @@ class FileTransport:
             destination = mailbox / "claimed" / source.name
             if not claim_file(source, destination):
                 continue
+            # The claimed file is exclusively ours until the lease exists
+            # (recover only acts on expired leases), so stamping the claim
+            # token here is race-free.
+            task["claim_token"] = new_id("claim")
+            atomic_write_json(destination, task)
             lease_s = effective_lease_seconds(task, default_lease_s)
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=lease_s)
             atomic_write_json(
@@ -211,6 +217,7 @@ class FileTransport:
                     "lwar_id": identity["lwar_id"],
                     "instance_id": identity["instance_id"],
                     "generation": identity["generation"],
+                    "claim_token": task["claim_token"],
                     "claimed_file": destination.name,
                     "effective_lease_s": lease_s,
                     "leased_at": utc_now(),
@@ -257,7 +264,16 @@ class FileTransport:
         atomic_write_json(outgoing, result)
         archive = mailbox / "archive" / "tasks" / claimed_path.name
         archive.parent.mkdir(parents=True, exist_ok=True)
-        claimed_path.replace(archive)
+        try:
+            claimed_path.replace(archive)
+        except FileNotFoundError:
+            # OA recovery re-queued this claim between our result write and the
+            # archive move: the re-queued attempt is canonical, this submission
+            # is superseded and will be quarantined by the attempt fence.
+            raise RuntimeError(
+                f"claim superseded during submission: {result['task_id']} "
+                "(lease expired and the task was re-queued; do not retry)"
+            )
         (mailbox / "leases" / f"{result['task_id']}.json").unlink(missing_ok=True)
         return outgoing
 
@@ -305,8 +321,14 @@ class FileTransport:
         incoming = self._mailbox(lwar_id) / "incoming" / claimed_path.name
         if incoming.exists():
             return None
-        atomic_write_json(claimed_path, task)
-        claimed_path.replace(incoming)
+        # Claim the file atomically BEFORE rewriting: if the LWAR archived it
+        # via submit_result in the meantime, recreating it here would fork the
+        # task into a duplicate execution. The loser of this replace backs off.
+        try:
+            os.replace(claimed_path, incoming)
+        except FileNotFoundError:
+            return None
+        atomic_write_json(incoming, task)
         return incoming
 
     def dead_letter(self, lwar_id: str, claimed_path: Path, task: dict[str, Any], reason: str) -> Path:
@@ -338,7 +360,9 @@ class FileTransport:
         for path, task in self.list_dead(lwar_id):
             if task.get("task_id") != task_id:
                 continue
-            task["attempt"] = 1
+            # attempt is the collect-side fencing key and must stay monotonic:
+            # resetting it would let a superseded result match a future attempt.
+            task["attempt"] = int(task.get("attempt", 1)) + 1
             atomic_write_json(path, task)
             incoming = self._mailbox(lwar_id) / "incoming" / path.name
             path.replace(incoming)

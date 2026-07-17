@@ -1,7 +1,6 @@
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -12,13 +11,8 @@ from pao_helpers import PLUGIN, REPO
 
 SKILLS = REPO / "PAO_skills"
 GENERATED = {
-    "pao-oa": ("pao_runtime", "scripts"),
+    "pao-oa": ("pao_runtime", "scripts", "schemas"),
     "pao-lwar": ("pao_runtime", "scripts", "schemas"),
-}
-CANONICAL = {
-    "pao_runtime": PLUGIN / "pao_runtime",
-    "scripts": PLUGIN / "scripts",
-    "schemas": PLUGIN / "skills" / "lwar-runtime" / "schemas",
 }
 REFERENCES = {
     "pao-oa": {"reconcile.md", "publish.md", "collect-validate.md", "recover-maintain.md"},
@@ -35,62 +29,37 @@ def tree_bytes(root):
     return files
 
 
-def authored_bytes(skill_dir):
-    files = {"SKILL.md": (skill_dir / "SKILL.md").read_bytes()}
-    for path in (skill_dir / "references").glob("*.md"):
-        files[f"references/{path.name}"] = path.read_bytes()
-    return files
+class PluginMirrorTests(unittest.TestCase):
+    """PAO_skills/pao-lwar is the canonical runtime master; the plugin's
+    runtime layer is a generated mirror (sync_bundles.py --to-plugin)."""
 
+    MASTER = SKILLS / "pao-lwar"
+    PLUGIN_MIRROR = {
+        "pao_runtime": PLUGIN / "pao_runtime",
+        "scripts": PLUGIN / "scripts",
+        "schemas": PLUGIN / "skills" / "lwar-runtime" / "schemas",
+    }
 
-@unittest.skip(
-    "plugin frozen — PAO_skills is the canonical source during the skills-first "
-    "phase; the plugin→skills byte gate is re-enabled (direction re-decided) at backport"
-)
-class SyncGateTests(unittest.TestCase):
-    def run_build(self, target, expected=0):
+    def test_plugin_runtime_mirrors_the_master_bytes(self):
+        for name, mirrored in self.PLUGIN_MIRROR.items():
+            master = tree_bytes(self.MASTER / name)
+            mirror = tree_bytes(mirrored)
+            self.assertEqual(set(master), set(mirror), f"plugin/{name} file set")
+            for rel, data in master.items():
+                self.assertEqual(data, mirror[rel], f"plugin/{name}/{rel} bytes")
+
+    def test_build_skills_fails_closed(self):
+        # The old plugin->skills direction would clobber the canonical source.
         completed = subprocess.run(
-            [sys.executable, "-m", "pao_runtime.pao_cli", "build-skills", "--target", str(target)],
+            [sys.executable, "-m", "pao_runtime.pao_cli", "build-skills"],
             cwd=REPO,
             check=False,
             capture_output=True,
             text=True,
             env={**os.environ, "PYTHONPATH": str(PLUGIN)},
         )
-        if expected is not None:
-            self.assertEqual(completed.returncode, expected, completed.stderr + completed.stdout)
-        return completed
-
-    def test_generated_trees_match_canonical_bytes(self):
-        for skill, dirs in GENERATED.items():
-            for name in dirs:
-                canonical = tree_bytes(CANONICAL[name])
-                bundled = tree_bytes(SKILLS / skill / name)
-                self.assertEqual(set(canonical), set(bundled), f"{skill}/{name} file set")
-                for rel, data in canonical.items():
-                    self.assertEqual(data, bundled[rel], f"{skill}/{name}/{rel} bytes")
-
-    def test_build_is_idempotent_and_never_touches_authored_files(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            target = Path(tmp) / "PAO_skills"
-            for skill in GENERATED:
-                shutil.copytree(SKILLS / skill / "references", target / skill / "references")
-                shutil.copy2(SKILLS / skill / "SKILL.md", target / skill / "SKILL.md")
-            authored_before = {skill: authored_bytes(target / skill) for skill in GENERATED}
-            self.run_build(target)
-            first = {skill: tree_bytes(target / skill) for skill in GENERATED}
-            self.run_build(target)
-            second = {skill: tree_bytes(target / skill) for skill in GENERATED}
-            self.assertEqual(first, second, "second build must be byte-identical")
-            for skill in GENERATED:
-                self.assertEqual(
-                    authored_before[skill], authored_bytes(target / skill), f"{skill} authored files changed"
-                )
-
-    def test_build_refuses_unauthored_target(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            completed = self.run_build(Path(tmp) / "empty", expected=None)
-            self.assertNotEqual(completed.returncode, 0)
-            self.assertIn("authored skill not found", completed.stderr)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("canonical source", completed.stderr)
 
 
 class SkillsInternalSyncTests(unittest.TestCase):

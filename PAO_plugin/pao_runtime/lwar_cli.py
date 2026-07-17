@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from . import audit
+from . import __version__, audit
 from .common import (
     atomic_write_json,
     emit,
@@ -59,6 +59,7 @@ def command_register(args: argparse.Namespace) -> int:
         "requested_state": "on",
         "profile": profile,
         "behavior_contract": "lwar-runtime.v2-adp",
+        "runtime_version": __version__,
         "created_at": utc_now(),
     }
     request_path = root / "control" / "registration" / "requests" / f"{request_id}.json"
@@ -189,8 +190,17 @@ def command_complete(args: argparse.Namespace) -> int:
     for required in ("status", "summary", "evidence"):
         if required not in result:
             raise SystemExit(f"result missing required field: {required}")
-    if result["status"] not in {"succeeded", "failed", "blocked", "cancelled"}:
-        raise SystemExit("result status must be succeeded, failed, blocked, or cancelled")
+    terminal_statuses = {
+        "succeeded",
+        "failed",
+        "blocked",
+        "cancelled",
+        "interrupted",
+        "timed_out",
+        "protocol_error",
+    }
+    if result["status"] not in terminal_statuses:
+        raise SystemExit(f"result status must be one of: {', '.join(sorted(terminal_statuses))}")
     if not isinstance(result["evidence"], dict):
         raise SystemExit("result evidence must be an object")
     if not isinstance(result.get("artifacts", []), list):
@@ -210,9 +220,17 @@ def command_complete(args: argparse.Namespace) -> int:
         "next_action": result.get("next_action", "validate"),
         "exit_code": result.get("exit_code", 0 if result["status"] == "succeeded" else 1),
         "error": result.get("error"),
+        # Fencing echo: both come from the claimed task file the bus wrote,
+        # never from the caller's result draft.
+        "attempt": int(task.get("attempt", 1)),
+        "claim_token": task.get("claim_token"),
         "submitted_at": utc_now(),
     }
-    outgoing = transport.submit_result(identity, claimed_path, normalized)
+    try:
+        outgoing = transport.submit_result(identity, claimed_path, normalized)
+    except RuntimeError as error:
+        audit.record(root, "lwar", {"event": "result_superseded", "lwar_id": lwar_id, "task_id": task_id})
+        raise SystemExit(str(error))
     transport.write_heartbeat(identity, "idle", None)
     audit.record(
         root,

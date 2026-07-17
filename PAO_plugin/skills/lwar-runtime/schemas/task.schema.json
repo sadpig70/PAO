@@ -18,6 +18,8 @@
     "cwd": {"type": "string", "minLength": 1},
     "timeout_s": {"type": "integer", "minimum": 1},
     "permissions": {"type": "object"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "claim_token": {"type": "string", "pattern": "^claim-[a-f0-9]{32}$"},
     "created_at": {"type": "string", "format": "date-time"}
   }
 }

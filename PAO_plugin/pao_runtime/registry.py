@@ -5,6 +5,7 @@ from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
+from . import __version__
 from .common import (
     FileLock,
     atomic_write_json,
@@ -83,6 +84,12 @@ class RegistryService:
         registry_version = None
         state = "unregistered"
 
+        # Version handshake: a stamped, mismatched runtime is rejected before
+        # any registry mutation; an absent stamp is a pre-0.5 legacy request
+        # and stays accepted for the freeze window.
+        request_version = request.get("runtime_version")
+        version_mismatch = request_version is not None and request_version != __version__
+
         with FileLock(self.lock_path):
             registry = self.load_registry()
             tombstones = self.load_tombstones()
@@ -93,7 +100,9 @@ class RegistryService:
             else:
                 candidate = self._lowest_available(registry, tombstones)
 
-            if candidate in registry["slots"]:
+            if version_mismatch:
+                reason = "runtime_version_mismatch"
+            elif candidate in registry["slots"]:
                 reason = "lwar_id_in_use"
             elif self._tombstone_blocked(tombstones["entries"].get(candidate)):
                 reason = "lwar_id_tombstoned"

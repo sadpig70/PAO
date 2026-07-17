@@ -9,11 +9,13 @@
     "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
     "instance_id": {"type": "string", "pattern": "^lwar-instance-[a-f0-9]{32}$"},
     "generation": {"type": "integer", "minimum": 1},
-    "status": {"enum": ["succeeded", "failed", "blocked", "cancelled"]},
+    "status": {"enum": ["succeeded", "failed", "blocked", "cancelled", "interrupted", "timed_out", "protocol_error"]},
     "summary": {"type": "string"},
     "evidence": {"type": "object"},
     "artifacts": {"type": "array", "items": {"type": "string"}},
     "exit_code": {"type": "integer"},
+    "attempt": {"type": "integer", "minimum": 1},
+    "claim_token": {"oneOf": [{"type": "null"}, {"type": "string", "pattern": "^claim-[a-f0-9]{32}$"}]},
     "submitted_at": {"type": "string", "format": "date-time"}
   }
 }

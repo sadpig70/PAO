@@ -39,7 +39,7 @@ OA (Orchestration Agent)
 - append-only audit log (`var/audit/events.jsonl`) and archive pruning (`prune`)
 - replaceable message plane: the `Transport` protocol with `FileTransport` as the local implementation
 - installable as a Claude Code plugin (`pao`): skills, command aliases, and runtime in one unit
-- standalone skills-only channel (`PAO_skills/`): self-contained `pao-oa` / `pao-lwar` skills installed by folder copy, byte-synced from the canonical runtime
+- standalone skills-only channel (`PAO_skills/`): self-contained `pao-oa` / `pao-lwar` skills installed by folder copy — the canonical source of the runtime since 0.5.0
 
 ## Installation and Deployment Modes
 
@@ -67,7 +67,7 @@ Each of `PAO_skills/pao-oa` and `PAO_skills/pao-lwar` is a **self-contained** sk
 cp -r PAO_skills/pao-oa PAO_skills/pao-lwar ~/.claude/skills/
 ```
 
-Set only `PAO_ROOT` (the central bus, outside any skills directory). Invocation is namespace-free: `/pao-oa`, `/pao-lwar`. The bundled runtime copies are generated from the canonical `PAO_plugin/` source by `pao build-skills` and byte-verified against it by the test suite — never edit them by hand. The standalone `/pao-oa` and the plugin's `/pao:oa` do not collide, but pick one channel per machine to avoid confusion.
+Set only `PAO_ROOT` (the central bus, outside any skills directory). Invocation is namespace-free: `/pao-oa`, `/pao-lwar`. Since 0.5.0 the **canonical runtime lives here**: `PAO_skills/pao-lwar` is the master, and `PAO_skills/sync_bundles.py` mirrors it into `pao-oa` and (with `--to-plugin`) into `PAO_plugin/`; the test suite byte-verifies both mirrors. Edit the runtime only under `PAO_skills/pao-lwar`. The standalone `/pao-oa` and the plugin's `/pao:oa` do not collide, but pick one channel per machine to avoid confusion.
 
 ### Option C — Thin contract copy (external runtime via `PAO_HOME`)
 
@@ -149,7 +149,7 @@ python -m unittest discover -s tests -v
 python -m py_compile PAO_plugin/pao_runtime/*.py PAO_plugin/scripts/*.py tests/*.py
 ```
 
-The current integration suite (46 tests) verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, root resolution and portability, and plugin packaging (manifest/version sync, skill layout, command aliases, skill invocation contract).
+The current integration suite (65 tests) verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, root resolution and portability, and plugin packaging (manifest/version sync, skill layout, command aliases, skill invocation contract).
 
 ## License
 

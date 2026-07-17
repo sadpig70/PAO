@@ -5,9 +5,9 @@ user-invocable: true
 argument-hint: "register [number] | adp | status | on | drain | off | unregister"
 ---
 
-# LWAR Runtime Skill v2 — ADP
+# LWAR Runtime Skill v2.1 — ADP
 
-> ADP is the **Agent Daemon Process**. An already-running LWAR session repeatedly invokes a Python watcher, receives its mailbox, performs work, stores a result, and returns to the watcher.
+> An **LWAR** (Long-running Worker Agent Runtime) is the stable execution identity (`LWAR1`, `LWAR2`, ...) that hides provider and model names. ADP is the **Agent Daemon Process**: an already-running LWAR session repeatedly invokes a Python watcher, receives its mailbox, performs work, stores a result, and returns to the watcher. Heartbeats are emitted by the watcher automatically — the agent never writes them.
 
 > **Bus root resolution**: every command resolves the bus as explicit `--root` > `PAO_ROOT` environment variable > current directory. In operation mode (LWAR session in a project workspace), set `PAO_ROOT` to the central bus and omit `--root`. Task execution still happens in each task's own `cwd`.
 >
@@ -15,13 +15,15 @@ argument-hint: "register [number] | adp | status | on | drain | off | unregister
 
 ## 1. Absolute Rules
 
-1. Read this skill and [`references/adp-contract.md`](references/adp-contract.md) in full.
+1. Read this skill and [`references/adp-contract.md`](references/adp-contract.md) in full. Run the pre-flight check first and stop on failure: `python "$PAO_HOME/scripts/pao.py" doctor --role lwar`.
 2. Use only the approved `(lwar_id, instance_id, generation)` as your runtime identity.
 3. Do not assume an external process will relaunch the LWAR. Keep ADP alive inside the current session.
 4. On `idle_timeout` and `state_wait`, generate no extra explanation. Re-run the same watcher immediately.
-5. On `task_received`, operate only within the TaskContract authority bounds and always submit a result with `complete`.
+5. On `task_received`, operate only within the TaskContract authority bounds and submit **exactly one terminal result** with `complete` whenever this agent remains capable of submitting one. `complete` means terminal submission, **not success** — `failed`, `blocked`, `cancelled`, `timed_out`, and `protocol_error` outcomes are all submitted the same way; a crash is recovered by lease expiry and OA `recover`, never inferred as success.
 6. Return to the watcher immediately after result submission.
-7. Only `shutdown` terminates ADP.
+7. Only `shutdown` terminates ADP — with one exception: when session context exhaustion is imminent, hand off instead of dying: request `draining`, submit the terminal result for any claimed task, then request `off` (or re-register from a fresh session; a reused slot bumps `generation`, quarantining your stale messages automatically).
+8. On an unknown watcher event or exit code, fail closed: stop the current slice, report a `protocol_error`, never retry an unknown event blindly.
+9. Never expose provider, vendor, or model names in mailbox paths, artifact paths, or artifact contents.
 
 ## 2. Command Contract
 
@@ -61,7 +63,7 @@ Remember the `request_id` returned on stdout. After OA approves it, run:
 python "$PAO_HOME/scripts/lwar.py" response REQUEST_ID
 ```
 
-When `event=identity_adopted`, the printed `identity_file` becomes the only valid identity input for later ADP calls. If the response is `pending`, do not treat the identity as approved.
+`response` exit codes: `0` = `identity_adopted` (the printed `identity_file` becomes the only valid identity input for later ADP calls), `2` = `registration_pending` (poll again after OA reconciles), `3` = `registration_rejected` (fail closed, inspect `reason`). The request is stamped with the bundle's `runtime_version`; OA rejects a mismatched runtime fail-closed.
 
 ## 4. Core ADP Loop
 
@@ -110,13 +112,14 @@ their lease for the whole declared execution window.
 | `event` | Immediate action |
 |---|---|
 | `idle_timeout` | Re-run the same watcher |
-| `state_wait` | Re-run the same watcher; do not execute tasks |
+| `state_wait` | Re-run the same watcher; do not execute tasks (consider `--state-wait-backoff-max SECONDS` for long non-`on` windows) |
 | `task_received` | Execute the `task`, then submit the result |
 | `control:ping` | Re-run the watcher |
-| `control:drain` | Finish current work, then request lifecycle `draining` |
+| `control:drain` | Finish current work, then request lifecycle `draining` and **keep watching** until `shutdown` |
 | `control:cancel` | Stop that task and submit a `cancelled` result |
 | `control:shutdown` | Stop ADP |
-| `adp_error` | Report the error, then stop ADP |
+| `adp_error` | Report the error, then stop ADP (after 3 consecutive identical errors, escalate to OA instead of retrying) |
+| any unknown | **Fail closed**: stop this slice, report `protocol_error`, never retry blindly |
 
 ## 6. Task Execution and Result Submission
 
