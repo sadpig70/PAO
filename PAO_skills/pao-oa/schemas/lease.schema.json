@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.lease.v1",
+  "type": "object",
+  "required": ["schema_version", "task_id", "lwar_id", "instance_id", "generation", "claimed_file", "leased_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "pao.lease.v1"},
+    "task_id": {"type": "string"},
+    "lwar_id": {"type": "string"},
+    "instance_id": {"type": "string"},
+    "generation": {"type": "integer", "minimum": 1},
+    "claim_token": {"type": "string", "pattern": "^claim-[a-f0-9]{32}$"},
+    "claimed_file": {"type": "string"},
+    "effective_lease_s": {"type": "integer", "minimum": 1},
+    "leased_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

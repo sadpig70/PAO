@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.audit-event.v1",
+  "type": "object",
+  "required": ["schema_version", "ts", "actor", "event"],
+  "properties": {
+    "schema_version": {"const": "pao.audit-event.v1"},
+    "ts": {"type": "string", "format": "date-time"},
+    "actor": {"enum": ["oa", "lwar", "adp"]},
+    "event": {"type": "string", "minLength": 1}
+  }
+}

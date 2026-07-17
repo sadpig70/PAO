@@ -1,0 +1,13 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.oa-writer-lease.v1",
+  "type": "object",
+  "required": ["schema_version", "oa_id", "exclusive", "refreshed_at", "expires_at"],
+  "properties": {
+    "schema_version": {"const": "pao.oa-writer-lease.v1"},
+    "oa_id": {"type": "string", "minLength": 1},
+    "exclusive": {"type": "boolean"},
+    "refreshed_at": {"type": "string", "format": "date-time"},
+    "expires_at": {"type": "string", "format": "date-time"}
+  }
+}

@@ -1,4 +1,5 @@
 import json
+import os
 import subprocess
 import sys
 import tempfile
@@ -8,6 +9,7 @@ from pathlib import Path
 
 
 REPO = Path(__file__).parents[1]
+RUNTIME_HOME = REPO / "PAO_skills" / "pao-lwar"
 
 
 class ADPIntegrationTests(unittest.TestCase):
@@ -18,6 +20,7 @@ class ADPIntegrationTests(unittest.TestCase):
             check=False,
             capture_output=True,
             text=True,
+            env={**os.environ, "PYTHONPATH": str(RUNTIME_HOME)},
         )
         if expected is not None:
             self.assertEqual(completed.returncode, expected, completed.stderr + completed.stdout)

@@ -7,14 +7,17 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pao_helpers import REPO, PaoTestCase
+import re
+
+from pao_helpers import PLUGIN, REPO, RUNTIME_HOME, PaoTestCase
+from pao_runtime import __version__
 
 
 class RootResolutionTests(PaoTestCase):
     def test_pao_root_env_resolves_bus_from_foreign_cwd(self):
         with tempfile.TemporaryDirectory() as bus_dir, tempfile.TemporaryDirectory() as work_dir:
             bus = Path(bus_dir)
-            env = {"PAO_ROOT": str(bus), "PYTHONPATH": str(REPO)}
+            env = {"PAO_ROOT": str(bus), "PYTHONPATH": str(RUNTIME_HOME)}
             _, requested = self.run_module(
                 "pao_runtime.lwar_cli",
                 "register",
@@ -45,7 +48,7 @@ class RootResolutionTests(PaoTestCase):
             env = {**os.environ, "PAO_ROOT": bus_dir}
             env.pop("PYTHONPATH", None)
             completed = subprocess.run(
-                [sys.executable, str(REPO / "scripts" / "pao.py"), "info"],
+                [sys.executable, str(RUNTIME_HOME / "scripts" / "pao.py"), "info"],
                 cwd=work_dir,
                 check=False,
                 capture_output=True,
@@ -54,7 +57,7 @@ class RootResolutionTests(PaoTestCase):
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
             payload = json.loads(completed.stdout)
-            self.assertEqual(payload["version"], "0.3.0")
+            self.assertEqual(payload["version"], __version__)
             self.assertEqual(payload["root"], str(Path(bus_dir).resolve()))
             self.assertEqual(payload["root_source"], "PAO_ROOT")
 
@@ -86,7 +89,7 @@ class RootResolutionTests(PaoTestCase):
             )
             self.assertEqual(via_env["root_source"], "PAO_ROOT")
             self.assertEqual(via_env["root"], str(bus.resolve()))
-            self.assertEqual(via_env["version"], "0.3.0")
+            self.assertEqual(via_env["version"], __version__)
             _, via_flag = self.run_module(
                 "pao_runtime.pao_cli", "info", "--root", str(bus),
                 env={"PAO_ROOT": str(bus / "ignored")},
@@ -96,14 +99,17 @@ class RootResolutionTests(PaoTestCase):
 
 
 class InstallerTests(PaoTestCase):
+    # install-skills targets the frozen plugin's thin-contract layout, so these
+    # two tests deliberately run against the PLUGIN runtime, not RUNTIME_HOME.
     def test_install_skills_copies_contracts(self):
         with tempfile.TemporaryDirectory() as target_dir:
             target = Path(target_dir) / "skills"
             _, installed = self.run_module(
                 "pao_runtime.pao_cli",
                 "install-skills",
-                "--source", str(REPO / ".agents" / "skills"),
+                "--source", str(PLUGIN / "skills"),
                 "--target", str(target),
+                env={"PYTHONPATH": str(PLUGIN)},
                 expected=0,
             )
             self.assertEqual(installed["count"], 2)
@@ -116,10 +122,12 @@ class InstallerTests(PaoTestCase):
         with tempfile.TemporaryDirectory() as target_dir:
             target = Path(target_dir) / "skills"
             _, installed = self.run_module(
-                "pao_runtime.pao_cli", "install-skills", "--target", str(target), expected=0
+                "pao_runtime.pao_cli", "install-skills", "--target", str(target),
+                env={"PYTHONPATH": str(PLUGIN)},
+                expected=0,
             )
             self.assertEqual(installed["count"], 2)
-            self.assertEqual(installed["source"], str((REPO / ".agents" / "skills").resolve()))
+            self.assertEqual(installed["source"], str((PLUGIN / "skills").resolve()))
 
 
 class CwdGuardTests(PaoTestCase):
@@ -144,7 +152,7 @@ class PackagingTests(unittest.TestCase):
     def test_console_entry_points_are_importable(self):
         import tomllib
 
-        manifest = tomllib.loads((REPO / "pyproject.toml").read_text(encoding="utf-8"))
+        manifest = tomllib.loads((PLUGIN / "pyproject.toml").read_text(encoding="utf-8"))
         scripts = manifest["project"]["scripts"]
         self.assertEqual(
             set(scripts), {"pao", "pao-oa", "pao-lwar", "pao-adp-watch"}
@@ -153,7 +161,11 @@ class PackagingTests(unittest.TestCase):
             module_name, function_name = spec.split(":")
             module = importlib.import_module(module_name)
             self.assertTrue(callable(getattr(module, function_name)), name)
-        self.assertEqual(manifest["project"]["version"], "0.3.0")
+        # The plugin is frozen: its pyproject must match its own bundled
+        # runtime version, not the (possibly newer) canonical skills runtime.
+        plugin_init = (PLUGIN / "pao_runtime" / "__init__.py").read_text(encoding="utf-8")
+        plugin_version = re.search(r'^__version__ = "([^"]+)"$', plugin_init, flags=re.M).group(1)
+        self.assertEqual(manifest["project"]["version"], plugin_version)
 
 
 if __name__ == "__main__":

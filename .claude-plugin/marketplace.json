@@ -1,0 +1,16 @@
+{
+  "name": "pao",
+  "description": "Marketplace for the PAO (Persistent Agent Orchestration) plugin — heterogeneous AI runtime orchestration over a file bus.",
+  "owner": {
+    "name": "Jung Wook Yang"
+  },
+  "plugins": [
+    {
+      "name": "pao",
+      "source": "./PAO_plugin",
+      "description": "Persistent Agent Orchestration — OA/LWAR skill contracts and the file-bus runtime as one plugin.",
+      "license": "MIT",
+      "keywords": ["orchestration", "multi-agent", "file-bus"]
+    }
+  ]
+}

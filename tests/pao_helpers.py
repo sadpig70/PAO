@@ -7,15 +7,22 @@ from pathlib import Path
 
 
 REPO = Path(__file__).parents[1]
+# PAO_skills is the canonical source; PAO_plugin is frozen (kept only for
+# frozen-artifact assertions in the packaging/installer tests).
+PLUGIN = REPO / "PAO_plugin"
+RUNTIME_HOME = REPO / "PAO_skills" / "pao-lwar"
+
+if str(RUNTIME_HOME) not in sys.path:
+    sys.path.insert(0, str(RUNTIME_HOME))
 
 
 class PaoTestCase(unittest.TestCase):
     """Shared subprocess harness for PAO integration suites."""
 
     def run_module(self, module, *args, expected=None, env=None, cwd=None):
-        merged_env = None
-        if env is not None:
-            merged_env = {**os.environ, **env}
+        merged_env = {**os.environ, **(env or {})}
+        if "PYTHONPATH" not in (env or {}):
+            merged_env["PYTHONPATH"] = str(RUNTIME_HOME)
         completed = subprocess.run(
             [sys.executable, "-m", module, *args],
             cwd=cwd or REPO,

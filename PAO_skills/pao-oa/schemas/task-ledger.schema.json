@@ -1,0 +1,36 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.task-ledger.v1",
+  "type": "object",
+  "required": ["schema_version", "task_id", "workflow_id", "lwar_id", "status", "history", "updated_at"],
+  "properties": {
+    "schema_version": {"const": "pao.task-ledger.v1"},
+    "task_id": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "workflow_id": {"type": "string"},
+    "lwar_id": {"type": ["string", "null"]},
+    "instance_id": {"type": ["string", "null"]},
+    "generation": {"type": ["integer", "null"]},
+    "goal": {"type": ["string", "null"]},
+    "completion_criteria": {"type": "array", "items": {"type": "string"}},
+    "depends_on": {"type": "array", "items": {"type": "string"}},
+    "status": {"enum": ["published", "requeued", "completed", "dead"]},
+    "attempt": {"type": ["integer", "null"], "minimum": 1},
+    "max_retries": {"type": ["integer", "null"], "minimum": 0},
+    "published_at": {"type": ["string", "null"], "format": "date-time"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "result": {"type": ["object", "null"]},
+    "result_file": {"type": ["string", "null"]},
+    "history": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["status", "at"],
+        "properties": {
+          "status": {"type": "string"},
+          "at": {"type": "string", "format": "date-time"},
+          "detail": {"type": ["string", "null"]}
+        }
+      }
+    }
+  }
+}

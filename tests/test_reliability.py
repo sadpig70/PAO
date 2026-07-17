@@ -48,7 +48,7 @@ class RetryBudgetTests(PaoTestCase):
             self.assertEqual(len(ledger), 1)
             self.assertEqual(json.loads(ledger[0].read_text(encoding="utf-8"))["status"], "dead")
 
-    def test_dead_requeue_resets_attempt(self):
+    def test_dead_requeue_keeps_attempt_monotonic(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             _, identity = self.register_lwar(root)
@@ -70,7 +70,9 @@ class RetryBudgetTests(PaoTestCase):
             incoming = list((root / "mailbox" / "LWAR1" / "incoming").glob("*.json"))
             self.assertEqual(len(incoming), 1)
             task = json.loads(incoming[0].read_text(encoding="utf-8"))
-            self.assertEqual(task["attempt"], 1)
+            # attempt is the collect-side fencing key: manual requeue continues
+            # the counter (1 claim → 2 recover → 3 requeue), never resets it.
+            self.assertEqual(task["attempt"], 3)
             self.assertEqual(
                 list((root / "mailbox" / "LWAR1" / "dead").glob("*.json")),
                 [],
