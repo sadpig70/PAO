@@ -14,7 +14,12 @@ def load_verified_identity(root: Path, identity_path: Path) -> tuple[dict[str, A
     identity = load_json(identity_path)
     registry_path = root / "var" / "registry" / "lwar_registry.json"
     if not registry_path.is_file():
-        raise ValueError("dynamic registry does not exist")
+        # A missing --root/PAO_ROOT resolves to the cwd and lands here looking
+        # like a bus fault — name the resolved root so the trap is visible.
+        raise ValueError(
+            f"dynamic registry does not exist under {root} — "
+            "verify --root (or PAO_ROOT) points at the bus root"
+        )
     registry = load_json(registry_path)
     slot = registry.get("slots", {}).get(identity["lwar_id"])
     if slot is None:
