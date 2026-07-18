@@ -50,7 +50,7 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 | `10` | `idle_timeout`, `state_wait` | Re-run the same watcher immediately |
 | `20` | `control:ping` | Re-run the watcher |
 | `20` | `control:drain` | Finish current work, then request lifecycle `draining` (read [lifecycle.md](lifecycle.md) first) and **keep watching** until `shutdown` |
-| `20` | `control:cancel` | Stop that task and submit a `cancelled` result |
+| `20` | `control:cancel` | Stop the task if you already hold it and submit a `cancelled` result. A cancel for a task you have **not** claimed yet needs no memory: the watcher has already written a tombstone (see below) that auto-cancels the task deterministically whenever it is claimed |
 | `20` | `control:shutdown` | Stop ADP |
 | `30` | `adp_error` | Report the error, then stop ADP |
 | any other | any unknown event | **Fail closed**: stop this slice, report `protocol_error`, never retry an unknown event blindly |
@@ -70,6 +70,7 @@ mailbox/LWARn/
     outgoing/          # LWAR result publish area
     control/           # OA control publish area
     control_claimed/   # transient watcher claim area
+    cancelled/         # cancel tombstones ({task_id}.json)
     leases/            # execution leases
     work/              # LWAR working files
     heartbeat.json
@@ -88,3 +89,11 @@ When a task is claimed, the watcher extends the lease to cover the task's own ex
 - If the LWAR session dies, the heartbeat goes stale; OA `recover` returns expired-lease tasks to `incoming`.
 - If a result already exists for the same `task_id`, do not auto-approve a replayed execution; OA `collect` quarantines duplicate and stale-generation results.
 - Even when a numeric slot is reused, messages with mismatched `generation` or `instance_id` must be rejected.
+
+## Cancel tombstones
+
+Cancelling a task that has not been claimed yet is deterministic and no longer depends on agent memory across watch slices:
+
+- When the watcher claims a `cancel` control carrying a `task_id`, it writes a tombstone at `mailbox/LWARn/cancelled/{task_id}.json` **before** the `control:cancel` event is returned to the agent.
+- On any later claim, a task whose `task_id` is tombstoned is not handed to the agent. The watcher submits a terminal `cancelled` result through the normal pipeline — `attempt` and `claim_token` echoed from the claimed task, the summary naming the tombstone — consumes the tombstone, and keeps scanning. No new agent-visible event is emitted; the agent contract is unchanged.
+- The tombstone makes the not-yet-claimed cancel race-free even if the cancel control and the task publish arrive in either order. Duplicate cancels are first-writer-wins, and a tombstone for an already-completed (or never-arriving) task is simply never consumed — both are harmless. The `control:cancel` event still reaches the agent so it can stop a task it is already executing.

@@ -15,6 +15,7 @@ from .common import (
     new_id,
     parse_utc,
     utc_now,
+    validate_task_id,
 )
 
 
@@ -57,6 +58,10 @@ class Transport(Protocol):
     def publish_control(self, message: dict[str, Any]) -> Path: ...
 
     def claim_control(self, identity: dict[str, Any]) -> dict[str, Any] | None: ...
+
+    def write_cancel_tombstone(
+        self, identity: dict[str, Any], task_id: str, control_id: str | None
+    ) -> Path | None: ...
 
     def claim_task(
         self, identity: dict[str, Any], default_lease_s: int
@@ -175,6 +180,80 @@ class FileTransport:
             return message
         return None
 
+    # -- cancel tombstones -------------------------------------------------
+
+    def _cancel_tombstone(self, lwar_id: str, task_id: str) -> Path:
+        return self._mailbox(lwar_id) / "cancelled" / f"{task_id}.json"
+
+    def write_cancel_tombstone(
+        self, identity: dict[str, Any], task_id: str, control_id: str | None
+    ) -> Path | None:
+        """Record a cancel tombstone so the watcher can auto-cancel the task
+        deterministically whenever it is claimed, without the agent having to
+        remember the cancel across watch slices. First-writer-wins keeps a
+        duplicate cancel harmless; an unroutable task_id is ignored."""
+        try:
+            validate_task_id(task_id)
+        except ValueError:
+            return None
+        mailbox = ensure_mailbox(self.root, identity["lwar_id"])
+        target = mailbox / "cancelled" / f"{task_id}.json"
+        if target.exists():
+            return target
+        atomic_write_json(
+            target,
+            {
+                "schema_version": "pao.cancel-tombstone.v1",
+                "task_id": task_id,
+                "control_id": control_id,
+                "lwar_id": identity["lwar_id"],
+                "cancelled_at": utc_now(),
+            },
+        )
+        return target
+
+    def _cancelled_result(
+        self, identity: dict[str, Any], task: dict[str, Any], tombstone: dict[str, Any]
+    ) -> dict[str, Any]:
+        """Terminal ResultContract for a task auto-cancelled by its tombstone.
+        Mirrors lwar_cli.command_complete's normalization; attempt and
+        claim_token are echoed from the claimed task file, never fabricated."""
+        return {
+            "schema_version": "pao.result.v1",
+            "task_id": task["task_id"],
+            "workflow_id": task.get("workflow_id"),
+            "lwar_id": identity["lwar_id"],
+            "instance_id": identity["instance_id"],
+            "generation": identity["generation"],
+            "registry_version": identity.get("registry_version"),
+            "status": "cancelled",
+            "summary": (
+                f"auto-cancelled before execution by tombstone "
+                f"cancelled/{task['task_id']}.json (control {tombstone.get('control_id')})"
+            ),
+            "evidence": {
+                "cancelled_by": "watcher_tombstone",
+                "control_id": tombstone.get("control_id"),
+                "tombstone": f"cancelled/{task['task_id']}.json",
+            },
+            "artifacts": [],
+            "next_action": "validate",
+            "exit_code": 1,
+            "error": None,
+            "attempt": int(task.get("attempt", 1)),
+            "claim_token": task.get("claim_token"),
+            "submitted_at": utc_now(),
+        }
+
+    def _auto_cancel(self, identity: dict[str, Any], claimed_path: Path, task: dict[str, Any]) -> None:
+        """Consume the tombstone by submitting a deterministic cancelled result
+        through the normal result pipeline, then remove the tombstone."""
+        result = self._cancelled_result(
+            identity, task, load_json(self._cancel_tombstone(identity["lwar_id"], task["task_id"]))
+        )
+        self.submit_result(identity, claimed_path, result)
+        self._cancel_tombstone(identity["lwar_id"], task["task_id"]).unlink(missing_ok=True)
+
     def _reject_task(self, mailbox: Path, source: Path, reason: str) -> None:
         failed = mailbox / "failed" / source.name
         if claim_file(source, failed):
@@ -215,6 +294,12 @@ class FileTransport:
             # token here is race-free.
             task["claim_token"] = new_id("claim")
             atomic_write_json(destination, task)
+            # A tombstoned task is auto-cancelled deterministically and never
+            # handed to the agent: the watcher submits its terminal `cancelled`
+            # result here, consumes the tombstone, and keeps scanning.
+            if self._cancel_tombstone(identity["lwar_id"], task["task_id"]).is_file():
+                self._auto_cancel(identity, destination, task)
+                continue
             lease_s = effective_lease_seconds(task, default_lease_s)
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=lease_s)
             atomic_write_json(

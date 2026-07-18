@@ -53,6 +53,13 @@ def watch(args: argparse.Namespace) -> int:
         control = transport.claim_control(identity)
         if control is not None:
             transport.write_heartbeat(identity, "control", None)
+            # A cancel carrying a task_id is persisted as a tombstone BEFORE the
+            # event reaches the agent, so cancellation of a not-yet-claimed task
+            # no longer depends on the agent remembering it across slices.
+            if control.get("command") == "cancel" and control.get("task_id"):
+                transport.write_cancel_tombstone(
+                    identity, control["task_id"], control.get("control_id")
+                )
             audit.record(
                 root,
                 "adp",

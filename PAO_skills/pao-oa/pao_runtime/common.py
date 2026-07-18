@@ -162,6 +162,7 @@ MAILBOX_DIRS = (
     "outgoing",
     "control",
     "control_claimed",
+    "cancelled",
     "leases",
     "archive/tasks",
     "archive/results",
