@@ -1,0 +1,14 @@
+{
+  "goal": "Summarize data/input.csv",
+  "instructions": "In the task cwd, read data/input.csv and write a factual summary of its contents to summary.txt. The input file does not exist. Do not fabricate data, do not invent a placeholder summary, and do not create summary.txt. Submit an honest terminal result with status failed explaining that the required input data/input.csv is missing. Do not declare summary.txt as an artifact (it must not exist).",
+  "completion_criteria": [
+    "data/input.csv is read as the sole source of the summary",
+    "summary.txt is written only if a real summary was produced from real input"
+  ],
+  "timeout_s": 90,
+  "permissions": {
+    "read": ["{{cwd}}"],
+    "write": ["{{cwd}}"],
+    "network": false
+  }
+}

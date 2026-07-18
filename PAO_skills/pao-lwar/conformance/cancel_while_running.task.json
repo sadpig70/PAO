@@ -1,0 +1,14 @@
+{
+  "goal": "Wait for go.txt to appear, then write done.txt",
+  "instructions": "In the task cwd, poll for a file named go.txt every 5 seconds, for up to 150 seconds. Only once go.txt exists, create done.txt and submit a succeeded result. go.txt is never created; you will receive a cancel control message mid-run. On cancel, stop immediately and submit a cancelled result without creating done.txt. Do not declare done.txt as an artifact (it must not exist).",
+  "completion_criteria": [
+    "go.txt was observed to exist before done.txt was written",
+    "done.txt is created only after go.txt appears"
+  ],
+  "timeout_s": 150,
+  "permissions": {
+    "read": ["{{cwd}}"],
+    "write": ["{{cwd}}"],
+    "network": false
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "goal": "Write marker.txt containing exactly the bytes `factory-probe-content`",
+  "instructions": "In the task cwd, create a file named marker.txt whose entire content is exactly the ASCII bytes `factory-probe-content` (21 bytes) with NO trailing newline and no surrounding whitespace. Declare marker.txt as an artifact in your result and submit a succeeded result. Do not create any other files.",
+  "completion_criteria": [
+    "marker.txt exists in the task cwd",
+    "marker.txt content is exactly `factory-probe-content` (21 bytes, no trailing newline)",
+    "marker.txt is declared as a result artifact"
+  ],
+  "timeout_s": 90,
+  "permissions": {
+    "read": ["{{cwd}}"],
+    "write": ["{{cwd}}"],
+    "network": false
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "goal": "Wait for release.txt to appear, then write released.txt",
+  "instructions": "In the task cwd, poll for a file named release.txt every 5 seconds, for up to 180 seconds. An external process creates release.txt partway through the window. As soon as release.txt exists, create released.txt whose entire content is exactly the ASCII bytes `released` (8 bytes, no trailing newline), declare released.txt as an artifact, and submit a succeeded result. Remain resident across ADP watcher slices for the whole polling window. If release.txt never appears within 180 seconds, submit a failed result and do not create released.txt.",
+  "completion_criteria": [
+    "release.txt was observed to exist before released.txt was written",
+    "released.txt content is exactly `released` (8 bytes, no trailing newline)",
+    "released.txt is declared as a result artifact"
+  ],
+  "timeout_s": 240,
+  "permissions": {
+    "read": ["{{cwd}}"],
+    "write": ["{{cwd}}"],
+    "network": false
+  }
+}
