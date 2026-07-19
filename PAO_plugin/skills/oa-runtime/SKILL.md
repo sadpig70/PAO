@@ -21,7 +21,16 @@ Every example below invokes the CLI as `python "$PAO_HOME/scripts/oa.py"`, where
 
 The wrapper scripts bootstrap their own import path; no pip install is required in any mode. Diagnose version and root resolution with `python "$PAO_HOME/scripts/pao.py" info`. Before the first orchestration action of a session, run the pre-flight check and stop on failure: `python "$PAO_HOME/scripts/pao.py" doctor --role oa`. The bus assumes a single-host local filesystem.
 
-**Single-writer rule**: set a unique `PAO_OA_ID` environment variable once per OA session. Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json` (TTL 900s); a session with a different id is rejected as a read-only observer until expiry. Sessions without `PAO_OA_ID` share the `oa-default` holder and get no mutual exclusion.
+**Single-writer rule**: set a unique `PAO_OA_ID` environment variable once per OA session (choose the form for your shell). Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json` (TTL 900s); a session with a different id is rejected as a read-only observer until expiry. Sessions without `PAO_OA_ID` share the `oa-default` holder and get no mutual exclusion.
+
+```bash
+export PAO_OA_ID=oa-$(date +%s)                                    # bash / Git Bash
+```
+```powershell
+$env:PAO_OA_ID = "oa-" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()  # PowerShell 7
+```
+
+**Session bootstrap (cold start)**: at session start — set `PAO_OA_ID` (+ `PAO_ROOT` or pass `--root`) → `doctor --role oa` (stop if unhealthy) → `reconcile` (approve pending requests) → `status` (see the roster) → then act on the user's goal. `/pao:oa` with no explicit action defaults through this bootstrap, then waits for the goal.
 
 ## 1. Core Loop
 
@@ -53,12 +62,14 @@ Write a task draft first.
   "goal": "Requested objective",
   "instructions": "Concrete instructions",
   "completion_criteria": ["Verification criteria"],
-  "cwd": "workspace/project",
+  "cwd": "D:/absolute/workspace/project",
   "timeout_s": 90,
   "priority": 5,
   "permissions": {"read": [], "write": [], "network": false}
 }
 ```
+
+**Use absolute paths.** Both `--task-file` and the draft's `cwd` (and any `permissions` entries) resolve against the **OA process cwd**, not the bus root — a relative value silently binds to wherever the OA runs. **Plan** notes: set a shared `workflow_id` on related drafts (tracked by `workflow-status`); gate order with acyclic `depends_on`; write **mechanically checkable** completion criteria (file/hash/exit-0, state match strictness explicit) that are satisfiable within the task's own `permissions`.
 
 ```bash
 python "$PAO_HOME/scripts/oa.py" send --lwar-id LWAR1 --task-file TASK_DRAFT.json
@@ -93,6 +104,7 @@ python "$PAO_HOME/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 - `dead --requeue` republishes a dead task with `attempt` **incremented** (never reset — attempt is the collect-side fencing key and must stay monotonic).
 - `collect` also verifies artifact provenance: artifact objects' content-addressed snapshots (`var/artifacts/<sha256>`) are size-checked then re-hashed; mismatches quarantine the result as `artifact_tampered`. Provenance detects post-submit mutation — it does not make artifacts trustworthy.
 - `validate` reports mechanical checks (status, exit code, evidence presence, artifact verification) plus the `completion_criteria` checklist; semantic verification remains OA's judgment. `validate --record` persists the ValidationDecision into the ledger (mutating; takes the writer lease) — plain `validate` stays observer-safe.
+- **Closeout** (`validate` neither accepts nor rejects on its own): `verdict=attention_required` → mechanical checks failed, do NOT accept — recover or report honestly. `verdict=ready_for_oa_review` → apply your semantic judgment against each criterion; if genuinely met, accept by recording it with `validate --record`; if not met despite green mechanics, treat as failure (never rewrite as success); if undecidable, surface to the user with the evidence. There is no separate "accept" CLI — acceptance is the ledger `completed` state plus your recorded decision. **Supervision is reactive**, not a resident loop: while tasks are outstanding, cycle `reconcile → status → collect (→ validate) → recover` on a cadence; between cycles the OA may idle — nothing is lost, all state lives on the bus.
 - `recover` also reconciles rejected tasks parked in `failed/`: their non-terminal ledger entries transition to `failed` with the rejection reason.
 - Never approve success from `exit_code=0` alone.
 - Validate `completion_criteria`, evidence, artifacts, and actual test results.

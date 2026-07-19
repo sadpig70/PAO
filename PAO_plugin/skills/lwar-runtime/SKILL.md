@@ -42,9 +42,33 @@ argument-hint: "register [number] | adp | status | on | drain | off | unregister
 
 When PAO is installed as a Claude Code plugin, these commands carry the plugin namespace: `/pao:lwar-register`, `/pao:lwar-adp`, `/pao:lwar-status`, `/pao:lwar-on`, `/pao:lwar-drain`, `/pao:lwar-off`, `/pao:lwar-unregister`. The bare forms remain the contract for runtimes that load this skill directly.
 
+## 2.5 Session Bootstrap (cold start)
+
+Run this at session start, before any other action:
+
+```text
+1. doctor --role lwar   → unhealthy? stop and report.
+2. Do you already hold a valid identity file from a prior session, and does
+   `lwar.py status --identity-file <that file>` still show your slot with a
+   matching (lwar_id, instance_id, generation)?
+     YES → RESUME: skip registration; if state is not `on`, request `state on`
+            and poll status until on; then start ADP.
+     NO  → REGISTER (§3) → poll `response` until adopted → keep identity_file.
+3. Enter the ADP loop (§4) and keep it alive until `shutdown`.
+```
+
+Never re-register when a valid identity already exists — it takes a new slot and
+orphans the old one.
+
 ## 3. Registration
 
-Use only actual runtime metadata. Do not guess unknown values.
+Use your OWN actual runtime metadata — the example below (Codex/OpenAI) is
+illustrative, not a template. Fill each flag with the truth about the session you
+are: `--runtime-name` (your harness, e.g. "Claude Code"), `--model` (your model),
+`--adapter-id` (lowercase runtime slug), `--vendor-family` (lowercase vendor),
+`--interface` (`cli`|`tui`|`agent`|`build`), `--capability` (repeatable). A wrong
+model/vendor label corrupts the registry and downstream matching — if you cannot
+attest a required value, **ask the user rather than guessing**.
 
 ```bash
 python "$PAO_HOME/scripts/lwar.py" register \
@@ -116,10 +140,12 @@ their lease for the whole declared execution window.
 | `task_received` | Execute the `task`, then submit the result |
 | `control:ping` | Re-run the watcher |
 | `control:drain` | Finish current work, then request lifecycle `draining` and **keep watching** until `shutdown` |
-| `control:cancel` | Stop that task and submit a `cancelled` result |
+| `control:cancel` | Stop that task and submit a `cancelled` result (see the mid-execution note below) |
 | `control:shutdown` | Stop ADP |
-| `adp_error` | Report the error, then stop ADP (after 3 consecutive identical errors, escalate to OA instead of retrying) |
+| `adp_error` | Report the error, then stop this ADP run — do not blindly re-invoke. Only a *transient* error (e.g. a momentary file lock) may be retried, capped at 3 consecutive identical `adp_error`s, then escalate to OA |
 | any unknown | **Fail closed**: stop this slice, report `protocol_error`, never retry blindly |
+
+A `control:cancel` is delivered only through a watcher slice, but while you execute a claimed task you are not in the watcher. To notice a cancel for the task you currently hold, **interleave short watcher slices** (a low `--timeout`) into long/blocking work: `claim_control` runs before `claim_task`, so a slice run while you already hold a claim surfaces the pending `control:cancel` without risk of double-claiming (your `incoming` is empty). On seeing it, stop the task and submit `cancelled`. (A cancel for a not-yet-claimed task needs no polling — the watcher tombstones it.)
 
 ## 6. Task Execution and Result Submission
 
