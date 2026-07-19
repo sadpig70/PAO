@@ -1,0 +1,19 @@
+{
+  "goal": "Write three exact marker files (graded)",
+  "instructions": "In the task cwd write three files, each byte-exact with NO trailing newline: a.txt containing 'alpha', b.txt containing 'beta', c.txt containing 'gamma'. Verify by reading back.",
+  "completion_criteria": [
+    "a.txt=='alpha'",
+    "b.txt=='beta'",
+    "c.txt=='gamma'"
+  ],
+  "timeout_s": 180,
+  "permissions": {
+    "read": [
+      "{{cwd}}"
+    ],
+    "write": [
+      "{{cwd}}"
+    ],
+    "network": false
+  }
+}

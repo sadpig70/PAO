@@ -81,6 +81,42 @@
           "after_claim_s": 30
         }
       ]
+    },
+    {
+      "probe_id": "graded_impl",
+      "task_template": "graded_impl.task.json",
+      "pass_criteria": {
+        "result_status": "succeeded"
+      },
+      "scored": {
+        "criteria": [
+          {
+            "weight": 1,
+            "kind": "artifact_matches",
+            "spec": {
+              "path_basename": "a.txt",
+              "sha256": "8ed3f6ad685b959ead7022518e1af76cd816f8e8ec7ccdda1ed4018e8f2223f8"
+            }
+          },
+          {
+            "weight": 1,
+            "kind": "artifact_matches",
+            "spec": {
+              "path_basename": "b.txt",
+              "sha256": "f44e64e75f3948e9f73f8dfa94721c4ce8cbb4f265c4790c702b2d41cfbf2753"
+            }
+          },
+          {
+            "weight": 1,
+            "kind": "artifact_matches",
+            "spec": {
+              "path_basename": "c.txt",
+              "sha256": "be9d587defa1f0c09ef49eb17e206983a5f8f8289e4281860bd0ee5a19592c67"
+            }
+          }
+        ]
+      },
+      "timeout_s": 180
     }
   ],
   "soak_extension": {
