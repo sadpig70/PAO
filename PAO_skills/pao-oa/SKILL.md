@@ -31,12 +31,33 @@ Before the first orchestration action of a session, run the pre-flight check and
 python "<PAO_SKILL>/scripts/pao.py" doctor --role oa
 ```
 
+## 0.5 Session Bootstrap (cold start)
+
+At the start of an OA session, before any mutating action:
+
+```text
+1. Set PAO_OA_ID (see §1) and PAO_ROOT (or plan to pass --root everywhere).
+2. doctor --role oa   → unhealthy? stop and report.
+3. reconcile          → approve any pending registration/lifecycle requests.
+4. status             → see the current LWAR roster, states, heartbeat staleness.
+5. Then act on the user's goal: Plan → send → Monitor → collect → validate → recover.
+```
+
+`/pao-oa` with no explicit action defaults to this bootstrap (through step 4), then
+waits for the user's goal.
+
 ## 1. Single-Writer Rule
 
-Exactly one OA session should mutate the bus at a time. At session start, set a unique id once:
+Exactly one OA session should mutate the bus at a time. At session start, set a unique id once (choose the form for your shell):
 
 ```bash
+# bash / Git Bash
 export PAO_OA_ID=oa-$(date +%s)
+```
+
+```powershell
+# PowerShell 7
+$env:PAO_OA_ID = "oa-" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 ```
 
 Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json`; a session holding a different `PAO_OA_ID` is rejected as a read-only observer until the lease expires (TTL 900s). Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch the lease. Sessions that skip `PAO_OA_ID` share the `oa-default` holder and get **no** mutual exclusion — setting the id is what activates the guarantee.

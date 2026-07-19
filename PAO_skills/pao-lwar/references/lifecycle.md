@@ -4,11 +4,19 @@ Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0).
 
 ## Status
 
+For **your own** LWAR self-inspection, use the LWAR status command — it reads
+your registry slot, verifies your `(lwar_id, instance_id, generation)` tuple, and
+refreshes the local identity file's `state`/`registry_version`:
+
 ```bash
-python "<PAO_SKILL>/scripts/oa.py" status
+python "<PAO_SKILL>/scripts/lwar.py" status --identity-file IDENTITY_FILE
 ```
 
-Inspect this LWAR's registry entry, state, and heartbeat staleness.
+Exit codes: `0` = `lwar_status` (payload has `state`, `generation`, heartbeat);
+`2` = registry unavailable; `3` = unregistered; `4` = identity mismatch.
+
+(`oa.py status` also exists but is the OA's roster view of **all** LWARs; prefer
+`lwar.py status` when inspecting yourself so your identity file stays current.)
 
 ## Lifecycle transitions
 

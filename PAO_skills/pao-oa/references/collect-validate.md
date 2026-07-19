@@ -21,3 +21,31 @@ python "<PAO_SKILL>/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 - Never approve success from `exit_code=0` alone. Validate `completion_criteria`, `evidence` (commands run, tests passed/failed), `artifacts`, and actual test results.
 - Do not rewrite failed validation as success. A failed or unverifiable result goes back through recovery ([recover-maintain.md](recover-maintain.md)) or is reported honestly.
 - `workflow-status` aggregates ledger state per workflow; use it before publishing `depends_on` successors.
+
+## Closeout decision tree (after `validate`)
+
+`validate` does not accept or reject on its own — it emits a `verdict`
+(`ready_for_oa_review` when the mechanical checks pass, else `attention_required`)
+with the `completion_criteria` left as `manual_check_required`. You, the OA, decide
+the closeout:
+
+```text
+validate --task-id T
+├─ verdict = attention_required
+│    → the mechanical checks failed (wrong status, missing evidence/artifacts,
+│      exit_code ↔ status mismatch). Do NOT accept. Route to recovery
+│      (recover-maintain.md) or report the failure honestly to the user.
+└─ verdict = ready_for_oa_review
+     → mechanical checks passed; now apply YOUR semantic judgment against each
+       completion_criterion using the evidence/artifacts.
+       ├─ criteria genuinely met → accept: record it with `validate --record`
+       │    (persists the ValidationDecision) and report the task done.
+       ├─ criteria NOT met despite green mechanics → treat as a failure: recover
+       │    or report; never rewrite it as success.
+       └─ genuinely undecidable by you → surface to the user with the evidence;
+            do not fabricate an acceptance.
+```
+
+There is no separate "accept" CLI — acceptance is the ledger's `completed` state
+(set by `collect`) plus your recorded `validate --record` decision. Success is a
+judgment you own, not an `exit_code=0`.

@@ -1,10 +1,28 @@
 # LWAR Reference — Registration and Identity Adoption
 
-Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0).
+Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0). Before registering,
+run the Session Bootstrap flow (SKILL.md §0.5): if you already hold a valid
+identity file whose slot is still in the registry, **resume it instead of
+registering again**.
 
 ## Registration
 
-Use only actual runtime metadata. Do not guess unknown values.
+Use your OWN actual runtime metadata — the example below is illustrative
+(Codex/OpenAI), not a template to copy. Fill each flag with the truth about the
+session you are:
+
+| Flag | What to put | If unknown |
+|---|---|---|
+| `--runtime-name` | the harness/CLI you run in (e.g. "Claude Code", "Kimi Code CLI") | ask the user |
+| `--model` | your model name (e.g. "Claude Fable 5") | ask the user |
+| `--adapter-id` | a lowercase slug for the runtime (e.g. `claude_code`) | derive from runtime-name |
+| `--vendor-family` | lowercase vendor slug (e.g. `anthropic`, `moonshot`) | ask the user |
+| `--interface` | one of `cli` \| `tui` \| `agent` \| `build` | `agent` for an agentic CLI |
+| `--capability` | repeatable; what you can do (e.g. `coding`, `testing`) | omit if none apply |
+
+Do not invent values you cannot attest — a wrong model/vendor label corrupts the
+registry and any downstream (harness × model) matching. If you genuinely do not
+know a required value, stop and ask the user rather than guessing.
 
 ```bash
 python "<PAO_SKILL>/scripts/lwar.py" register \

@@ -11,13 +11,17 @@ Write a task draft file first:
   "goal": "Requested objective",
   "instructions": "Concrete instructions",
   "completion_criteria": ["Verification criteria"],
-  "cwd": "workspace/project",
+  "cwd": "D:/absolute/workspace/project",
   "timeout_s": 90,
   "priority": 5,
   "permissions": {"read": [], "write": [], "network": false}
 }
 ```
 
+- **Use absolute paths.** Both `--task-file` and the draft's `cwd` (and any
+  `permissions.read`/`write` entries) are resolved against the **OA process cwd**,
+  not the bus root — a relative value silently binds to wherever the OA happens to
+  run. Always write an absolute `cwd` and pass an absolute `--task-file`.
 - `cwd` must exist; `send` rejects tasks whose `cwd` does not exist.
 - **Authority bounds** (enforced, not advisory): `send` rejects a `cwd` or a `permissions.read`/`write` entry at-or-under the bus control surfaces (`mailbox/`, `var/`, `control/`) or the runtime bundle. The bus root itself and other subdirectories stay legal. The claim-side watcher re-checks the cwd deny-set against hand-planted tasks.
 - Omitted `permissions` defaults to `{"read": [cwd], "write": [cwd], "network": false}`. Optional `permissions.max_artifact_bytes` (positive integer) caps each artifact at submission.
@@ -38,3 +42,25 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --tas
 - `--auto` routes by capability and load: only `on` LWARs holding every `--require-capability` are eligible; ties break toward the lowest backlog, then the lowest LWAR number. No eligible LWAR is an explicit error — never fall back to an arbitrary LWAR.
 - Every publication is recorded in the task ledger at `var/tasks/{workflow_id}/{task_id}.json`.
 - The claim lease is aligned with the task budget: `effective_lease_s = max(lease_seconds, timeout_s + 30)`.
+
+## Plan — turning a goal into TaskContracts
+
+Planning is OA judgment; the mechanics to get right:
+
+- **One workflow, many tasks**: set the same `workflow_id` on related drafts so
+  `workflow-status --workflow-id …` tracks them as a unit. Omitting it mints a
+  fresh workflow per task.
+- **Ordering**: use `depends_on: ["task-…"]` to gate a successor until its
+  dependencies are `completed` with a `succeeded` result. Keep the graph acyclic;
+  a task must not depend on itself or on an unpublished task.
+- **Completion criteria quality**: write criteria that are **mechanically
+  checkable** (a file exists with exact content, a test command exits 0, an
+  artifact hash) rather than subjective — the LWAR submits evidence against them
+  and OA `validate` re-checks. State match strictness explicitly (e.g. "exactly,
+  no trailing newline").
+- **Bounds**: give each task the tightest `permissions` (cwd-scoped read/write,
+  `network: false` unless required) and a realistic `timeout_s`. `max_retries`
+  (default 3) caps recovery attempts before dead-letter.
+- **Satisfiability**: every criterion must be achievable within the task's own
+  authority bounds — a criterion the task has no permission to satisfy forces an
+  honest `blocked`.

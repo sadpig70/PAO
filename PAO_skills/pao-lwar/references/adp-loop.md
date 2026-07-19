@@ -57,7 +57,9 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 
 Heartbeats are written by the watcher itself on every poll — the agent never emits or edits them.
 
-Error discipline across slices: the watcher itself never loops on an error (it exits the slice), but the agent must apply a cap — after 3 consecutive `adp_error` slices with the same error, stop re-running and escalate to OA instead of retrying forever.
+Error discipline. `adp_error` (exit 30) means the watcher itself hit a fatal condition (e.g. the identity no longer verifies) and exited: **stop this ADP run and report** — do not blindly re-invoke the same command. The only case for a bounded retry is a *transient* error you have reason to believe is self-clearing (e.g. a momentary file lock); if you choose to retry, cap it at **3 consecutive identical `adp_error`s**, then stop and escalate to OA. Never loop on an unresolved error.
+
+Cancel reaching an agent mid-execution. A `control:cancel` is delivered only through a watcher slice, but while you execute a claimed task you are not in the watcher. To notice a cancel for the task you currently hold, **interleave short watcher slices** (e.g. a low `--timeout`) into any long/blocking work: `claim_control` runs before `claim_task` inside the watcher, so a slice run while you already hold a claim surfaces the pending `control:cancel` without any risk of double-claiming (your `incoming` is empty). On seeing it, stop the task and submit a `cancelled` result. (A cancel for a task you have not yet claimed needs no such polling — the tombstone handles it, see below.)
 
 When the slot is expected to stay in a non-`on` state for a while (e.g. `draining` wind-down), pass `--state-wait-backoff-max SECONDS` so the in-slice poll interval doubles up to that cap instead of busy-polling at `--interval`; it resets automatically when the state returns to `on`.
 

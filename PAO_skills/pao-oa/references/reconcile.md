@@ -19,6 +19,24 @@ python "<PAO_SKILL>/scripts/oa.py" status --stale-after 120
 - When a numeric slot is reused, the registry bumps `generation`; messages carrying an old `generation` or `instance_id` are stale and must never be treated as current.
 - `status` computes heartbeat staleness (`heartbeat_stale`, default threshold 120s via `--stale-after`). A stale heartbeat is a recovery signal, not proof of death — see [recover-maintain.md](recover-maintain.md).
 
+## Supervision cadence (OA is reactive, not a resident loop)
+
+Unlike the LWAR's ADP watch loop, OA has no blocking resident loop — it acts on
+demand. While tasks are outstanding, cycle these on a cadence (event-driven when
+you can observe the bus, otherwise a light poll — there is no busy-wait
+requirement):
+
+```text
+reconcile   → approve any new registration/lifecycle requests
+status      → check states + heartbeat_stale
+collect     → gather any submitted results (then validate)
+recover     → requeue/dead-letter expired-lease claims; reconcile failed/ entries
+```
+
+Between cycles the OA session may idle or serve the user; nothing is lost because
+all state lives on the bus. Escalate to the user when there is no eligible LWAR,
+when a result is genuinely undecidable, or when dead-letters need a decision.
+
 ## State transitions
 
 | Transition | Requested by | Approved by | Precondition |
