@@ -2,7 +2,7 @@
 
 ## Definition
 
-**ADP — Agent Daemon Process** is the resident control loop inside an LWAR session. The Python watcher is a deterministic I/O tool; the actual repeating actor is the LWAR agent itself.
+**ADP — Agent Daemon Process** is the resident control loop inside an LWAR session. The Python watcher is a deterministic I/O tool; the actual repeating actor is the LWAR agent itself. Like an OS **daemon**, it stays up continuously and never exits on its own — not on elapsed time, not on repeated idle slices, not on the agent's sense of being "done". It ends only on `shutdown`, a fatal `adp_error`, or the context-exhaustion handoff; the agent re-invokes the next slice without returning control in between.
 
 ```text
 Watch(≤90s) → stdout event → Agent decision

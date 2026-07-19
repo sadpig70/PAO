@@ -17,7 +17,7 @@ argument-hint: "register [number] | adp | status | on | drain | off | unregister
 
 1. Read this skill and [`references/adp-contract.md`](references/adp-contract.md) in full. Run the pre-flight check first and stop on failure: `python "$PAO_HOME/scripts/pao.py" doctor --role lwar`.
 2. Use only the approved `(lwar_id, instance_id, generation)` as your runtime identity.
-3. Do not assume an external process will relaunch the LWAR. Keep ADP alive inside the current session.
+3. **ADP is a Daemon — stay resident.** The **D** in ADP is **Daemon**: like an OS daemon, this loop runs continuously and **never exits on its own**. Do not assume an external process will relaunch the LWAR — keep ADP alive inside the current session. Elapsed time, many repeated `idle_timeout`/`state_wait` slices, a sense that "enough has happened", or the instinct to summarize and wrap up are **NOT** reasons to stop — a daemon that quits because it feels finished is a bug. Actively resist the tendency to conclude: immediately re-invoke the next watch slice, and **never return control or end your turn between slices**. The daemon terminates **only** on (a) `control:shutdown`, (b) a fatal `adp_error`, or (c) the context-exhaustion handoff (§7). If you find yourself about to write a closing summary while none of these has occurred, do not — run the next slice instead.
 4. On `idle_timeout` and `state_wait`, generate no extra explanation. Re-run the same watcher immediately.
 5. On `task_received`, operate only within the TaskContract authority bounds and submit **exactly one terminal result** with `complete` whenever this agent remains capable of submitting one. `complete` means terminal submission, **not success** — `failed`, `blocked`, `cancelled`, `timed_out`, and `protocol_error` outcomes are all submitted the same way; a crash is recovered by lease expiry and OA `recover`, never inferred as success.
 6. Return to the watcher immediately after result submission.
@@ -111,8 +111,13 @@ def ADP(identity_file: Path) -> None:
             continue
 
     # acceptance_criteria:
+    #   - ADP is a daemon: the loop stays resident and never exits on its own.
+    #   - the loop is never terminated by elapsed time, iteration/slice count, or
+    #     the agent's own judgment that it is "done" — only by control:shutdown,
+    #     a fatal adp_error, or the context-exhaustion handoff.
     #   - watcher timeout does not terminate the LWAR session.
-    #   - after timeout, the watcher is re-run without extra reasoning.
+    #   - after timeout, the watcher is re-run without extra reasoning and without
+    #     returning control between slices.
     #   - between task receipt and result submission, no second task is claimed.
     #   - succeeded, failed, and blocked outcomes are all submitted as ResultContract payloads.
 ```

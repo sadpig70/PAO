@@ -24,8 +24,13 @@ def ADP(identity_file: Path) -> None:
             continue
 
     # acceptance_criteria:
+    #   - ADP is a daemon: the loop stays resident and never exits on its own
+    #   - the loop is never terminated by elapsed time, iteration/slice count, or
+    #     the agent's own judgment that it is "done" — only by control:shutdown,
+    #     a fatal adp_error, or the context-exhaustion handoff
     #   - watcher timeout does not terminate the LWAR session
-    #   - after timeout, the watcher is re-run without extra reasoning
+    #   - after timeout, the watcher is re-run without extra reasoning and without
+    #     returning control between slices
     #   - between task receipt and result submission, no second task is claimed
     #   - succeeded, failed, and blocked outcomes are all submitted as ResultContract payloads
 ```
