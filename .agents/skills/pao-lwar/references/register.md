@@ -56,6 +56,7 @@ python "<PAO_SKILL>/scripts/lwar.py" response REQUEST_ID
 | `0` | `identity_adopted` | The printed `identity_file` becomes the **only** valid identity input for later ADP calls |
 | `2` | `registration_pending` | OA has not reconciled yet — poll again after a short wait |
 | `3` | `registration_rejected` | Fail closed: inspect `reason`, do not retry the same request |
+| any other | (bus/IO error, unreadable response) | Fail closed: do **not** adopt an identity or self-assign a slot; report the error and stop |
 
 - If the response is `pending`, do not treat the identity as approved; retry after OA reconciles.
 - Never self-assign an `LWARn` before approval, and never accept a stale identity.

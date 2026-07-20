@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -12,10 +13,10 @@ from .common import (
     atomic_write_json,
     authority_denied_reason,
     emit,
-    load_json,
     new_id,
     parse_utc,
     resolve_root,
+    safe_load_json,
     sha256_file,
     utc_now,
     validate_lwar_id,
@@ -35,6 +36,15 @@ from .transport import FileTransport
 OA_WRITER_TTL_S = 900
 
 
+def _require_int(value: Any, field: str) -> int:
+    """Coerce a task-file field to int, or fail with a clean SystemExit instead
+    of dumping a raw ValueError traceback."""
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        raise SystemExit(f"{field} must be an integer")
+
+
 def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]:
     """Single-writer guard for mutating OA commands.
 
@@ -44,12 +54,29 @@ def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]
     bounds a crashed writer — a command outliving the TTL can be superseded.
     """
     oa_id = os.environ.get("PAO_OA_ID", "").strip() or "oa-default"
+    if oa_id == "oa-default":
+        # No PAO_OA_ID set → the shared holder gives NO mutual exclusion; two
+        # such sessions would both mutate concurrently. Warn loudly on stderr so
+        # the operator knows the single-writer guarantee is inactive.
+        print(
+            "WARNING: PAO_OA_ID is unset (oa-default) — the writer lease grants "
+            "no mutual exclusion; set a unique PAO_OA_ID per OA session.",
+            file=sys.stderr,
+            flush=True,
+        )
     lease_path = root / "var" / "oa" / "writer_lease.json"
     now = datetime.now(timezone.utc)
     with FileLock(lease_path.parent / ".writer.lock"):
-        if lease_path.is_file():
-            lease = load_json(lease_path)
-            if lease.get("oa_id") != oa_id and parse_utc(lease["expires_at"]) > now:
+        lease = safe_load_json(lease_path) if lease_path.is_file() else None
+        if lease is not None and "expires_at" in lease:
+            # A corrupt/keyless lease is treated as absent and overwritten below
+            # rather than wedging every mutating command until an operator
+            # deletes it by hand.
+            try:
+                held = parse_utc(lease["expires_at"]) > now
+            except (ValueError, TypeError):
+                held = False
+            if held and lease.get("oa_id") != oa_id:
                 raise SystemExit(
                     f"another OA holds the writer lease: {lease.get('oa_id')} until "
                     f"{lease['expires_at']} — this session is a read-only observer "
@@ -71,7 +98,9 @@ def load_active_slot(root: Path, lwar_id: str, require_on: bool = False) -> tupl
     registry_path = root / "var" / "registry" / "lwar_registry.json"
     if not registry_path.is_file():
         raise SystemExit("dynamic registry does not exist; reconcile a registration first")
-    registry = load_json(registry_path)
+    registry = safe_load_json(registry_path)
+    if registry is None:
+        raise SystemExit("registry is unreadable or corrupt; run `pao doctor` and inspect var/registry/")
     slot = registry.get("slots", {}).get(validate_lwar_id(lwar_id))
     if slot is None:
         raise SystemExit(f"LWAR is not registered: {lwar_id}")
@@ -110,13 +139,17 @@ def command_send(args: argparse.Namespace) -> int:
     ensure_oa_writer(root)
     transport = FileTransport(root)
     ledger = TaskLedger(root)
-    source = load_json(Path(args.task_file).resolve())
+    source = safe_load_json(Path(args.task_file).resolve())
+    if source is None:
+        raise SystemExit(f"task file is missing or not valid JSON: {args.task_file}")
 
     if args.auto:
         registry_path = root / "var" / "registry" / "lwar_registry.json"
         if not registry_path.is_file():
             raise SystemExit("dynamic registry does not exist; reconcile a registration first")
-        registry = load_json(registry_path)
+        registry = safe_load_json(registry_path)
+        if registry is None:
+            raise SystemExit("registry is unreadable or corrupt; run `pao doctor`")
         require = set(args.require_capability)
         lwar_id = auto_route(
             registry, transport, require, datetime.now(timezone.utc), stale_after_s=args.stale_after
@@ -130,12 +163,12 @@ def command_send(args: argparse.Namespace) -> int:
 
     registry, slot = load_active_slot(root, lwar_id, require_on=True)
     task_id = validate_task_id(source.get("task_id") or new_id("task"))
-    priority = int(source.get("priority", 5))
+    priority = _require_int(source.get("priority", 5), "priority")
     if priority < 0 or priority > 999:
         raise SystemExit("priority must be between 0 and 999")
     if not source.get("goal"):
         raise SystemExit("task file requires a non-empty goal")
-    timeout_s = int(source.get("timeout_s", 90))
+    timeout_s = _require_int(source.get("timeout_s", 90), "timeout_s")
     if timeout_s <= 0:
         raise SystemExit("timeout_s must be positive")
     if not isinstance(source.get("completion_criteria", []), list):
@@ -178,10 +211,10 @@ def command_send(args: argparse.Namespace) -> int:
         "input_files": source.get("input_files", []),
         "expected_output": source.get("expected_output", "ResultContract"),
         "timeout_s": timeout_s,
-        "max_retries": int(source.get("max_retries", 3)),
+        "max_retries": _require_int(source.get("max_retries", 3), "max_retries"),
         "priority": priority,
         "adapter_options": source.get("adapter_options", {}),
-        "attempt": int(source.get("attempt", 1)),
+        "attempt": _require_int(source.get("attempt", 1), "attempt"),
         "created_at": utc_now(),
     }
     task["permissions"] = permissions if permissions is not None else {
@@ -201,8 +234,20 @@ def command_send(args: argparse.Namespace) -> int:
                 raise SystemExit(f"permissions.{key} path violates authority bounds: {denied} ({entry})")
     if transport.task_pending(lwar_id, task_id):
         raise SystemExit(f"task already exists for {lwar_id}: {task_id}")
-    target = transport.publish_task(task)
+    existing = ledger.get(task["task_id"], task["workflow_id"])
+    if existing is not None and existing.get("status") in {"completed", "dead", "failed"}:
+        # Re-publishing a task that already reached a terminal ledger state would
+        # clobber its recorded result and re-execute it. Require a fresh task_id
+        # (or `dead --requeue` for the sanctioned retry path).
+        raise SystemExit(
+            f"task already has a terminal ledger entry "
+            f"({existing['status']}): {task_id} — use a new task_id"
+        )
+    # Record the ledger entry BEFORE making the task claimable: a crash between
+    # the two then leaves a benign `published` entry with no incoming task,
+    # never an untracked live task that recovery cannot see.
     ledger.record_published(task)
+    target = transport.publish_task(task)
     audit.record(
         root,
         "oa",
@@ -278,11 +323,19 @@ def command_collect(args: argparse.Namespace) -> int:
     for lwar_id in targets:
         slot = registry.get("slots", {}).get(lwar_id)
         for path in transport.outgoing_results(lwar_id):
-            result = load_json(path)
+            result = safe_load_json(path)
+            if result is None or "task_id" not in result:
+                # A corrupt/foreign result must not abort collection for every
+                # other result: quarantine it and keep collecting.
+                destination = transport.quarantine_result(lwar_id, path, "invalid_result_json")
+                quarantined.append(
+                    {"lwar_id": lwar_id, "task_id": None, "reason": "invalid_result_json", "file": str(destination)}
+                )
+                continue
             if (
                 slot is None
-                or slot["instance_id"] != result.get("instance_id")
-                or slot["generation"] != result.get("generation")
+                or slot.get("instance_id") != result.get("instance_id")
+                or slot.get("generation") != result.get("generation")
             ):
                 destination = transport.quarantine_result(lwar_id, path, "stale_identity_result")
                 quarantined.append(
@@ -310,8 +363,20 @@ def command_collect(args: argparse.Namespace) -> int:
                 entry is not None
                 and entry.get("status") == "completed"
                 and entry.get("result_file")
-                and entry["result_file"] != str(path)
             ):
+                if entry["result_file"] == str(path):
+                    # Already collected this exact file on a prior run (a
+                    # collect without --archive leaves the result in outgoing/).
+                    # A later `--archive` pass should still move it out of
+                    # outgoing/; a plain re-collect skips silently instead of
+                    # re-verifying and re-growing the ledger history every poll.
+                    if args.archive:
+                        final_path = transport.archive_result(lwar_id, path)
+                        ledger.record_completed_result(result, str(final_path))
+                        collected.append(
+                            {"lwar_id": lwar_id, "result_file": str(final_path), "result": result}
+                        )
+                    continue
                 destination = transport.quarantine_result(lwar_id, path, "duplicate_result")
                 quarantined.append(
                     {"lwar_id": lwar_id, "task_id": result["task_id"], "reason": "duplicate_result", "file": str(destination)}
@@ -354,6 +419,52 @@ def command_recover(args: argparse.Namespace) -> int:
     dead_lettered = []
     failed_reconciled = []
     now = datetime.now(timezone.utc)
+
+    def recover_one(lwar_id: str, claimed_path: Path, task: dict[str, Any], detail: str) -> None:
+        """Requeue or dead-letter one claimed task, from either an expired lease
+        or an orphaned (lease-less) claim. Retires a leftover claim silently if a
+        result was already submitted, so recovery never duplicates execution."""
+        task_id = task.get("task_id")
+        if task_id and transport.result_exists(lwar_id, task_id):
+            claimed_path.unlink(missing_ok=True)
+            return
+        attempt = int(task.get("attempt", 1)) + 1
+        max_retries = int(task.get("max_retries", 3))
+        task["attempt"] = attempt
+        # The interrupted terminal is recorded by OA, never inferred as a
+        # submitted result: the LWAR may have died without submitting.
+        interruption = {
+            "status": "interrupted",
+            "reason": detail,
+            "recorded_by": "oa_reconciler",
+            "recorded_at": utc_now(),
+        }
+        if attempt > max_retries:
+            if transport.dead_letter(lwar_id, claimed_path, task, "retry_budget_exhausted") is None:
+                # A racing submit_result archived the claim first — superseded.
+                return
+            ledger.transition(
+                task["task_id"],
+                "dead",
+                workflow_id=task.get("workflow_id"),
+                detail="retry_budget_exhausted",
+                attempt=attempt,
+                interruption=interruption,
+            )
+            dead_lettered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
+            return
+        moved = transport.requeue_claimed(lwar_id, claimed_path, task)
+        if moved is not None:
+            ledger.transition(
+                task["task_id"],
+                "requeued",
+                workflow_id=task.get("workflow_id"),
+                detail=detail,
+                attempt=attempt,
+                interruption=interruption,
+            )
+            recovered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
+
     for lwar_id in targets:
         for lease_path, lease in transport.expired_leases(lwar_id, now):
             if transport.result_exists(lwar_id, lease["task_id"]):
@@ -363,42 +474,13 @@ def command_recover(args: argparse.Namespace) -> int:
             if claimed is None:
                 lease_path.unlink(missing_ok=True)
                 continue
-            claimed_path, task = claimed
-            attempt = int(task.get("attempt", 1)) + 1
-            max_retries = int(task.get("max_retries", 3))
-            task["attempt"] = attempt
-            # The interrupted terminal is recorded by OA, never inferred as a
-            # submitted result: the LWAR may have died without submitting.
-            interruption = {
-                "status": "interrupted",
-                "reason": "lease_expired",
-                "recorded_by": "oa_reconciler",
-                "recorded_at": utc_now(),
-            }
-            if attempt > max_retries:
-                transport.dead_letter(lwar_id, claimed_path, task, "retry_budget_exhausted")
-                ledger.transition(
-                    task["task_id"],
-                    "dead",
-                    workflow_id=task.get("workflow_id"),
-                    detail="retry_budget_exhausted",
-                    attempt=attempt,
-                    interruption=interruption,
-                )
-                dead_lettered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
-            else:
-                moved = transport.requeue_claimed(lwar_id, claimed_path, task)
-                if moved is not None:
-                    ledger.transition(
-                        task["task_id"],
-                        "requeued",
-                        workflow_id=task.get("workflow_id"),
-                        detail="lease_expired",
-                        attempt=attempt,
-                        interruption=interruption,
-                    )
-                    recovered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
+            recover_one(lwar_id, claimed[0], claimed[1], "lease_expired")
             lease_path.unlink(missing_ok=True)
+        # A claim whose lease was never written (crash/disk fault between the
+        # atomic claim-move and the lease write) is invisible to lease recovery
+        # and would sit in claimed/ forever — sweep those orphans too.
+        for claimed_path, task in transport.orphaned_claims(lwar_id, now):
+            recover_one(lwar_id, claimed_path, task, "orphaned_claim_no_lease")
         # Reconcile rejected tasks parked in failed/ so their ledger entries do
         # not sit at `published` forever (claim-guard and schema rejections).
         for _task_path, task, reason in transport.failed_entries(lwar_id):
@@ -415,6 +497,24 @@ def command_recover(args: argparse.Namespace) -> int:
                 detail=f"rejected:{reason}",
             )
             failed_reconciled.append({"lwar_id": lwar_id, "task_id": task_id, "reason": reason})
+        # Dead-lettered tasks whose ledger entry is still non-terminal: no other
+        # pass reconciles dead/, so a crash between dead_letter and the ledger
+        # transition would otherwise leave the entry stuck non-terminal forever.
+        for _dead_path, task in transport.list_dead(lwar_id):
+            task_id = task.get("task_id")
+            if not task_id:
+                continue
+            entry = ledger.get(task_id, task.get("workflow_id"))
+            if entry is None or entry.get("status") in {"dead", "completed", "failed"}:
+                continue
+            ledger.transition(
+                task_id,
+                "dead",
+                workflow_id=task.get("workflow_id"),
+                detail="dead_letter_reconciled",
+                attempt=entry.get("attempt"),
+            )
+            dead_lettered.append({"lwar_id": lwar_id, "task_id": task_id, "attempt": entry.get("attempt")})
     audit.record(
         root,
         "oa",

@@ -152,12 +152,27 @@ class ResultGuardTests(PaoTestCase):
             _, published = self.send_task(root, "LWAR1", {"goal": "Read twice"})
             self.watch_once(root, identity, expected=0)
             self.complete_task(root, identity, published["task_id"])
-            for _ in range(2):
-                _, collected = self.run_module(
-                    "pao_runtime.oa_cli", "collect", "--lwar-id", "LWAR1", "--root", str(root), expected=0
-                )
-                self.assertEqual(collected["count"], 1)
-                self.assertEqual(collected["quarantined"], [])
+            # First collect accepts the result; a re-collect (no --archive leaves
+            # it in outgoing/) must NOT re-report or re-record it — genuine
+            # idempotency, not the old "count 1 every poll" that also grew the
+            # ledger history without bound.
+            _, first = self.run_module(
+                "pao_runtime.oa_cli", "collect", "--lwar-id", "LWAR1", "--root", str(root), expected=0
+            )
+            self.assertEqual(first["count"], 1)
+            self.assertEqual(first["quarantined"], [])
+            ledger_path = next((root / "var" / "tasks").glob(f"*/{published['task_id']}.json"))
+            history_len = len(json.loads(ledger_path.read_text(encoding="utf-8"))["history"])
+            _, second = self.run_module(
+                "pao_runtime.oa_cli", "collect", "--lwar-id", "LWAR1", "--root", str(root), expected=0
+            )
+            self.assertEqual(second["count"], 0)
+            self.assertEqual(second["quarantined"], [])
+            self.assertEqual(
+                len(json.loads(ledger_path.read_text(encoding="utf-8"))["history"]),
+                history_len,
+                "re-collect must not append another history entry",
+            )
 
 
 class LeaseAlignmentTests(PaoTestCase):

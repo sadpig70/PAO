@@ -14,6 +14,8 @@ from .common import (
     mailbox_root,
     new_id,
     parse_utc,
+    quarantine_corrupt,
+    safe_load_json,
     utc_now,
     validate_task_id,
 )
@@ -83,6 +85,10 @@ class Transport(Protocol):
 
     def expired_leases(self, lwar_id: str, now: datetime) -> list[tuple[Path, dict[str, Any]]]: ...
 
+    def orphaned_claims(
+        self, lwar_id: str, now: datetime, grace_s: float = ...
+    ) -> list[tuple[Path, dict[str, Any]]]: ...
+
     def result_exists(self, lwar_id: str, task_id: str) -> bool: ...
 
     def claimed_task_for_lease(
@@ -91,7 +97,9 @@ class Transport(Protocol):
 
     def requeue_claimed(self, lwar_id: str, claimed_path: Path, task: dict[str, Any]) -> Path | None: ...
 
-    def dead_letter(self, lwar_id: str, claimed_path: Path, task: dict[str, Any], reason: str) -> Path: ...
+    def dead_letter(
+        self, lwar_id: str, claimed_path: Path, task: dict[str, Any], reason: str
+    ) -> Path | None: ...
 
     def list_dead(self, lwar_id: str) -> list[tuple[Path, dict[str, Any]]]: ...
 
@@ -247,10 +255,13 @@ class FileTransport:
 
     def _auto_cancel(self, identity: dict[str, Any], claimed_path: Path, task: dict[str, Any]) -> None:
         """Consume the tombstone by submitting a deterministic cancelled result
-        through the normal result pipeline, then remove the tombstone."""
-        result = self._cancelled_result(
-            identity, task, load_json(self._cancel_tombstone(identity["lwar_id"], task["task_id"]))
-        )
+        through the normal result pipeline, then remove the tombstone.
+
+        The tombstone's mere existence is the cancel signal; its content is only
+        metadata, so an unreadable/corrupt tombstone still cancels (safe_load →
+        {}) rather than crashing the watcher slice mid-claim."""
+        tombstone = safe_load_json(self._cancel_tombstone(identity["lwar_id"], task["task_id"])) or {}
+        result = self._cancelled_result(identity, task, tombstone)
         self.submit_result(identity, claimed_path, result)
         self._cancel_tombstone(identity["lwar_id"], task["task_id"]).unlink(missing_ok=True)
 
@@ -339,14 +350,19 @@ class FileTransport:
 
     def read_heartbeat(self, lwar_id: str) -> dict[str, Any] | None:
         path = self._mailbox(lwar_id) / "heartbeat.json"
-        return load_json(path) if path.is_file() else None
+        # A corrupt heartbeat reads as absent (None) rather than crashing every
+        # caller — routing and status treat None as "stale/unknown" already.
+        return safe_load_json(path) if path.is_file() else None
 
     # -- results -----------------------------------------------------------
 
     def find_claimed_task(self, lwar_id: str, task_id: str) -> tuple[Path, dict[str, Any]]:
         mailbox = self._mailbox(lwar_id)
         for path in sorted((mailbox / "claimed").glob("*.json")):
-            task = load_json(path)
+            task = safe_load_json(path)
+            if task is None:
+                quarantine_corrupt(path, "corrupt_claimed_task")
+                continue
             if task.get("task_id") == task_id:
                 return path, task
         raise FileNotFoundError(f"claimed task not found: {task_id}")
@@ -354,20 +370,26 @@ class FileTransport:
     def submit_result(self, identity: dict[str, Any], claimed_path: Path, result: dict[str, Any]) -> Path:
         mailbox = self._mailbox(identity["lwar_id"])
         outgoing = mailbox / "outgoing" / f"{result['task_id']}.result.json"
+        # Publish the result FIRST. Once `outgoing` exists, result_exists() is
+        # True, and every recovery path (expired-lease AND orphaned-claim) backs
+        # off instead of re-queuing — so no window here can duplicate execution.
+        # Only THEN retire the lease (before the archive move, so a retried
+        # archive cannot resurrect it). Writing the result last would instead
+        # leave a lease-less claim visible to orphaned_claims mid-submit.
         atomic_write_json(outgoing, result)
+        (mailbox / "leases" / f"{result['task_id']}.json").unlink(missing_ok=True)
         archive = mailbox / "archive" / "tasks" / claimed_path.name
         archive.parent.mkdir(parents=True, exist_ok=True)
-        try:
-            claimed_path.replace(archive)
-        except FileNotFoundError:
-            # OA recovery re-queued this claim between our result write and the
-            # archive move: the re-queued attempt is canonical, this submission
-            # is superseded and will be quarantined by the attempt fence.
+        # claim_file retries transient Windows sharing violations and returns
+        # False only when the source is already gone (FileNotFoundError) —
+        # meaning OA recovery re-queued this claim between our result write and
+        # the archive move. That re-queued attempt is canonical; this submission
+        # is superseded and will be quarantined by the attempt fence.
+        if not claim_file(claimed_path, archive):
             raise RuntimeError(
                 f"claim superseded during submission: {result['task_id']} "
                 "(lease expired and the task was re-queued; do not retry)"
             )
-        (mailbox / "leases" / f"{result['task_id']}.json").unlink(missing_ok=True)
         return outgoing
 
     def outgoing_results(self, lwar_id: str) -> list[Path]:
@@ -397,18 +419,65 @@ class FileTransport:
     def expired_leases(self, lwar_id: str, now: datetime) -> list[tuple[Path, dict[str, Any]]]:
         expired = []
         for lease_path in sorted((self._mailbox(lwar_id) / "leases").glob("*.json")):
-            lease = load_json(lease_path)
-            if parse_utc(lease["expires_at"]) <= now:
+            lease = safe_load_json(lease_path)
+            if lease is None or "expires_at" not in lease:
+                # One corrupt lease must not wedge recovery for every other
+                # lease of this LWAR: quarantine it and keep sweeping.
+                quarantine_corrupt(lease_path, "corrupt_lease")
+                continue
+            try:
+                expires = parse_utc(lease["expires_at"])
+            except (ValueError, TypeError):
+                quarantine_corrupt(lease_path, "unparseable_lease_expiry")
+                continue
+            if expires <= now:
                 expired.append((lease_path, lease))
         return expired
+
+    def orphaned_claims(
+        self, lwar_id: str, now: datetime, grace_s: float = 120.0
+    ) -> list[tuple[Path, dict[str, Any]]]:
+        """Claimed tasks that have NO lease file and are older than grace_s.
+
+        The lease write failed (disk fault, a sharing violation) or the process
+        died between the atomic claim-move and the lease write, so lease-based
+        recovery can never see them — they would sit in claimed/ forever. The
+        grace window avoids racing a live claim that is still writing its lease.
+        """
+        mailbox = self._mailbox(lwar_id)
+        leases_dir = mailbox / "leases"
+        orphans = []
+        cutoff = now.timestamp() - grace_s
+        for path in sorted((mailbox / "claimed").glob("*.json")):
+            task = safe_load_json(path)
+            if task is None:
+                quarantine_corrupt(path, "corrupt_claimed_task")
+                continue
+            task_id = task.get("task_id")
+            if not task_id or (leases_dir / f"{task_id}.json").is_file():
+                continue
+            try:
+                if path.stat().st_mtime > cutoff:
+                    continue
+            except FileNotFoundError:
+                continue
+            orphans.append((path, task))
+        return orphans
 
     def claimed_task_for_lease(
         self, lwar_id: str, lease: dict[str, Any]
     ) -> tuple[Path, dict[str, Any]] | None:
-        path = self._mailbox(lwar_id) / "claimed" / lease["claimed_file"]
+        claimed_file = lease.get("claimed_file")
+        if not claimed_file:
+            return None
+        path = self._mailbox(lwar_id) / "claimed" / claimed_file
         if not path.is_file():
             return None
-        return path, load_json(path)
+        task = safe_load_json(path)
+        if task is None:
+            quarantine_corrupt(path, "corrupt_claimed_task")
+            return None
+        return path, task
 
     def requeue_claimed(self, lwar_id: str, claimed_path: Path, task: dict[str, Any]) -> Path | None:
         incoming = self._mailbox(lwar_id) / "incoming" / claimed_path.name
@@ -424,11 +493,17 @@ class FileTransport:
         atomic_write_json(incoming, task)
         return incoming
 
-    def dead_letter(self, lwar_id: str, claimed_path: Path, task: dict[str, Any], reason: str) -> Path:
+    def dead_letter(
+        self, lwar_id: str, claimed_path: Path, task: dict[str, Any], reason: str
+    ) -> Path | None:
         destination = self._mailbox(lwar_id) / "dead" / claimed_path.name
         destination.parent.mkdir(parents=True, exist_ok=True)
-        atomic_write_json(claimed_path, task)
-        claimed_path.replace(destination)
+        # Move the existing claimed file first. If it is already gone (a racing
+        # submit_result archived it), do NOT recreate it — rewriting-then-moving
+        # would resurrect a completed task as a spurious dead-letter.
+        if not claim_file(claimed_path, destination):
+            return None
+        atomic_write_json(destination, task)
         atomic_write_json(
             destination.with_suffix(".error.json"),
             {
@@ -446,7 +521,11 @@ class FileTransport:
         for path in sorted((self._mailbox(lwar_id) / "dead").glob("*.json")):
             if path.name.endswith(".error.json"):
                 continue
-            entries.append((path, load_json(path)))
+            task = safe_load_json(path)
+            if task is None:
+                quarantine_corrupt(path, "corrupt_dead_task")
+                continue
+            entries.append((path, task))
         return entries
 
     def requeue_dead(self, lwar_id: str, task_id: str) -> dict[str, Any] | None:
@@ -499,7 +578,12 @@ class FileTransport:
                 for path in sorted(directory.glob("*")):
                     if not path.is_file():
                         continue
-                    modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+                    try:
+                        modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+                    except FileNotFoundError:
+                        # Concurrent prune/cleanup removed it between glob and
+                        # stat — nothing to do, keep pruning the rest.
+                        continue
                     if modified <= older_than:
                         path.unlink(missing_ok=True)
                         removed += 1

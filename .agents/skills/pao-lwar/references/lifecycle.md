@@ -15,6 +15,16 @@ python "<PAO_SKILL>/scripts/lwar.py" status --identity-file IDENTITY_FILE
 Exit codes: `0` = `lwar_status` (payload has `state`, `generation`, heartbeat);
 `2` = registry unavailable; `3` = unregistered; `4` = identity mismatch.
 
+These map to distinct bootstrap branches (§0.5) — do not collapse them to a
+binary present/absent:
+
+| Exit | Meaning | Bootstrap action |
+|---:|---|---|
+| `0` | slot present, identity matches | RESUME (never re-register) |
+| `2` | registry momentarily unavailable | **transient** — wait briefly and re-run `status`; do **not** register (registering here would orphan a still-valid identity) |
+| `3` | your slot is genuinely not in the registry | REGISTER (this is the only true register branch) |
+| `4` | the slot exists but your identity tuple is stale (slot reused / generation bumped) | your old identity is dead — register **fresh** from a clean session; do not reuse the stale identity file |
+
 (`oa.py status` also exists but is the OA's roster view of **all** LWARs; prefer
 `lwar.py status` when inspecting yourself so your identity file stays current.)
 
@@ -36,7 +46,7 @@ python "<PAO_SKILL>/scripts/lwar.py" state deregistered --identity-file IDENTITY
 
 ## Context-exhaustion handoff
 
-Session context is finite; running out mid-claim would violate the terminal-result rule. When exhaustion is imminent (long session, heavy context, or the runtime warns), hand off instead of dying:
+Session context is finite; running out mid-claim would violate the terminal-result rule. Trigger this handoff only on an **objective** exhaustion signal — an explicit runtime context/token warning, or a measured token budget crossing a high threshold (e.g. ~90% of the window). Elapsed wall-clock time, many idle slices, or a subjective sense of "enough has happened" are **not** exhaustion and must not trigger it (§1.3) — that is the daemon-quitting-because-it-feels-finished bug. When a genuine exhaustion signal fires, hand off instead of dying:
 
 1. Request `draining` (`state draining`) so no new task is claimed.
 2. If a task is claimed, finish or stop it and submit its terminal result (`failed` or `blocked` with the reason is acceptable — never abandon it silently).

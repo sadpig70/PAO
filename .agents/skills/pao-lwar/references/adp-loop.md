@@ -12,8 +12,13 @@ def ADP(identity_file: Path) -> None:
             continue
         if event.event == "adp_error":
             report_error_and_stop(event)
+            return                                 # fatal terminator — stop ADP
         if event.event == "control":
             if event.command == "shutdown":
+                # If a task is still claimed, submit its terminal result FIRST
+                # (§1.5) — a shutdown that arrives via an interleaved slice mid-
+                # task must not drop the claim silently.
+                submit_terminal_result_if_holding_a_claim()
                 return
             handle_control(event)
             continue
@@ -22,6 +27,10 @@ def ADP(identity_file: Path) -> None:
             write_result_draft(result)
             run_lwar_complete(identity_file, event.task_id, result.file)
             continue
+        # Any other / unknown event: fail closed on the SLICE, not the daemon.
+        if holding_a_claim():
+            submit_protocol_error_result()
+        continue                                   # run the next slice; do NOT stop ADP
 
     # acceptance_criteria:
     #   - ADP is a daemon: the loop stays resident and never exits on its own
@@ -56,9 +65,9 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 | `20` | `control:ping` | Re-run the watcher |
 | `20` | `control:drain` | Finish current work, then request lifecycle `draining` (read [lifecycle.md](lifecycle.md) first) and **keep watching** until `shutdown` |
 | `20` | `control:cancel` | Stop the task if you already hold it and submit a `cancelled` result. A cancel for a task you have **not** claimed yet needs no memory: the watcher has already written a tombstone (see below) that auto-cancels the task deterministically whenever it is claimed |
-| `20` | `control:shutdown` | Stop ADP |
-| `30` | `adp_error` | Report the error, then stop ADP |
-| any other | any unknown event | **Fail closed**: stop this slice, report `protocol_error`, never retry an unknown event blindly |
+| `20` | `control:shutdown` | If you currently hold a claimed task, submit its terminal result first — `interrupted` (no verdict reached), or the `failed`/`blocked` verdict if you already have one; never invent `blocked` just because shutdown arrived. Then stop ADP |
+| `30` | `adp_error` | Report the error, then stop ADP (this is the fatal terminator) |
+| any other | any unknown event | **Fail closed on the SLICE, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the **next** watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP — only the three terminators in SKILL Rule 3 (`shutdown`, a fatal `adp_error`, the context-exhaustion handoff) do that |
 
 Heartbeats are written by the watcher itself on every poll — the agent never emits or edits them.
 

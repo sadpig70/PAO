@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from typing import Any
 
-from .common import parse_utc
+from .common import LWAR_ID_RE, parse_utc
 from .transport import Transport
 
 
@@ -53,6 +53,10 @@ def auto_route(
     """
     candidates = []
     for lwar_id, slot in registry.get("slots", {}).items():
+        # Skip any hand-corrupted / foreign slot key: lwar_number would raise on
+        # a non-LWARn key and abort routing for every LWAR.
+        if not LWAR_ID_RE.fullmatch(lwar_id):
+            continue
         if slot.get("state") != "on":
             continue
         capabilities = set(slot.get("profile", {}).get("capabilities", []))

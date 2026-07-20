@@ -60,7 +60,9 @@ export PAO_OA_ID=oa-$(date +%s)
 $env:PAO_OA_ID = "oa-" + [DateTimeOffset]::UtcNow.ToUnixTimeSeconds()
 ```
 
-Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json`; a session holding a different `PAO_OA_ID` is rejected as a read-only observer until the lease expires (TTL 900s). Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch the lease. Sessions that skip `PAO_OA_ID` share the `oa-default` holder and get **no** mutual exclusion — setting the id is what activates the guarantee.
+Every mutating command (`reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) refreshes the writer lease at `var/oa/writer_lease.json`; a session holding a different `PAO_OA_ID` is rejected as a read-only observer until the lease expires (TTL 900s). Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch the lease. Sessions that skip `PAO_OA_ID` share the `oa-default` holder and get **no** mutual exclusion — setting the id is what activates the guarantee (the CLI warns on stderr when it is unset).
+
+**On a writer-lease rejection**: first confirm no other live OA is actually running (check `status` and heartbeats, ask the operator). If the holder is a crashed prior session, either wait out the TTL (≤900s) or re-run once the lease has expired; if it is your own prior id, re-export the **same** `PAO_OA_ID`. Never hand-edit or delete `writer_lease.json` (or any bus file) to force a mutation — that defeats the guard and can corrupt concurrent state.
 
 ## 2. Core Loop
 

@@ -38,13 +38,18 @@ Run this decision flow at the start of a session, before any other action:
 ```text
 1. doctor --role lwar   → unhealthy? stop and report.
 2. Do you already hold an identity file from a prior session (var/identities/<instance>.json)?
-   AND does `lwar.py status --identity-file <that file>` report your slot still present
-   with a matching (lwar_id, instance_id, generation)?
-     YES → RESUME: skip registration. If state is not `on`, request `state on`
-            (lifecycle.md) and poll status until on; then go to ADP.
-     NO  → REGISTER: run `lwar.py register …` (register.md), remember request_id,
-            poll `lwar.py response REQUEST_ID` until `identity_adopted`, keep the
-            printed identity_file (absolute) for every later call.
+   If so, run `lwar.py status --identity-file <that file>` and branch on its EXIT
+   CODE (do not collapse them to present/absent — see lifecycle.md):
+     exit 0 (slot present, tuple matches) → RESUME: skip registration. If state is
+            not `on`, request `state on` (lifecycle.md), poll until on; then ADP.
+     exit 2 (registry unavailable) → TRANSIENT: wait briefly and retry status; do
+            NOT register (that would orphan a still-valid identity).
+     exit 3 (unregistered) → REGISTER (see below).
+     exit 4 (identity mismatch / slot reused) → your identity is stale: REGISTER
+            fresh; do not reuse the stale identity file.
+   No identity file at all → REGISTER: run `lwar.py register …` (register.md),
+     remember request_id, poll `lwar.py response REQUEST_ID` until `identity_adopted`,
+     keep the printed identity_file (absolute) for every later call.
 3. Enter the ADP loop (adp-loop.md) and keep it alive until `shutdown`.
 ```
 
@@ -60,10 +65,10 @@ process cwd, not the bus root).
 3. **ADP is a Daemon — stay resident.** The **D** in ADP is **Daemon**: like an OS daemon, this loop runs continuously and **never exits on its own**. Do not assume an external process will relaunch the LWAR — keep ADP alive inside the current session. Elapsed time, many repeated `idle_timeout`/`state_wait` slices, a sense that "enough has happened", or the instinct to summarize and wrap up are **NOT** reasons to stop — a daemon that quits because it feels finished is a bug. Actively resist the natural tendency to conclude: immediately re-invoke the next watch slice, and **never return control or end your turn between slices**. The daemon terminates **only** on (a) `control:shutdown`, (b) a fatal `adp_error`, or (c) the context-exhaustion handoff ([references/lifecycle.md](references/lifecycle.md)). If you find yourself about to write a closing summary while none of these has occurred, do not — run the next slice instead.
 4. On `idle_timeout` and `state_wait`, generate no extra explanation. Re-run the same watcher immediately.
 5. On `task_received`, operate only within the TaskContract authority bounds and submit **exactly one terminal result** with `complete` before returning to the watcher, whenever this agent remains capable of submitting one. `complete` means terminal submission, **not success** — `failed`, `blocked`, `cancelled`, `timed_out`, and `protocol_error` outcomes are all submitted the same way. A crash or forced termination is recovered by lease expiry and OA `recover`; it is never inferred as success.
-6. Only `shutdown` terminates ADP — with one exception: when session context exhaustion is imminent, execute the handoff procedure in [references/lifecycle.md](references/lifecycle.md) (request `state draining`, submit the terminal result for any claimed task, then request `state off` or re-register from a fresh session; the generation bump quarantines your stale messages automatically). Never just stop.
+6. ADP terminates on exactly the three conditions in Rule 3 — `control:shutdown`, a fatal `adp_error` (watcher exit 30), or the context-exhaustion handoff — and nothing else. For the handoff: only on an **objective** exhaustion signal (an explicit runtime context/token warning, not elapsed time or a feeling of being done), execute the procedure in [references/lifecycle.md](references/lifecycle.md) (request `state draining`, submit the terminal result for any claimed task, then request `state off` or re-register from a fresh session; the generation bump quarantines your stale messages automatically). Never just stop.
 7. Do not modify registry, incoming, or lease files by hand; act only through the bundled CLI.
 8. Do not pollute context by restating idle stdout messages at length.
-9. On an unknown watcher event or exit code, fail closed: stop the current slice, report a `protocol_error`, and never retry an unknown event blindly.
+9. On an unknown watcher event or exit code, fail closed **on the slice, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the next watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP (only Rule 3's three conditions do that).
 10. Never expose provider, vendor, or model names in mailbox paths, artifact paths, or artifact contents — the `LWARn` alias is the only external identity.
 
 Heartbeats are emitted by the watcher automatically; the agent never writes them.

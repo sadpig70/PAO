@@ -152,11 +152,15 @@ def command_doctor(args: argparse.Namespace) -> int:
     # Only aged temp files count: an in-flight atomic write briefly creates
     # a .pao-*.tmp on a perfectly healthy bus.
     cutoff = time.time() - LEFTOVER_TMP_AGE_S
-    leftovers = [
-        str(path)
-        for path in root.rglob(".pao-*.tmp")
-        if path.is_file() and path.stat().st_mtime < cutoff
-    ]
+    leftovers = []
+    for path in root.rglob(".pao-*.tmp"):
+        try:
+            if path.is_file() and path.stat().st_mtime < cutoff:
+                leftovers.append(str(path))
+        except FileNotFoundError:
+            # An in-flight atomic write deleted its temp between glob and stat
+            # on a healthy busy bus — not a leftover, keep scanning.
+            continue
     checks.append(_check("no_leftover_tmp", not leftovers, leftovers or None))
 
     healthy = all(entry["ok"] for entry in checks)

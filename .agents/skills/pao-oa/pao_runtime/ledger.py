@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .common import atomic_write_json, load_json, utc_now
+from .common import atomic_write_json, safe_load_json, utc_now
 
 
 class TaskLedger:
@@ -50,9 +50,11 @@ class TaskLedger:
     def get(self, task_id: str, workflow_id: str | None = None) -> dict[str, Any] | None:
         if workflow_id:
             path = self.path(workflow_id, task_id)
-            return load_json(path) if path.is_file() else None
+            return safe_load_json(path) if path.is_file() else None
         for path in sorted(self.base.glob(f"*/{task_id}.json")):
-            return load_json(path)
+            entry = safe_load_json(path)
+            if entry is not None:
+                return entry
         return None
 
     def transition(
@@ -122,4 +124,9 @@ class TaskLedger:
         directory = self.base / workflow_id
         if not directory.is_dir():
             return []
-        return [load_json(path) for path in sorted(directory.glob("*.json"))]
+        entries = []
+        for path in sorted(directory.glob("*.json")):
+            entry = safe_load_json(path)
+            if entry is not None:
+                entries.append(entry)
+        return entries

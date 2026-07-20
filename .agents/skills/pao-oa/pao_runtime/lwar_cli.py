@@ -11,20 +11,30 @@ from . import __version__, audit
 from .common import (
     atomic_write_json,
     emit,
-    load_json,
     new_id,
     path_within,
     resolve_root,
+    safe_load_json,
     snapshot_artifact,
     utc_now,
     validate_instance_id,
     validate_lwar_id,
     validate_task_id,
 )
+from .registry import ALLOWED_TRANSITIONS
 from .transport import FileTransport
 
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+
+
+def _load_or_exit(path: Path, label: str) -> dict[str, Any]:
+    """Read a JSON object, failing with a clean SystemExit (not a raw
+    traceback) when the file is missing, truncated, or not an object."""
+    data = safe_load_json(path)
+    if data is None:
+        raise SystemExit(f"cannot read or parse {label}: {path}")
+    return data
 
 
 def positive_int(value: str) -> int:
@@ -94,13 +104,14 @@ def command_response(args: argparse.Namespace) -> int:
     if not response_path.is_file():
         emit({"event": "registration_pending", "request_id": args.request_id})
         return 2
-    response = load_json(response_path)
+    response = _load_or_exit(response_path, "registration response")
     if response.get("accepted") is not True:
         emit({"event": "registration_rejected", **response})
         return 3
     instance_id = validate_instance_id(response["instance_id"])
     pending_path = root / "var" / "identities" / f"{instance_id}.pending.json"
-    pending = load_json(pending_path) if pending_path.is_file() else {}
+    pending = safe_load_json(pending_path) if pending_path.is_file() else {}
+    pending = pending or {}
     identity = {
         "schema_version": "pao.lwar-identity.v1",
         "lwar_id": response["lwar_id"],
@@ -126,12 +137,32 @@ def command_response(args: argparse.Namespace) -> int:
 
 def command_state(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
-    identity = load_json(Path(args.identity_file).resolve())
+    identity = _load_or_exit(Path(args.identity_file).resolve(), "identity file")
+    lwar_id = validate_lwar_id(identity["lwar_id"])
+    # Locally reject a definitively stale or illegal transition before writing
+    # the request (OA reconcile is still authoritative). When the registry is
+    # momentarily unreadable we cannot check, so we proceed and let OA decide.
+    registry_path = root / "var" / "registry" / "lwar_registry.json"
+    registry = safe_load_json(registry_path) if registry_path.is_file() else None
+    if registry is not None:
+        slot = registry.get("slots", {}).get(lwar_id)
+        if slot is None:
+            raise SystemExit(
+                f"cannot request '{args.state}': {lwar_id} is not in the registry "
+                "(register first, or run status)"
+            )
+        if slot.get("instance_id") != identity["instance_id"] or slot.get("generation") != identity["generation"]:
+            raise SystemExit(
+                f"cannot request '{args.state}': your identity is stale versus the registry "
+                "(re-register from a fresh session)"
+            )
+        if args.state != slot["state"] and args.state not in ALLOWED_TRANSITIONS.get(slot["state"], set()):
+            raise SystemExit(f"illegal lifecycle transition: {slot['state']} → {args.state}")
     request_id = new_id("lwar-state")
     request = {
         "schema_version": "pao.lwar-lifecycle-request.v1",
         "request_id": request_id,
-        "lwar_id": validate_lwar_id(identity["lwar_id"]),
+        "lwar_id": lwar_id,
         "instance_id": validate_instance_id(identity["instance_id"]),
         "generation": identity["generation"],
         "registry_version": identity["registry_version"],
@@ -152,12 +183,15 @@ def command_state(args: argparse.Namespace) -> int:
 def command_status(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     identity_path = Path(args.identity_file).resolve()
-    identity = load_json(identity_path)
+    identity = _load_or_exit(identity_path, "identity file")
     registry_path = root / "var" / "registry" / "lwar_registry.json"
     if not registry_path.is_file():
         emit({"event": "registry_unavailable"})
         return 2
-    registry = load_json(registry_path)
+    registry = safe_load_json(registry_path)
+    if registry is None:
+        emit({"event": "registry_unavailable"})
+        return 2
     slot = registry.get("slots", {}).get(identity["lwar_id"])
     if not slot:
         emit({"event": "unregistered", "lwar_id": identity["lwar_id"]})
@@ -165,9 +199,13 @@ def command_status(args: argparse.Namespace) -> int:
     if slot["instance_id"] != identity["instance_id"] or slot["generation"] != identity["generation"]:
         emit({"event": "identity_mismatch", "lwar_id": identity["lwar_id"]})
         return 4
-    identity["state"] = slot["state"]
-    identity["registry_version"] = registry["registry_version"]
-    atomic_write_json(identity_path, identity)
+    # Refresh the local snapshot, but never move registry_version BACKWARDS: a
+    # concurrent status/re-adoption may already have written a fresher one, and
+    # a stale reader must not clobber it.
+    if registry["registry_version"] >= identity.get("registry_version", 0):
+        identity["state"] = slot["state"]
+        identity["registry_version"] = registry["registry_version"]
+        atomic_write_json(identity_path, identity)
     emit(
         {
             "event": "lwar_status",
@@ -236,13 +274,24 @@ def normalize_artifacts(
 def command_complete(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     transport = FileTransport(root)
-    identity = load_json(Path(args.identity_file).resolve())
+    identity = _load_or_exit(Path(args.identity_file).resolve(), "identity file")
     lwar_id = validate_lwar_id(identity["lwar_id"])
     task_id = validate_task_id(args.task_id)
-    claimed_path, task = transport.find_claimed_task(lwar_id, task_id)
+    try:
+        claimed_path, task = transport.find_claimed_task(lwar_id, task_id)
+    except FileNotFoundError:
+        # Distinguish the three "no claim to complete" cases with a clean error
+        # instead of a raw traceback: already submitted, superseded/requeued, or
+        # never claimed / mistyped id.
+        if transport.result_exists(lwar_id, task_id):
+            raise SystemExit(f"task already has a submitted result (already completed): {task_id}")
+        raise SystemExit(
+            f"no claimed task to complete for {task_id} — it was superseded/requeued "
+            "by OA recovery, or never claimed (check the task id)"
+        )
     if task["instance_id"] != identity["instance_id"] or task["generation"] != identity["generation"]:
         raise SystemExit("task identity does not match this LWAR identity")
-    result = load_json(Path(args.result_file).resolve())
+    result = _load_or_exit(Path(args.result_file).resolve(), "result file")
     for required in ("status", "summary", "evidence"):
         if required not in result:
             raise SystemExit(f"result missing required field: {required}")

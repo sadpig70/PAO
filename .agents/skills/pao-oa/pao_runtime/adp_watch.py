@@ -41,66 +41,95 @@ def watch(args: argparse.Namespace) -> int:
         return 30
     deadline = time.monotonic() + args.timeout
     wait_s = args.interval
+    consecutive_errors = 0
 
     while time.monotonic() < deadline:
         try:
             identity, slot = load_verified_identity(root, identity_path)
         except Exception as error:
+            # Identity no longer verifies (revoked, generation bump, gone) — a
+            # genuinely fatal condition. Stop and report.
             audit.record(root, "adp", {"event": "adp_error", "error": str(error)})
             emit({"event": "adp_error", "error": str(error), "action": "stop"})
             return 30
 
-        control = transport.claim_control(identity)
-        if control is not None:
-            transport.write_heartbeat(identity, "control", None)
-            # A cancel carrying a task_id is persisted as a tombstone BEFORE the
-            # event reaches the agent, so cancellation of a not-yet-claimed task
-            # no longer depends on the agent remembering it across slices.
-            if control.get("command") == "cancel" and control.get("task_id"):
-                transport.write_cancel_tombstone(
-                    identity, control["task_id"], control.get("control_id")
-                )
-            audit.record(
-                root,
-                "adp",
-                {
-                    "event": "control",
-                    "lwar_id": identity["lwar_id"],
-                    "command": control.get("command"),
-                    "control_id": control.get("control_id"),
-                },
-            )
-            emit({"event": "control", "command": control.get("command"), "message": control})
-            return 20
-
-        transport.write_heartbeat(identity, "watching" if slot["state"] == "on" else slot["state"], None)
-        if slot["state"] == "on":
-            wait_s = args.interval
-            claimed = transport.claim_task(identity, args.lease_seconds)
-            if claimed is not None:
-                task, claimed_path = claimed
-                transport.write_heartbeat(identity, "running", task["task_id"])
+        try:
+            control = transport.claim_control(identity)
+            if control is not None:
+                transport.write_heartbeat(identity, "control", None)
+                # A cancel carrying a task_id is persisted as a tombstone BEFORE
+                # the event reaches the agent, so cancellation of a not-yet-
+                # claimed task no longer depends on the agent remembering it.
+                if control.get("command") == "cancel" and control.get("task_id"):
+                    transport.write_cancel_tombstone(
+                        identity, control["task_id"], control.get("control_id")
+                    )
                 audit.record(
                     root,
                     "adp",
-                    {"event": "task_received", "lwar_id": identity["lwar_id"], "task_id": task["task_id"]},
-                )
-                emit(
                     {
-                        "event": "task_received",
+                        "event": "control",
                         "lwar_id": identity["lwar_id"],
-                        "task_id": task["task_id"],
-                        "message_file": str(claimed_path),
-                        "task": task,
-                        "action": "execute_then_submit_result",
-                    }
+                        "command": control.get("command"),
+                        "control_id": control.get("control_id"),
+                    },
                 )
-                return 0
-        elif args.state_wait_backoff_max:
-            # Bounded backoff while the slot is not `on`: doubles per poll up
-            # to the cap, resets as soon as the state returns to `on`.
-            wait_s = min(wait_s * 2, args.state_wait_backoff_max)
-        time.sleep(wait_s if slot["state"] != "on" else args.interval)
+                emit({"event": "control", "command": control.get("command"), "message": control})
+                return 20
+
+            transport.write_heartbeat(
+                identity, "watching" if slot["state"] == "on" else slot["state"], None
+            )
+            if slot["state"] == "on":
+                wait_s = args.interval
+                claimed = transport.claim_task(identity, args.lease_seconds)
+                if claimed is not None:
+                    task, claimed_path = claimed
+                    transport.write_heartbeat(identity, "running", task["task_id"])
+                    audit.record(
+                        root,
+                        "adp",
+                        {"event": "task_received", "lwar_id": identity["lwar_id"], "task_id": task["task_id"]},
+                    )
+                    emit(
+                        {
+                            "event": "task_received",
+                            "lwar_id": identity["lwar_id"],
+                            "task_id": task["task_id"],
+                            "message_file": str(claimed_path),
+                            "task": task,
+                            "action": "execute_then_submit_result",
+                        }
+                    )
+                    return 0
+            elif args.state_wait_backoff_max:
+                # Bounded backoff while the slot is not `on`: doubles per poll up
+                # to the cap, resets as soon as the state returns to `on`.
+                wait_s = min(wait_s * 2, args.state_wait_backoff_max)
+            consecutive_errors = 0
+        except Exception as error:
+            # A transient fault in one poll (a momentary sharing violation, a
+            # file that vanished mid-read) must not crash the whole slice with an
+            # uncatchable traceback the agent's loop cannot dispatch on. Retry
+            # the next poll within this slice; only a run of consecutive failures
+            # is treated as a fatal adp_error.
+            consecutive_errors += 1
+            audit.record(
+                root,
+                "adp",
+                {"event": "adp_error", "error": str(error), "consecutive": consecutive_errors},
+            )
+            if consecutive_errors >= 3:
+                emit({"event": "adp_error", "error": str(error), "action": "stop"})
+                return 30
+            wait_s = args.interval
+
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            break
+        # Clamp the sleep to the slice deadline so a large --interval can never
+        # overshoot the intended --timeout and starve control messages.
+        time.sleep(min(wait_s if slot["state"] != "on" else args.interval, remaining))
 
     transport.write_heartbeat(identity, "idle" if slot["state"] == "on" else slot["state"], None)
     emit(
@@ -135,6 +164,8 @@ def main() -> int:
     args = build_parser().parse_args()
     if args.interval <= 0 or args.timeout <= 0 or args.lease_seconds <= 0:
         raise SystemExit("interval, timeout, and lease-seconds must be positive")
+    if args.interval > args.timeout:
+        raise SystemExit("--interval must be <= --timeout (a longer interval would overshoot the slice)")
     if args.state_wait_backoff_max is not None and args.state_wait_backoff_max < args.interval:
         raise SystemExit("--state-wait-backoff-max must be >= --interval")
     return watch(args)
