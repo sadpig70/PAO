@@ -23,7 +23,7 @@ This skill bundles the full PAO runtime (`scripts/`, `pao_runtime/`, `schemas/`)
 python "<PAO_SKILL>/scripts/oa.py" status
 ```
 
-Bus root resolution: explicit `--root` > `PAO_ROOT` environment variable > current directory. Set `PAO_ROOT` once per machine (the central bus, outside any skills directory) and omit `--root`. The bus assumes a **single-host local filesystem** (atomic rename semantics are not guaranteed on NFS/SMB shares). Run commands with the current runtime's Python executable — do not assume `python` and `python3` resolve to the same interpreter. Diagnose version and root resolution with `python "<PAO_SKILL>/scripts/pao.py" info`.
+Bus root resolution: explicit `--root` > `PAO_ROOT` environment variable > a **`.pao/` folder under the current directory** (the default). The `.pao/` default keeps all PAO state (`mailbox/`, `var/`, `control/`) in one hidden folder instead of scattering it across the project workspace — add `.pao/` to `.gitignore`. For a central bus shared across projects, set `PAO_ROOT` once per machine (outside any skills directory) and omit `--root`. The bus assumes a **single-host local filesystem** (atomic rename semantics are not guaranteed on NFS/SMB shares). Run commands with the current runtime's Python executable — do not assume `python` and `python3` resolve to the same interpreter. Diagnose version and root resolution with `python "<PAO_SKILL>/scripts/pao.py" info`.
 
 Before the first orchestration action of a session, run the pre-flight check and stop on failure:
 

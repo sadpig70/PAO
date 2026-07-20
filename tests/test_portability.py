@@ -97,6 +97,39 @@ class RootResolutionTests(PaoTestCase):
             )
             self.assertEqual(via_flag["root_source"], "--root")
 
+    def test_default_bus_is_dot_pao_under_cwd(self):
+        # With no --root and no PAO_ROOT, the bus defaults to `.pao/` under the
+        # working directory — never scattering state across the workspace root.
+        with tempfile.TemporaryDirectory() as work_dir:
+            env = {k: v for k, v in os.environ.items() if k != "PAO_ROOT"}
+            env["PYTHONPATH"] = str(RUNTIME_HOME)
+            completed = subprocess.run(
+                [sys.executable, "-m", "pao_runtime.pao_cli", "info"],
+                cwd=work_dir, check=False, capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            payload = json.loads(completed.stdout)
+            self.assertEqual(payload["root_source"], "default_dot_pao")
+            self.assertEqual(payload["root"], str((Path(work_dir) / ".pao").resolve()))
+            # info alone must not create the bus; only mutating commands do.
+            self.assertFalse((Path(work_dir) / ".pao").exists())
+
+    def test_default_dot_pao_is_created_by_a_mutating_command(self):
+        with tempfile.TemporaryDirectory() as work_dir:
+            env = {k: v for k, v in os.environ.items() if k != "PAO_ROOT"}
+            env["PYTHONPATH"] = str(RUNTIME_HOME)
+            completed = subprocess.run(
+                [sys.executable, "-m", "pao_runtime.lwar_cli", "register",
+                 "--runtime-name", "T", "--model", "M", "--adapter-id", "t",
+                 "--vendor-family", "v", "--interface", "cli"],
+                cwd=work_dir, check=False, capture_output=True, text=True, env=env,
+            )
+            self.assertEqual(completed.returncode, 0, completed.stderr)
+            # State landed under .pao/, not at the workspace root.
+            self.assertTrue((Path(work_dir) / ".pao" / "control").is_dir())
+            self.assertFalse((Path(work_dir) / "control").exists())
+            self.assertFalse((Path(work_dir) / "mailbox").exists())
+
 
 class InstallerTests(PaoTestCase):
     # install-skills targets the frozen plugin's thin-contract layout, so these

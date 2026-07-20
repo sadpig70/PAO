@@ -18,13 +18,20 @@ TASK_ID_RE = re.compile(r"^task-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def resolve_root(value: str | None) -> Path:
-    """Resolve the bus root: explicit --root, then PAO_ROOT env, then cwd."""
+    """Resolve the bus root: explicit --root, then PAO_ROOT env, then a `.pao/`
+    folder under the current directory.
+
+    The `.pao/` default keeps all PAO state (mailbox/, var/, control/) namespaced
+    in one hidden folder instead of scattering it across the project workspace —
+    add `.pao/` to .gitignore. Set PAO_ROOT (or pass --root) to point at a
+    central bus outside the project instead.
+    """
     if value:
         return Path(value).resolve()
     env_value = os.environ.get("PAO_ROOT", "").strip()
     if env_value:
         return Path(env_value).resolve()
-    return Path.cwd()
+    return (Path.cwd() / ".pao").resolve()
 
 
 def utc_now() -> str:

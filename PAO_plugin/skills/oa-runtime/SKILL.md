@@ -11,7 +11,7 @@ argument-hint: "info | doctor | status | reconcile | send | collect | validate |
 
 ## 0. Bus Root Resolution and Invocation
 
-All commands resolve the bus root as: explicit `--root` > `PAO_ROOT` environment variable > current directory. In operation mode (any project workspace), set `PAO_ROOT` once and omit `--root`.
+All commands resolve the bus root as: explicit `--root` > `PAO_ROOT` environment variable > a **`.pao/` folder under the current directory** (the default). The `.pao/` default keeps all PAO state (`mailbox/`, `var/`, `control/`) in one hidden folder instead of scattering it across the project workspace — add `.pao/` to `.gitignore`. For a central bus shared across projects, set `PAO_ROOT` once and omit `--root`.
 
 Every example below invokes the CLI as `python "$PAO_HOME/scripts/oa.py"`, where `$PAO_HOME` is the PAO installation directory. Resolve it in this order:
 

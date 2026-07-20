@@ -23,7 +23,7 @@ This skill bundles the full PAO runtime (`scripts/`, `pao_runtime/`, `schemas/`)
 python "<PAO_SKILL>/scripts/lwar.py" register
 ```
 
-Bus root resolution: explicit `--root` > `PAO_ROOT` environment variable > current directory. In operation mode set `PAO_ROOT` to the central bus and omit `--root`; task execution still happens in each task's own `cwd`. The bus assumes a **single-host local filesystem** (atomic rename semantics are not guaranteed on NFS/SMB shares). Run commands with the current runtime's Python executable — do not assume `python` and `python3` resolve to the same interpreter.
+Bus root resolution: explicit `--root` > `PAO_ROOT` environment variable > a **`.pao/` folder under the current directory** (the default). The `.pao/` default keeps all PAO state (`mailbox/`, `var/`, `control/`) in one hidden folder instead of scattering it across the workspace — add `.pao/` to `.gitignore`. In operation mode set `PAO_ROOT` to a central bus and omit `--root`; task execution still happens in each task's own `cwd` (which is unaffected — only the bus moves under `.pao/`). The bus assumes a **single-host local filesystem** (atomic rename semantics are not guaranteed on NFS/SMB shares). Run commands with the current runtime's Python executable — do not assume `python` and `python3` resolve to the same interpreter.
 
 Before registering or starting ADP, run the pre-flight check and stop on failure:
 

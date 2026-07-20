@@ -17,8 +17,9 @@ python "<PAO_SKILL>/scripts/lwar.py" --help
 python "<PAO_SKILL>/scripts/adp_watch.py" --help
 ```
 
-Bus root resolution for every command: explicit `--root` > `PAO_ROOT` env >
-current directory. Prefer `--root <bus>` or set `PAO_ROOT`; do not rely on the
-cwd fallback. Run with the current runtime's Python (`python` and `python3` may
-differ). Diagnose version and root resolution with `pao.py info`, and run
-`pao.py doctor --role oa|lwar` as a pre-flight.
+Bus root resolution for every command: explicit `--root` > `PAO_ROOT` env > a
+`.pao/` folder under the current directory (the default — all PAO state stays in
+one hidden folder; add `.pao/` to `.gitignore`). Set `PAO_ROOT` (or pass `--root`)
+to use a central bus outside the project. Run with the current runtime's Python
+(`python` and `python3` may differ). Diagnose version and root resolution with
+`pao.py info`, and run `pao.py doctor --role oa|lwar` as a pre-flight.

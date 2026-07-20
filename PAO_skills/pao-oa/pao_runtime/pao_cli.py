@@ -52,7 +52,7 @@ def root_source(value: str | None) -> str:
         return "--root"
     if os.environ.get("PAO_ROOT", "").strip():
         return "PAO_ROOT"
-    return "cwd"
+    return "default_dot_pao"
 
 
 def command_info(args: argparse.Namespace) -> int:
