@@ -9,7 +9,7 @@ from pathlib import Path
 
 from pao_helpers import REPO
 
-SKILLS = REPO / "PAO_skills"
+SKILLS = REPO / ".agents" / "skills"
 GENERATED = {
     "pao-oa": ("pao_runtime", "scripts", "schemas"),
     "pao-lwar": ("pao_runtime", "scripts", "schemas"),
@@ -33,7 +33,7 @@ class SkillsInternalSyncTests(unittest.TestCase):
     """pao-lwar is the runtime master; pao-oa must be a byte mirror.
 
     Guards against drift between the two bundled runtime copies while the
-    skills are edited directly (sync via PAO_skills/sync_bundles.py).
+    skills are edited directly (sync via tools/sync_bundles.py).
     """
 
     MIRRORED = ("pao_runtime", "scripts", "schemas")

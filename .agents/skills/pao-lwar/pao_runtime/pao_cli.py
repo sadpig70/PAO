@@ -207,12 +207,12 @@ def command_install_skills(args: argparse.Namespace) -> int:
 
 
 def command_build_skills(args: argparse.Namespace) -> int:
-    # Retired: PAO_skills is the single canonical channel; pao-lwar is the
+    # Retired: .agents/skills is the single canonical channel; pao-lwar is the
     # runtime master. Building skills FROM anywhere else would clobber it.
     raise SystemExit(
-        "build-skills is retired: PAO_skills is the canonical source. "
+        "build-skills is retired: .agents/skills is the canonical source. "
         "To sync the master runtime into the pao-oa mirror, run "
-        "PAO_skills/sync_bundles.py from the repository root."
+        "tools/sync_bundles.py from the repository root."
     )
 
 
@@ -244,8 +244,8 @@ def build_parser() -> argparse.ArgumentParser:
 
     build = subparsers.add_parser(
         "build-skills",
-        help="retired (fails closed): PAO_skills is canonical since 0.5.0 — "
-        "use PAO_skills/sync_bundles.py instead",
+        help="retired (fails closed): .agents/skills is canonical since 0.5.0 — "
+        "use tools/sync_bundles.py instead",
     )
     build.add_argument("--target", default=None, help=argparse.SUPPRESS)
     build.set_defaults(handler=command_build_skills)

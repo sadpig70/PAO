@@ -9,7 +9,7 @@ from pathlib import Path
 
 
 REPO = Path(__file__).parents[1]
-RUNTIME_HOME = REPO / "PAO_skills" / "pao-lwar"
+RUNTIME_HOME = REPO / ".agents" / "skills" / "pao-lwar"
 
 
 class ADPIntegrationTests(unittest.TestCase):

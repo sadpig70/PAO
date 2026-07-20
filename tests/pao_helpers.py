@@ -7,9 +7,9 @@ from pathlib import Path
 
 
 REPO = Path(__file__).parents[1]
-# PAO_skills is the single canonical channel; its pao-lwar bundle is the
-# runtime master that every suite imports and drives.
-RUNTIME_HOME = REPO / "PAO_skills" / "pao-lwar"
+# The skills live under .agents/skills/; the pao-lwar bundle is the runtime
+# master that every suite imports and drives.
+RUNTIME_HOME = REPO / ".agents" / "skills" / "pao-lwar"
 
 if str(RUNTIME_HOME) not in sys.path:
     sys.path.insert(0, str(RUNTIME_HOME))

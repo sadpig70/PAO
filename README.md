@@ -38,12 +38,12 @@ OA (Orchestration Agent)
 - `depends_on` task gating for simple workflow DAGs
 - append-only audit log (`var/audit/events.jsonl`) and archive pruning (`prune`)
 - replaceable message plane: the `Transport` protocol with `FileTransport` as the local implementation
-- distributed as two self-contained skills (`PAO_skills/pao-oa`, `PAO_skills/pao-lwar`): each bundles the contract, wrapper scripts, and the full stdlib-only runtime; installs by folder copy alone (no pip, no plugin). Vendor-neutral — proven on Claude Code and Kimi Code CLI
+- distributed as two self-contained skills (`.agents/skills/pao-oa`, `.agents/skills/pao-lwar`): each bundles the contract, wrapper scripts, and the full stdlib-only runtime; installs by folder copy alone (no pip, no plugin). Vendor-neutral — proven on Claude Code and Kimi Code CLI
 
 ## Installation and Deployment Modes
 
-PAO is distributed as two **self-contained skills** — `PAO_skills/pao-oa` and
-`PAO_skills/pao-lwar`. Each bundles the OA/LWAR contract, the wrapper scripts,
+PAO is distributed as two **self-contained skills** — `.agents/skills/pao-oa` and
+`.agents/skills/pao-lwar`. Each bundles the OA/LWAR contract, the wrapper scripts,
 and the full stdlib-only runtime (plus message schemas for the LWAR). There is
 **one channel**; installation is a folder copy — no pip, no plugin.
 
@@ -54,7 +54,7 @@ Copy the two skill folders into whichever global skills path your runtime loads
 cross-runtime convention), or any location you prefer:
 
 ```bash
-cp -r PAO_skills/pao-oa PAO_skills/pao-lwar ~/.claude/skills/
+cp -r .agents/skills/pao-oa .agents/skills/pao-lwar ~/.claude/skills/
 ```
 
 Invocation is namespace-free: `/pao-oa`, `/pao-lwar`. In a shell, call the
@@ -73,8 +73,8 @@ its own `cwd` — any project workspace can host an OA or LWAR session.
 
 ### Canonical source
 
-`PAO_skills/pao-lwar` is the **runtime master**; edit `pao_runtime/`, `scripts/`,
-or `schemas/` only there, then run `python PAO_skills/sync_bundles.py` to mirror
+`.agents/skills/pao-lwar` is the **runtime master**; edit `pao_runtime/`, `scripts/`,
+or `schemas/` only there, then run `python tools/sync_bundles.py` to mirror
 into `pao-oa`. The test suite byte-verifies the two bundles match. `pao info`
 diagnoses version and root resolution; `pao doctor --role oa|lwar` is a
 pre-flight check.
@@ -84,7 +84,7 @@ pre-flight check.
 ### 1. Register an LWAR
 
 ```bash
-python PAO_skills/pao-lwar/scripts/lwar.py register \
+python .agents/skills/pao-lwar/scripts/lwar.py register \
   --runtime-name "Runtime" \
   --model "Model" \
   --adapter-id runtime \
@@ -98,14 +98,14 @@ To request a specific slot, use `register 1`. If omitted, OA assigns the lowest 
 ### 2. OA approval
 
 ```bash
-python PAO_skills/pao-oa/scripts/oa.py reconcile --root .
-python PAO_skills/pao-lwar/scripts/lwar.py response <request_id> --root .
+python .agents/skills/pao-oa/scripts/oa.py reconcile --root .
+python .agents/skills/pao-lwar/scripts/lwar.py response <request_id> --root .
 ```
 
 ### 3. Run an ADP watch slice
 
 ```bash
-python PAO_skills/pao-lwar/scripts/adp_watch.py \
+python .agents/skills/pao-lwar/scripts/adp_watch.py \
   --identity-file <identity_file> \
   --root . \
   --interval 5 \
@@ -127,7 +127,7 @@ If the watcher reports `idle_timeout` or `state_wait`, the same LWAR session sho
 
 ```bash
 python -m unittest discover -s tests -v
-python -m py_compile PAO_skills/pao-lwar/pao_runtime/*.py PAO_skills/pao-lwar/scripts/*.py tests/*.py
+python -m py_compile .agents/skills/pao-lwar/pao_runtime/*.py .agents/skills/pao-lwar/scripts/*.py tests/*.py
 ```
 
 The integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.

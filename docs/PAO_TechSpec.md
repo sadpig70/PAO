@@ -302,13 +302,13 @@ LWARs must not exceed the declared authority. OA must verify actual behavior thr
 ## 15. Deployment Modes
 
 The runtime is workspace-independent. Distribution is a single skills-only
-channel: `PAO_skills/pao-oa` and `PAO_skills/pao-lwar` are self-contained skills
+channel: `.agents/skills/pao-oa` and `.agents/skills/pao-lwar` are self-contained skills
 bundling the wrapper scripts and runtime (plus message schemas for the LWAR),
 installed by copying each folder into any global skills directory (`~/.claude/skills`,
 `~/.agents/skills`, or any path the runtime loads) — no installer required. Only
 the bus root is needed (`--root` > `PAO_ROOT` > the `.pao/` default under cwd), and
 commands resolve paths through the `<PAO_SKILL>` placeholder (the folder containing
-the loaded SKILL.md). `PAO_skills/pao-lwar` is the runtime master; `PAO_skills/sync_bundles.py`
+the loaded SKILL.md). `.agents/skills/pao-lwar` is the runtime master; `tools/sync_bundles.py`
 mirrors it into `pao-oa`, and the test suite byte-verifies the two bundles match.
 The channel is vendor-neutral — proven on Claude Code and Kimi Code CLI. (A Claude
 Code plugin channel existed through 0.6.2 and was retired to `_legacy/` in favor of

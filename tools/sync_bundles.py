@@ -1,9 +1,9 @@
 """Mirror the canonical runtime master (pao-lwar) into the pao-oa bundle.
 
-PAO_skills is the single canonical channel; pao-lwar is the runtime master.
+The skills live under `.agents/skills/`; `pao-lwar` is the runtime master.
 Edit pao_runtime/, scripts/, or schemas/ ONLY under pao-lwar, then run:
 
-    python PAO_skills/sync_bundles.py     # pao-lwar -> pao-oa
+    python tools/sync_bundles.py     # pao-lwar -> pao-oa
 
 tests/test_standalone_skills.py (SkillsInternalSyncTests) fails on any drift
 between the two bundles.
@@ -29,7 +29,7 @@ def replace(source: Path, destination: Path) -> None:
 
 
 def main() -> int:
-    skills = Path(__file__).resolve().parent
+    skills = Path(__file__).resolve().parents[1] / ".agents" / "skills"
     master = skills / "pao-lwar"
     mirror = skills / "pao-oa"
     if not (mirror / "SKILL.md").is_file():

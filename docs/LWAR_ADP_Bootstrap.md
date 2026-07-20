@@ -4,7 +4,7 @@
 
 This guide provides the bootstrap prompt and operating contract for an LWAR session that will register itself, adopt an approved identity, and remain in the ADP watch/execute loop.
 
-> Commands below use the in-repo form (`python PAO_skills/pao-lwar/scripts/...` with `--root .`). In operation mode, substitute the absolute path of the installed skill folder (the `<PAO_SKILL>` placeholder in SKILL.md §0) and rely on `PAO_ROOT` or the `.pao/` default instead of `--root .`.
+> Commands below use the in-repo form (`python .agents/skills/pao-lwar/scripts/...` with `--root .`). In operation mode, substitute the absolute path of the installed skill folder (the `<PAO_SKILL>` placeholder in SKILL.md §0) and rely on `PAO_ROOT` or the `.pao/` default instead of `--root .`.
 
 ## Bootstrap Summary
 
@@ -23,7 +23,7 @@ An LWAR session should:
 Automatic slot:
 
 ```bash
-python PAO_skills/pao-lwar/scripts/lwar.py register \
+python .agents/skills/pao-lwar/scripts/lwar.py register \
   --runtime-name "Codex" \
   --model "GPT 5.5 Sol" \
   --adapter-id codex \
@@ -35,7 +35,7 @@ python PAO_skills/pao-lwar/scripts/lwar.py register \
 Specific slot:
 
 ```bash
-python PAO_skills/pao-lwar/scripts/lwar.py register 1 \
+python .agents/skills/pao-lwar/scripts/lwar.py register 1 \
   --runtime-name "Codex" \
   --model "GPT 5.5 Sol" \
   --adapter-id codex \
@@ -49,7 +49,7 @@ python PAO_skills/pao-lwar/scripts/lwar.py register 1 \
 After OA reconciliation:
 
 ```bash
-python PAO_skills/pao-lwar/scripts/lwar.py response <request_id> --root .
+python .agents/skills/pao-lwar/scripts/lwar.py response <request_id> --root .
 ```
 
 Only when the event confirms identity adoption should the session continue. The returned identity file is the canonical identity handle for all later commands.
@@ -57,7 +57,7 @@ Only when the event confirms identity adoption should the session continue. The 
 ## Watch Loop
 
 ```bash
-python PAO_skills/pao-lwar/scripts/adp_watch.py \
+python .agents/skills/pao-lwar/scripts/adp_watch.py \
   --identity-file <identity_file> \
   --root . \
   --interval 5 \
@@ -75,7 +75,7 @@ Loop behavior:
 ## Result Completion
 
 ```bash
-python PAO_skills/pao-lwar/scripts/lwar.py complete \
+python .agents/skills/pao-lwar/scripts/lwar.py complete \
   --identity-file <identity_file> \
   --task-id <task_id> \
   --result-file mailbox/LWARn/work/<task_id>/result.json \
@@ -85,10 +85,10 @@ python PAO_skills/pao-lwar/scripts/lwar.py complete \
 ## Lifecycle Changes
 
 ```bash
-python PAO_skills/pao-lwar/scripts/lwar.py state draining --identity-file <identity_file> --root .
-python PAO_skills/pao-lwar/scripts/lwar.py state off --identity-file <identity_file> --root .
-python PAO_skills/pao-lwar/scripts/lwar.py state on --identity-file <identity_file> --root .
-python PAO_skills/pao-lwar/scripts/lwar.py state deregistered --identity-file <identity_file> --root .
+python .agents/skills/pao-lwar/scripts/lwar.py state draining --identity-file <identity_file> --root .
+python .agents/skills/pao-lwar/scripts/lwar.py state off --identity-file <identity_file> --root .
+python .agents/skills/pao-lwar/scripts/lwar.py state on --identity-file <identity_file> --root .
+python .agents/skills/pao-lwar/scripts/lwar.py state deregistered --identity-file <identity_file> --root .
 ```
 
 Use `deregistered` only after `off`.
