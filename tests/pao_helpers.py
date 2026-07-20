@@ -7,9 +7,8 @@ from pathlib import Path
 
 
 REPO = Path(__file__).parents[1]
-# PAO_skills is the canonical source; PAO_plugin is frozen (kept only for
-# frozen-artifact assertions in the packaging/installer tests).
-PLUGIN = REPO / "PAO_plugin"
+# PAO_skills is the single canonical channel; its pao-lwar bundle is the
+# runtime master that every suite imports and drives.
 RUNTIME_HOME = REPO / "PAO_skills" / "pao-lwar"
 
 if str(RUNTIME_HOME) not in sys.path:

@@ -1,4 +1,3 @@
-import importlib
 import json
 import os
 import subprocess
@@ -7,9 +6,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-import re
-
-from pao_helpers import PLUGIN, REPO, RUNTIME_HOME, PaoTestCase
+from pao_helpers import RUNTIME_HOME, PaoTestCase
 from pao_runtime import __version__
 
 
@@ -131,38 +128,6 @@ class RootResolutionTests(PaoTestCase):
             self.assertFalse((Path(work_dir) / "mailbox").exists())
 
 
-class InstallerTests(PaoTestCase):
-    # install-skills targets the frozen plugin's thin-contract layout, so these
-    # two tests deliberately run against the PLUGIN runtime, not RUNTIME_HOME.
-    def test_install_skills_copies_contracts(self):
-        with tempfile.TemporaryDirectory() as target_dir:
-            target = Path(target_dir) / "skills"
-            _, installed = self.run_module(
-                "pao_runtime.pao_cli",
-                "install-skills",
-                "--source", str(PLUGIN / "skills"),
-                "--target", str(target),
-                env={"PYTHONPATH": str(PLUGIN)},
-                expected=0,
-            )
-            self.assertEqual(installed["count"], 2)
-            self.assertTrue((target / "oa-runtime" / "SKILL.md").is_file())
-            self.assertTrue((target / "lwar-runtime" / "SKILL.md").is_file())
-            self.assertTrue((target / "lwar-runtime" / "schemas" / "task.schema.json").is_file())
-            self.assertTrue((target / "lwar-runtime" / "references" / "adp-contract.md").is_file())
-
-    def test_install_skills_detects_default_source(self):
-        with tempfile.TemporaryDirectory() as target_dir:
-            target = Path(target_dir) / "skills"
-            _, installed = self.run_module(
-                "pao_runtime.pao_cli", "install-skills", "--target", str(target),
-                env={"PYTHONPATH": str(PLUGIN)},
-                expected=0,
-            )
-            self.assertEqual(installed["count"], 2)
-            self.assertEqual(installed["source"], str((PLUGIN / "skills").resolve()))
-
-
 class CwdGuardTests(PaoTestCase):
     def test_send_rejects_missing_cwd(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -179,26 +144,6 @@ class CwdGuardTests(PaoTestCase):
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("cwd does not exist", completed.stderr)
-
-
-class PackagingTests(unittest.TestCase):
-    def test_console_entry_points_are_importable(self):
-        import tomllib
-
-        manifest = tomllib.loads((PLUGIN / "pyproject.toml").read_text(encoding="utf-8"))
-        scripts = manifest["project"]["scripts"]
-        self.assertEqual(
-            set(scripts), {"pao", "pao-oa", "pao-lwar", "pao-adp-watch"}
-        )
-        for name, spec in scripts.items():
-            module_name, function_name = spec.split(":")
-            module = importlib.import_module(module_name)
-            self.assertTrue(callable(getattr(module, function_name)), name)
-        # The plugin is frozen: its pyproject must match its own bundled
-        # runtime version, not the (possibly newer) canonical skills runtime.
-        plugin_init = (PLUGIN / "pao_runtime" / "__init__.py").read_text(encoding="utf-8")
-        plugin_version = re.search(r'^__version__ = "([^"]+)"$', plugin_init, flags=re.M).group(1)
-        self.assertEqual(manifest["project"]["version"], plugin_version)
 
 
 if __name__ == "__main__":

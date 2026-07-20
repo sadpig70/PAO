@@ -7,7 +7,7 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from pao_helpers import PLUGIN, REPO
+from pao_helpers import REPO
 
 SKILLS = REPO / "PAO_skills"
 GENERATED = {
@@ -27,39 +27,6 @@ def tree_bytes(root):
             continue
         files[path.relative_to(root).as_posix()] = path.read_bytes()
     return files
-
-
-class PluginMirrorTests(unittest.TestCase):
-    """PAO_skills/pao-lwar is the canonical runtime master; the plugin's
-    runtime layer is a generated mirror (sync_bundles.py --to-plugin)."""
-
-    MASTER = SKILLS / "pao-lwar"
-    PLUGIN_MIRROR = {
-        "pao_runtime": PLUGIN / "pao_runtime",
-        "scripts": PLUGIN / "scripts",
-        "schemas": PLUGIN / "skills" / "lwar-runtime" / "schemas",
-    }
-
-    def test_plugin_runtime_mirrors_the_master_bytes(self):
-        for name, mirrored in self.PLUGIN_MIRROR.items():
-            master = tree_bytes(self.MASTER / name)
-            mirror = tree_bytes(mirrored)
-            self.assertEqual(set(master), set(mirror), f"plugin/{name} file set")
-            for rel, data in master.items():
-                self.assertEqual(data, mirror[rel], f"plugin/{name}/{rel} bytes")
-
-    def test_build_skills_fails_closed(self):
-        # The old plugin->skills direction would clobber the canonical source.
-        completed = subprocess.run(
-            [sys.executable, "-m", "pao_runtime.pao_cli", "build-skills"],
-            cwd=REPO,
-            check=False,
-            capture_output=True,
-            text=True,
-            env={**os.environ, "PYTHONPATH": str(PLUGIN)},
-        )
-        self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("canonical source", completed.stderr)
 
 
 class SkillsInternalSyncTests(unittest.TestCase):

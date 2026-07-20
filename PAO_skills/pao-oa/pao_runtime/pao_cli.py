@@ -207,13 +207,12 @@ def command_install_skills(args: argparse.Namespace) -> int:
 
 
 def command_build_skills(args: argparse.Namespace) -> int:
-    # Direction inverted since 0.5.0: PAO_skills is the canonical source and
-    # the plugin is the generated mirror. Building skills FROM the plugin
-    # would clobber the canonical runtime, so this command fails closed.
+    # Retired: PAO_skills is the single canonical channel; pao-lwar is the
+    # runtime master. Building skills FROM anywhere else would clobber it.
     raise SystemExit(
-        "build-skills is retired: PAO_skills is the canonical source since 0.5.0. "
-        "To sync the canonical runtime into the pao-oa mirror and the plugin, run "
-        "PAO_skills/sync_bundles.py [--to-plugin] from the repository root."
+        "build-skills is retired: PAO_skills is the canonical source. "
+        "To sync the master runtime into the pao-oa mirror, run "
+        "PAO_skills/sync_bundles.py from the repository root."
     )
 
 
