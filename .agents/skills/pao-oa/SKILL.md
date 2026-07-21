@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "start | info | doctor | presence | status | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
 ---
 
-# PAO-OA Skill v1.4 (standalone)
+# PAO-OA Skill v1.7 (standalone)
 
 ## Definitions
 
@@ -62,7 +62,9 @@ At the start of an OA session, before any mutating action:
    observable to LWARs; reconcile approves pending identity/lifecycle requests.
 5. Read the other bundled references before their first actions. Enter the OA
    supervision cadence: presence → reconcile → status → collect/validate →
-   recover. Refresh presence at least every 30 seconds while supervising.
+   recover. Target a presence refresh every 25 seconds and never exceed the
+   30-second hard-latest contract while supervising. Track the next deadline
+   from the last successful refresh; do not sleep a fixed interval after work.
 6. If the user supplied a goal, Plan → send → Monitor → collect → validate →
    recover. If no goal was supplied, do not invent tasks: supervise existing bus
    work and remain available for a goal.
@@ -89,7 +91,15 @@ export PAO_OA_ID="oa-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
 $env:PAO_OA_ID = "oa-$([guid]::NewGuid().ToString('N'))"
 ```
 
-Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. It also publishes `var/oa/presence.json`; long commands refresh it every 30 seconds. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch either signal.
+Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch either signal.
+
+For the agent-level supervision loop, maintain `next_presence_deadline` from the
+monotonic time of each successful presence-publishing command. Set it to
+`last_success + 25s`; before any idle wait or non-mutating monitoring step,
+refresh immediately when due and otherwise cap the wait to the remaining time.
+Recompute the remaining budget after reconcile, status, collection, reasoning,
+and every other foreground step; never start a fresh interval from cycle
+completion. Never implement the cadence as `do work -> sleep 30s`.
 
 **On a writer-lease rejection**: first confirm no other live OA is actually running (check `status` and heartbeats, ask the operator). If the holder is a crashed prior session, either wait out the TTL (≤900s) or re-run once the lease has expired; if it is your own prior id, re-export the **same** `PAO_OA_ID`. Never hand-edit or delete `writer_lease.json` (or any bus file) to force a mutation — that defeats the guard and can corrupt concurrent state.
 
@@ -129,7 +139,10 @@ JSON Schemas for every bus message live in [schemas/](schemas/).
 - Do not inject tasks by directly driving a vendor CLI or TUI.
 - Do not expose provider names in external mailbox paths.
 - Do not publish new tasks to an `off` or `draining` LWAR.
-- Do not auto-route to a missing, corrupt, or stale heartbeat; explicit routing remains available for operator-directed recovery.
+- Treat `runtime_status=registered_not_started` and `runtime_status=starting` as
+  non-routable. Do not auto-route to a missing, corrupt, identity-mismatched,
+  startup, or stale heartbeat; explicit routing remains available for
+  operator-directed recovery.
 - Do not approve results from a stale identity as current-generation output.
 - Never approve success from `exit_code=0` alone — validate `completion_criteria`, evidence, artifacts, and actual test results. Only `status=succeeded` results are acceptance candidates; `complete` submission alone never implies success.
 - Do not rewrite failed validation as success.

@@ -2,12 +2,23 @@
 
 Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0). Read this document in full before the first watch slice.
 
+Fresh registration enters this loop through `lwar.py response REQUEST_ID
+--resident`. That command publishes a matching `starting` heartbeat and invokes
+the watcher in the same Python process; its first `watching`, `running`, or
+`idle` heartbeat completes startup without an agent scheduling boundary. Use
+the standalone resident command below only to resume an already trusted identity
+or after handling a delivered event.
+
 ## Core loop
 
 ```python
 def ADP(identity_file: Path) -> None:
     while True:
-        event = run('python "<PAO_SKILL>/scripts/adp_watch.py" --identity-file', identity_file)
+        event = run(
+            'python "<PAO_SKILL>/scripts/adp_watch.py" --identity-file',
+            identity_file,
+            '--resident',
+        )
         if event.event in {"idle_timeout", "state_wait"}:
             continue
         if event.event == "adp_error":
@@ -43,9 +54,8 @@ def ADP(identity_file: Path) -> None:
     #   - the loop is never terminated by elapsed time, iteration/slice count, or
     #     the agent's own judgment that it is "done" — only by control:shutdown,
     #     successful control:retire, a fatal adp_error, or context exhaustion
-    #   - watcher timeout does not terminate the LWAR session
-    #   - after timeout, the watcher is re-run without extra reasoning and without
-    #     returning control between slices
+    #   - idle slice boundaries are crossed inside the resident watcher, which
+    #     keeps polling and refreshing heartbeat without an agent turn
     #   - between task receipt and result submission, no second task is claimed
     #   - succeeded, failed, and blocked outcomes are all submitted as ResultContract payloads
 ```
@@ -57,8 +67,15 @@ python "<PAO_SKILL>/scripts/adp_watch.py" \
   --identity-file IDENTITY_FILE \
   --interval 5 \
   --timeout 90 \
-  --lease-seconds 180
+  --lease-seconds 180 \
+  --resident
 ```
+
+`--timeout` remains the internal slice/heartbeat checkpoint in resident mode;
+it no longer returns `idle_timeout`. The process returns only when it delivers a
+task/control event or encounters a fatal error. This keeps a live LWAR session
+observable even when the surrounding agent runtime is slow to schedule another
+turn.
 
 The adopted identity stores its canonical `bus_root`, so this identity-only
 invocation is safe even when the bus is not `<cwd>/.pao`. A supplied `--root` or
@@ -72,8 +89,8 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 
 | Code | `event` | Immediate action |
 |---:|---|---|
-| `0` | `task_received` | Execute the task, then submit the result |
-| `10` | `idle_timeout`, `state_wait` | Re-run the same watcher immediately |
+| `0` | `task_received` | Save `identity_file`, execute the task, then submit the result |
+| `10` | `idle_timeout`, `state_wait` | Compatibility single-slice mode only (`--resident` omitted); re-run immediately |
 | `20` | `control:ping` | Re-run the watcher |
 | `20` | `control:drain` | Finish current work, then request lifecycle `draining` (read [lifecycle.md](lifecycle.md) first) and **keep watching** until `shutdown` |
 | `20` | `control:cancel` | Stop the task if you already hold it and submit a `cancelled` result. A cancel for a task you have **not** claimed yet needs no memory: the watcher has already written a tombstone (see below) that auto-cancels the task deterministically whenever it is claimed |
@@ -82,11 +99,12 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 | `30` | `adp_error` | Report the error, then stop ADP (this is the fatal terminator) |
 | any other | any unknown event | **Fail closed on the SLICE, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the **next** watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP — only the four terminators in SKILL Rule 3 do that |
 
-Heartbeats are written by the watcher itself on every poll — the agent never emits or edits them.
+Every watcher event includes the absolute `identity_file`. Heartbeats are written
+by the watcher itself on every poll—the agent never emits or edits them.
 
 Error discipline. `adp_error` (exit 30) means the watcher itself hit a fatal condition (e.g. the identity no longer verifies) and exited: **stop this ADP run and report** — do not blindly re-invoke the same command. The only case for a bounded retry is a *transient* error you have reason to believe is self-clearing (e.g. a momentary file lock); if you choose to retry, cap it at **3 consecutive identical `adp_error`s**, then stop and escalate to OA. Never loop on an unresolved error.
 
-Cancel reaching an agent mid-execution. A `control:cancel` is delivered only through a watcher slice, but while you execute a claimed task you are not in the watcher. To notice a cancel for the task you currently hold, **interleave short watcher slices** (e.g. a low `--timeout`) into any long/blocking work: `claim_control` runs before `claim_task` inside the watcher, so a slice run while you already hold a claim surfaces the pending `control:cancel` without any risk of double-claiming (your `incoming` is empty). On seeing it, stop the task and submit a `cancelled` result. (A cancel for a task you have not yet claimed needs no such polling — the tombstone handles it, see below.)
+Cancel reaching an agent mid-execution. A `control:cancel` is delivered only through a watcher slice, but while you execute a claimed task you are not in the watcher. To notice a cancel for the task you currently hold, **interleave compatibility single-slice watcher calls without `--resident`** (use a low `--timeout`) into any long/blocking work: `claim_control` runs before `claim_task` inside the watcher, so a slice run while you already hold a claim surfaces the pending `control:cancel` without any risk of double-claiming (your `incoming` is empty). On seeing it, stop the task and submit a `cancelled` result. (A cancel for a task you have not yet claimed needs no such polling — the tombstone handles it, see below.)
 
 When the slot is expected to stay in a non-`on` state for a while (e.g. `draining` wind-down), pass `--state-wait-backoff-max SECONDS` so the in-slice poll interval doubles up to that cap instead of busy-polling at `--interval`; it resets automatically when the state returns to `on`.
 
@@ -114,7 +132,10 @@ When a task is claimed, the watcher extends the lease to cover the task's own ex
 
 ## Failure recovery
 
-- If the watcher exits, re-invoke the same command; the session survives watcher timeouts by design.
+- The resident watcher does not exit on idle; if it exits after delivering a task or non-terminal control, re-invoke the same resident command immediately.
+- A `starting` heartbeat older than 30 seconds means the atomic in-process
+  watcher entry failed or stalled; report `adp_error` evidence rather than
+  treating agent latency as an acceptable cause.
 - If the LWAR session dies, the heartbeat goes stale; OA `recover` returns expired-lease tasks to `incoming`.
 - If a result already exists for the same `task_id`, do not auto-approve a replayed execution; OA `collect` quarantines duplicate and stale-generation results.
 - Even when a numeric slot is reused, messages with mismatched `generation` or `instance_id` must be rejected.

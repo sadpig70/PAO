@@ -8,8 +8,10 @@ from .transport import Transport
 
 
 STALE_AFTER_S_DEFAULT = 120
+STARTUP_DEADLINE_S_DEFAULT = 30
 SCORE_RUNNING = 10
 SCORE_STALE = 1000
+ROUTABLE_HEARTBEAT_STATUSES = frozenset({"watching", "idle", "running"})
 
 
 def heartbeat_age_s(heartbeat: dict[str, Any] | None, now: datetime) -> float | None:
@@ -21,6 +23,64 @@ def heartbeat_age_s(heartbeat: dict[str, Any] | None, now: datetime) -> float | 
 def heartbeat_stale(heartbeat: dict[str, Any] | None, now: datetime, stale_after_s: float) -> bool:
     age = heartbeat_age_s(heartbeat, now)
     return age is None or age > stale_after_s
+
+
+def heartbeat_matches_slot(heartbeat: dict[str, Any] | None, slot: dict[str, Any]) -> bool:
+    """Return whether a heartbeat belongs to the registry's current identity."""
+    return bool(
+        heartbeat
+        and heartbeat.get("instance_id") == slot.get("instance_id")
+        and heartbeat.get("generation") == slot.get("generation")
+    )
+
+
+def classify_lwar_runtime(
+    slot: dict[str, Any],
+    heartbeat: dict[str, Any] | None,
+    now: datetime,
+    stale_after_s: float,
+    startup_deadline_s: float = STARTUP_DEADLINE_S_DEFAULT,
+) -> dict[str, Any]:
+    """Separate never-started identities from runtimes that became stale.
+
+    Identity adoption publishes a matching ``starting`` heartbeat. Until the
+    resident watcher replaces it with an operational status, the LWAR is not
+    routable and is governed by the shorter startup deadline.
+    """
+    identity_match = heartbeat_matches_slot(heartbeat, slot)
+    age = heartbeat_age_s(heartbeat, now) if identity_match else None
+    heartbeat_status = heartbeat.get("status") if identity_match and heartbeat else None
+
+    if not identity_match:
+        runtime_status = "registered_not_started"
+        registered_not_started = True
+        startup_deadline_missed = False
+        stale = True
+    elif heartbeat_status == "starting":
+        startup_deadline_missed = age is None or age > startup_deadline_s
+        runtime_status = "registered_not_started" if startup_deadline_missed else "starting"
+        registered_not_started = True
+        stale = startup_deadline_missed
+    else:
+        startup_deadline_missed = False
+        registered_not_started = False
+        stale = heartbeat_stale(heartbeat, now, stale_after_s)
+        if stale:
+            runtime_status = "stale"
+        elif heartbeat_status in ROUTABLE_HEARTBEAT_STATUSES:
+            runtime_status = "active"
+        else:
+            runtime_status = "inactive"
+
+    return {
+        "runtime_status": runtime_status,
+        "registered_not_started": registered_not_started,
+        "heartbeat_identity_match": identity_match,
+        "heartbeat_stale": stale,
+        "startup_age_s": age if registered_not_started else None,
+        "startup_deadline_s": startup_deadline_s,
+        "startup_deadline_missed": startup_deadline_missed,
+    }
 
 
 def load_score(transport: Transport, lwar_id: str, now: datetime, stale_after_s: float) -> int:
@@ -63,6 +123,10 @@ def auto_route(
         if not require <= capabilities:
             continue
         heartbeat = transport.read_heartbeat(lwar_id)
+        if not heartbeat_matches_slot(heartbeat, slot):
+            continue
+        if heartbeat.get("status") not in ROUTABLE_HEARTBEAT_STATUSES:
+            continue
         if heartbeat_stale(heartbeat, now, stale_after_s):
             continue
         score = load_score(transport, lwar_id, now, stale_after_s)

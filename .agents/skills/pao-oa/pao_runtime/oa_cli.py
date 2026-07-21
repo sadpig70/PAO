@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import os
 import threading
+import time
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -32,15 +33,27 @@ from .ledger import TaskLedger
 from .presence import OA_PRESENCE_REFRESH_S, publish_oa_presence
 from .registry import RegistryService
 from .routing import (
+    STARTUP_DEADLINE_S_DEFAULT,
     STALE_AFTER_S_DEFAULT,
     auto_route,
+    classify_lwar_runtime,
     heartbeat_age_s,
-    heartbeat_stale,
 )
 from .transport import FileTransport
 
 
 OA_WRITER_TTL_S = 900
+
+
+def _next_renewal_deadline(deadline: float, interval_s: float, now: float) -> float:
+    """Advance a fixed-rate deadline without accumulating command delay."""
+    if interval_s <= 0:
+        raise ValueError("renewal interval must be positive")
+    deadline += interval_s
+    if deadline <= now:
+        missed = int((now - deadline) // interval_s) + 1
+        deadline += missed * interval_s
+    return deadline
 
 
 def _require_int(value: Any, field: str) -> int:
@@ -104,7 +117,9 @@ def renewable_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S):
     renewal_errors: list[BaseException] = []
 
     def renew() -> None:
-        while not stop.wait(max(1.0, min(ttl_s / 3, OA_PRESENCE_REFRESH_S))):
+        interval_s = max(1.0, min(ttl_s / 3, OA_PRESENCE_REFRESH_S))
+        deadline = time.monotonic() + interval_s
+        while not stop.wait(max(0.0, deadline - time.monotonic())):
             try:
                 renewed = ensure_oa_writer(root, ttl_s)
                 publish_oa_presence(root, renewed["oa_id"])
@@ -112,6 +127,7 @@ def renewable_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S):
                 renewal_errors.append(error)
                 stop.set()
                 return
+            deadline = _next_renewal_deadline(deadline, interval_s, time.monotonic())
 
     thread = threading.Thread(target=renew, name="pao-oa-lease-renew", daemon=True)
     thread.start()
@@ -396,45 +412,59 @@ def command_collect(args: argparse.Namespace) -> int:
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
     collected = []
     quarantined = []
+    archived_reconciled = []
+
+    def identity_matches(slot: dict[str, Any] | None, result: dict[str, Any]) -> bool:
+        return bool(
+            slot is not None
+            and slot.get("instance_id") == result.get("instance_id")
+            and slot.get("generation") == result.get("generation")
+        )
 
     def inspect_result(
         lwar_id: str, slot: dict[str, Any] | None, result: dict[str, Any]
-    ) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]:
+    ) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None, bool]:
         try:
             validate_contract(result, "result.schema.json")
         except ContractError as error:
-            return None, f"invalid_result_schema:{error}", None
-        if (
-            slot is None
-            or slot.get("instance_id") != result.get("instance_id")
-            or slot.get("generation") != result.get("generation")
-        ):
-            return None, "stale_identity_result", None
+            return None, f"invalid_result_schema:{error}", None, False
         entry = ledger.get(result["task_id"], result.get("workflow_id"))
+        accepted_terminal_replay = bool(
+            entry is not None
+            and entry.get("status") == "completed"
+            and entry.get("lwar_id") == lwar_id
+            and entry.get("result") == result
+            and (entry.get("validation") or {}).get("semantic_verdict") == "accepted"
+        )
+        # A retired LWAR has no active registry slot. Permit only the exact,
+        # already-accepted terminal payload to finish its interrupted archive
+        # transition; all new, changed, or unaccepted payloads remain fenced.
+        if not identity_matches(slot, result) and not accepted_terminal_replay:
+            return entry, "stale_identity_result", None, False
         ledger_attempt = entry.get("attempt") if entry else None
         result_attempt = result.get("attempt")
         if ledger_attempt is not None and result_attempt is not None:
             try:
                 attempt_mismatch = int(result_attempt) != int(ledger_attempt)
             except (TypeError, ValueError):
-                return entry, "invalid_result_attempt", None
+                return entry, "invalid_result_attempt", None, False
             if attempt_mismatch:
-                return entry, "stale_attempt_result", None
+                return entry, "stale_attempt_result", None, False
         if entry is not None and entry.get("task_contract") is not None:
             claim_token = result.get("claim_token")
             if not claim_token:
-                return entry, "missing_claim_token", None
+                return entry, "missing_claim_token", None, False
             provenance = transport.provenance_task(
                 lwar_id, result["task_id"], claim_token, result.get("attempt")
             )
             if provenance is None:
-                return entry, "claim_token_mismatch", None
+                return entry, "claim_token_mismatch", None, False
             if int(provenance.get("attempt", 1)) != int(result.get("attempt", 1)):
-                return entry, "claim_attempt_mismatch", None
+                return entry, "claim_attempt_mismatch", None, False
         verification = artifact_verification(root, result.get("artifacts"))
         if not verification["verified"]:
-            return entry, "artifact_tampered", verification
-        return entry, None, verification
+            return entry, "artifact_tampered", verification, False
+        return entry, None, verification, accepted_terminal_replay
 
     def quarantine(
         lwar_id: str, path: Path, result: dict[str, Any] | None, reason: str,
@@ -458,7 +488,9 @@ def command_collect(args: argparse.Namespace) -> int:
             if result is None or "task_id" not in result:
                 quarantine(lwar_id, path, result, "invalid_result_json")
                 continue
-            entry, reason, verification = inspect_result(lwar_id, slot, result)
+            entry, reason, verification, accepted_terminal_replay = inspect_result(
+                lwar_id, slot, result
+            )
             if reason:
                 quarantine(lwar_id, path, result, reason, verification)
                 continue
@@ -467,18 +499,26 @@ def command_collect(args: argparse.Namespace) -> int:
                 and entry.get("status") == "completed"
                 and entry.get("result_file")
             ):
+                if entry.get("result") != result:
+                    quarantine(lwar_id, path, result, "duplicate_result")
+                    continue
                 if entry["result_file"] == str(path):
                     # Already collected this exact file on a prior run (a
                     # collect without --archive leaves the result in outgoing/).
                     # A later `--archive` pass should still move it out of
                     # outgoing/; a plain re-collect skips silently instead of
                     # re-verifying and re-growing the ledger history every poll.
-                    if args.archive:
+                    reconcile_retired = (
+                        accepted_terminal_replay and not identity_matches(slot, result)
+                    )
+                    if args.archive or reconcile_retired:
                         final_path = transport.archive_result(lwar_id, path)
                         ledger.update_result_file(result["task_id"], result["workflow_id"], str(final_path))
-                        collected.append(
-                            {"lwar_id": lwar_id, "result_file": str(final_path), "result": result}
-                        )
+                        item = {"lwar_id": lwar_id, "result_file": str(final_path), "result": result}
+                        if args.archive:
+                            collected.append(item)
+                        else:
+                            archived_reconciled.append(item)
                     continue
                 quarantine(lwar_id, path, result, "duplicate_result")
                 continue
@@ -497,7 +537,9 @@ def command_collect(args: argparse.Namespace) -> int:
             if result is None or "task_id" not in result:
                 quarantine(lwar_id, path, result, "invalid_archived_result_json")
                 continue
-            entry, reason, verification = inspect_result(lwar_id, slot, result)
+            entry, reason, verification, accepted_terminal_replay = inspect_result(
+                lwar_id, slot, result
+            )
             if reason:
                 quarantine(lwar_id, path, result, reason, verification)
                 continue
@@ -506,12 +548,29 @@ def command_collect(args: argparse.Namespace) -> int:
                 collected.append({"lwar_id": lwar_id, "result_file": str(path), "result": result})
             elif entry.get("result_file") != str(path):
                 ledger.update_result_file(result["task_id"], result["workflow_id"], str(path))
+                if accepted_terminal_replay and not identity_matches(slot, result):
+                    archived_reconciled.append(
+                        {"lwar_id": lwar_id, "result_file": str(path), "result": result}
+                    )
     audit.record(
         root,
         "oa",
-        {"event": "results_collected", "count": len(collected), "quarantined": len(quarantined)},
+        {
+            "event": "results_collected",
+            "count": len(collected),
+            "quarantined": len(quarantined),
+            "archived_reconciled": len(archived_reconciled),
+        },
     )
-    emit({"event": "results_collected", "count": len(collected), "results": collected, "quarantined": quarantined})
+    emit(
+        {
+            "event": "results_collected",
+            "count": len(collected),
+            "results": collected,
+            "quarantined": quarantined,
+            "archived_reconciled": archived_reconciled,
+        }
+    )
     return 0
 
 
@@ -795,6 +854,13 @@ def command_status(args: argparse.Namespace) -> int:
     for lwar_id, slot in sorted(registry["slots"].items()):
         heartbeat = transport.read_heartbeat(lwar_id)
         age = heartbeat_age_s(heartbeat, now)
+        runtime = classify_lwar_runtime(
+            slot,
+            heartbeat,
+            now,
+            args.stale_after,
+            args.startup_deadline,
+        )
         states.append(
             {
                 "lwar_id": lwar_id,
@@ -804,7 +870,10 @@ def command_status(args: argparse.Namespace) -> int:
                 "profile": slot["profile"],
                 "heartbeat": heartbeat,
                 "heartbeat_age_s": round(age, 3) if age is not None else None,
-                "heartbeat_stale": heartbeat_stale(heartbeat, now, args.stale_after),
+                **{
+                    key: round(value, 3) if key == "startup_age_s" and value is not None else value
+                    for key, value in runtime.items()
+                },
             }
         )
     emit({"event": "oa_status", "registry_version": registry["registry_version"], "lwars": states})
@@ -1098,6 +1167,7 @@ def build_parser() -> argparse.ArgumentParser:
     status = subparsers.add_parser("status")
     status.add_argument("--root", default=None)
     status.add_argument("--stale-after", type=float, default=STALE_AFTER_S_DEFAULT)
+    status.add_argument("--startup-deadline", type=float, default=STARTUP_DEADLINE_S_DEFAULT)
     status.set_defaults(handler=command_status)
 
     dead = subparsers.add_parser("dead")

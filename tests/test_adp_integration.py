@@ -3,6 +3,7 @@ import os
 import subprocess
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -129,6 +130,175 @@ class ADPIntegrationTests(unittest.TestCase):
             )
             self.assertEqual(event["event"], "idle_timeout")
             self.assertEqual(event["action"], "watch_again")
+
+    def test_resident_watcher_crosses_idle_slices_and_keeps_heartbeat_fresh(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, identity = self.register_lwar(root)
+            process_env = {
+                **os.environ,
+                "PYTHONPATH": str(RUNTIME_HOME),
+                "PAO_OA_ID": "oa-test",
+            }
+            process_env.pop("PAO_ROOT", None)
+            watcher = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "pao_runtime.adp_watch",
+                    "--identity-file",
+                    identity["identity_file"],
+                    "--interval",
+                    "0.01",
+                    "--timeout",
+                    "0.05",
+                    "--lease-seconds",
+                    "30",
+                    "--resident",
+                ],
+                cwd=REPO,
+                env=process_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            try:
+                # Cross several internal slice boundaries. The process must
+                # remain blocked in the watcher and heartbeat must stay fresh.
+                time.sleep(0.22)
+                self.assertIsNone(watcher.poll())
+                heartbeat = json.loads(
+                    (root / "mailbox" / "LWAR1" / "heartbeat.json").read_text(
+                        encoding="utf-8"
+                    )
+                )
+                last_seen = datetime.fromisoformat(
+                    heartbeat["last_seen"].replace("Z", "+00:00")
+                )
+                self.assertLess((datetime.now(timezone.utc) - last_seen).total_seconds(), 0.1)
+                self.assertEqual(heartbeat["status"], "watching")
+
+                task_draft = root / "resident-task.json"
+                task_draft.write_text(
+                    json.dumps({"goal": "resident watcher delivery", "cwd": str(root)}),
+                    encoding="utf-8",
+                )
+                _, published = self.run_module(
+                    "pao_runtime.oa_cli",
+                    "send",
+                    "--lwar-id",
+                    "LWAR1",
+                    "--task-file",
+                    str(task_draft),
+                    "--root",
+                    str(root),
+                    expected=0,
+                )
+                stdout, stderr = watcher.communicate(timeout=2)
+                self.assertEqual(watcher.returncode, 0, stderr + stdout)
+                event = json.loads(stdout)
+                self.assertEqual(event["event"], "task_received")
+                self.assertEqual(event["task_id"], published["task_id"])
+            finally:
+                if watcher.poll() is None:
+                    watcher.kill()
+                    watcher.communicate(timeout=2)
+
+    def test_response_resident_atomically_adopts_and_starts_watcher(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, requested = self.run_module(
+                "pao_runtime.lwar_cli",
+                "register",
+                "--runtime-name", "Test TUI",
+                "--model", "Test Model",
+                "--adapter-id", "test_tui",
+                "--vendor-family", "test_vendor",
+                "--interface", "tui",
+                "--capability", "coding",
+                "--root", str(root),
+                expected=0,
+            )
+            _, pending = self.run_module(
+                "pao_runtime.lwar_cli",
+                "response", requested["request_id"],
+                "--resident", "--interval", "0.01", "--timeout", "0.05",
+                "--lease-seconds", "30", "--root", str(root),
+                expected=2,
+            )
+            self.assertEqual(pending["event"], "registration_pending")
+            self.run_module("pao_runtime.oa_cli", "reconcile", "--root", str(root), expected=0)
+
+            process_env = {
+                **os.environ,
+                "PYTHONPATH": str(RUNTIME_HOME),
+                "PAO_OA_ID": "oa-test",
+            }
+            process_env.pop("PAO_ROOT", None)
+            watcher = subprocess.Popen(
+                [
+                    sys.executable,
+                    "-m",
+                    "pao_runtime.lwar_cli",
+                    "response",
+                    requested["request_id"],
+                    "--resident",
+                    "--interval",
+                    "0.01",
+                    "--timeout",
+                    "0.05",
+                    "--lease-seconds",
+                    "30",
+                    "--root",
+                    str(root),
+                ],
+                cwd=REPO,
+                env=process_env,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE,
+                text=True,
+            )
+            identity_path = root / "var" / "identities" / f"{requested['instance_id']}.json"
+            heartbeat_path = root / "mailbox" / "LWAR1" / "heartbeat.json"
+            try:
+                heartbeat = None
+                deadline = time.time() + 3
+                while time.time() < deadline:
+                    if identity_path.is_file() and heartbeat_path.is_file():
+                        candidate = json.loads(heartbeat_path.read_text(encoding="utf-8"))
+                        if candidate.get("status") == "watching":
+                            heartbeat = candidate
+                            break
+                    time.sleep(0.01)
+                self.assertIsNotNone(heartbeat)
+                self.assertIsNone(watcher.poll())
+
+                identity = json.loads(identity_path.read_text(encoding="utf-8"))
+                adopted_at = datetime.fromisoformat(identity["adopted_at"].replace("Z", "+00:00"))
+                first_operational = datetime.fromisoformat(
+                    heartbeat["last_seen"].replace("Z", "+00:00")
+                )
+                startup_s = (first_operational - adopted_at).total_seconds()
+                self.assertGreaterEqual(startup_s, 0)
+                self.assertLess(startup_s, 30)
+
+                self.run_module(
+                    "pao_runtime.oa_cli",
+                    "control", "--lwar-id", "LWAR1", "--command", "ping",
+                    "--root", str(root),
+                    expected=0,
+                )
+                stdout, stderr = watcher.communicate(timeout=3)
+                self.assertEqual(watcher.returncode, 20, stderr + stdout)
+                event = json.loads(stdout)
+                self.assertEqual(event["event"], "control")
+                self.assertEqual(event["command"], "ping")
+                self.assertEqual(Path(event["identity_file"]), identity_path)
+                self.assertNotIn("identity_adopted", stdout)
+            finally:
+                if watcher.poll() is None:
+                    watcher.kill()
+                    watcher.communicate(timeout=2)
 
     def test_identity_bound_root_drives_status_state_and_legacy_resume(self):
         with tempfile.TemporaryDirectory() as directory:

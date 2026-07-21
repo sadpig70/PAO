@@ -26,6 +26,10 @@ OA (Orchestration Agent)
 
 - `/lwar-register [number]` self-registration with optional automatic lowest-number allocation
 - stale-message isolation by `lwar_id + instance_id + generation`
+- atomic bounded LWAR startup: `response --resident` adopts identity and enters
+  the watcher in one Python process; OA distinguishes registered-not-started
+  from active-then-stale, and auto-routing waits for the first operational
+  heartbeat
 - lifecycle transitions: `on → draining → off → deregistered`
 - support for long-running runtimes, including TUIs
 - provider-neutral task and result contracts
@@ -113,7 +117,7 @@ python -m unittest discover -s tests -v
 python -m py_compile .agents/skills/pao-lwar/pao_runtime/*.py .agents/skills/pao-lwar/scripts/*.py tests/*.py
 ```
 
-The integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+The integration suite verifies registration, collision rejection, bounded startup classification, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
 
 ## License
 

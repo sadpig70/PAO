@@ -3,7 +3,7 @@
 Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0). Before registering,
 run the Session Bootstrap flow (SKILL.md §0.5). Resume only an identity whose
 absolute file path was explicitly handed to this session or produced by this
-session's own `identity_adopted` response. Never scan `var/identities/` or guess
+session's own watcher event. Never scan `var/identities/` or guess
 ownership; without a trusted handle, register a fresh identity.
 
 ## Registration
@@ -58,25 +58,36 @@ Remember the `request_id` returned on stdout.
 
 ## Identity adoption
 
-After OA approves the request (OA runs `reconcile`), fetch the response:
+Poll the response in atomic resident mode:
 
 ```bash
-python "<PAO_SKILL>/scripts/lwar.py" response REQUEST_ID
+python "<PAO_SKILL>/scripts/lwar.py" response REQUEST_ID --resident
 ```
 
-`response` exit codes and stdout events:
+Before approval, this returns normally. After approval, the same Python process
+adopts the identity and enters resident ADP without an agent turn in between:
 
 | Code | `event` | Meaning |
 |---:|---|---|
-| `0` | `identity_adopted` | The printed `identity_file` becomes the **only** valid identity input for later ADP calls and stores the canonical `bus_root` |
 | `2` | `registration_pending` | OA has not reconciled yet — poll again after a short wait |
 | `3` | `registration_rejected` | Fail closed: inspect `reason`, do not retry the same request |
-| any other | (bus/IO error, unreadable response) | Fail closed: do **not** adopt an identity or self-assign a slot; report the error and stop |
+| `0` | `task_received` | Approval was adopted in-process and ADP delivered work; use the event's `identity_file` |
+| `20` | `control` | Approval was adopted in-process and ADP delivered control; use the event's `identity_file` |
+| `30` | `adp_error` | Adoption or the in-process watcher failed; stop and report |
+| any other | unknown | Fail closed on the slice per adp-loop.md |
 
 - If the response is `pending`, do not treat the identity as approved; retry after OA reconciles.
 - While pending, re-run `oa-status` periodically so you know whether OA is live.
   `missing`, `stale`, or `invalid` means continue waiting; it is not rejection.
 - A pending response is a wait state, not completion. Continue light polling;
   do not return a summary merely because OA has not reconciled yet.
+- Once approval exists, `response --resident` does not emit an intermediate
+  `identity_adopted` event or return control to the agent. Its first operational
+  heartbeat follows adoption inside the same process. Every watcher event
+  includes the adopted absolute `identity_file` for later `complete`, lifecycle,
+  and resumed watcher calls.
+- Plain `response REQUEST_ID` remains a diagnostic compatibility command. It
+  emits `identity_adopted` and returns, so it MUST NOT be used for normal
+  cold-start because it reintroduces agent scheduling latency before ADP.
 - Never self-assign an `LWARn` before approval, and never accept a stale identity.
 - After adoption, identity-bearing commands self-locate the bus from the identity file. If `--root` or `PAO_ROOT` is also supplied, it must resolve to the same canonical root or the command fails closed.

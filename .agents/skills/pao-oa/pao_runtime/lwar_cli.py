@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from . import __version__, audit
+from .adp_watch import validate_watch_args, watch
 from .common import (
     atomic_write_json,
     emit,
@@ -122,6 +123,8 @@ def command_register(args: argparse.Namespace) -> int:
 
 def command_response(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    if args.resident:
+        validate_watch_args(args)
     if not REGISTRATION_REQUEST_ID_RE.fullmatch(args.request_id):
         raise SystemExit("request_id must match lwar-reg-<32 lowercase hex>")
     response_path = root / "control" / "registration" / "responses" / f"{args.request_id}.json"
@@ -150,14 +153,48 @@ def command_response(args: argparse.Namespace) -> int:
         "adopted_at": utc_now(),
     }
     identity_path = root / "var" / "identities" / f"{instance_id}.json"
+    existing_identity = safe_load_json(identity_path) if identity_path.is_file() else None
+    if (
+        existing_identity
+        and existing_identity.get("lwar_id") == identity["lwar_id"]
+        and existing_identity.get("instance_id") == identity["instance_id"]
+        and existing_identity.get("generation") == identity["generation"]
+        and existing_identity.get("adopted_at")
+    ):
+        identity["adopted_at"] = existing_identity["adopted_at"]
     validate_contract(identity, "identity.schema.json")
     atomic_write_json(identity_path, identity)
+    # Publish the adoption boundary before announcing success. OA can now
+    # distinguish a registered-but-not-started LWAR from a watcher that ran
+    # and later became stale. The resident watcher must replace this marker.
+    transport = FileTransport(root)
+    existing_heartbeat = transport.read_heartbeat(identity["lwar_id"])
+    if not (
+        existing_heartbeat
+        and existing_heartbeat.get("instance_id") == identity["instance_id"]
+        and existing_heartbeat.get("generation") == identity["generation"]
+    ):
+        transport.write_heartbeat(identity, "starting", None)
     pending_path.unlink(missing_ok=True)
     audit.record(
         root,
         "lwar",
         {"event": "identity_adopted", "lwar_id": identity["lwar_id"], "generation": identity["generation"]},
     )
+    if args.resident:
+        # Keep adoption and the first operational heartbeat in one Python
+        # process. No agent turn or second tool selection exists in this path.
+        return watch(
+            argparse.Namespace(
+                identity_file=str(identity_path),
+                root=str(root),
+                interval=args.interval,
+                timeout=args.timeout,
+                lease_seconds=args.lease_seconds,
+                resident=True,
+                state_wait_backoff_max=args.state_wait_backoff_max,
+            )
+        )
     emit({"event": "identity_adopted", "identity_file": str(identity_path), **identity})
     return 0
 
@@ -483,6 +520,15 @@ def build_parser() -> argparse.ArgumentParser:
     response = subparsers.add_parser("response")
     response.add_argument("request_id")
     response.add_argument("--root", default=None)
+    response.add_argument(
+        "--resident",
+        action="store_true",
+        help="adopt an approved identity and enter resident ADP in the same process",
+    )
+    response.add_argument("--interval", type=float, default=5.0)
+    response.add_argument("--timeout", type=float, default=90.0)
+    response.add_argument("--lease-seconds", type=int, default=180)
+    response.add_argument("--state-wait-backoff-max", type=float, default=None)
     response.set_defaults(handler=command_response)
 
     oa_status = subparsers.add_parser("oa-status")

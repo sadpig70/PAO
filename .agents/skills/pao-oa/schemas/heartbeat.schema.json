@@ -8,7 +8,7 @@
     "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
     "instance_id": {"type": "string"},
     "generation": {"type": "integer", "minimum": 1},
-    "status": {"enum": ["watching", "running", "idle", "on", "draining", "off", "control"]},
+    "status": {"enum": ["starting", "watching", "running", "idle", "on", "draining", "off", "control"]},
     "current_task_id": {"type": ["string", "null"]},
     "last_seen": {"type": "string", "format": "date-time"}
   }

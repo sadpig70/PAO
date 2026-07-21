@@ -9,7 +9,7 @@ from pathlib import Path
 from unittest import mock
 
 from pao_helpers import REPO, PaoTestCase
-from pao_runtime import audit
+from pao_runtime import audit, oa_cli
 from pao_runtime.common import load_json, local_filesystem_status, utc_now
 from pao_runtime.ledger import TaskLedger
 from pao_runtime.oa_cli import renewable_oa_writer
@@ -272,6 +272,40 @@ class OperationalRemediationTests(PaoTestCase):
                     time.sleep(1.2)
                     after = load_json(lease_path)["refreshed_at"]
                     self.assertNotEqual(before, after)
+
+    def test_writer_renewal_deadline_does_not_accumulate_refresh_latency(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            stamps = []
+            ensure_calls = 0
+            original_ensure = oa_cli.ensure_oa_writer
+
+            def delayed_ensure(target, ttl_s):
+                nonlocal ensure_calls
+                lease = original_ensure(target, ttl_s)
+                ensure_calls += 1
+                if ensure_calls > 1:
+                    time.sleep(0.4)
+                return lease
+
+            def record_presence(target, oa_id, ttl_s=90.0):
+                stamps.append(time.monotonic())
+                return {"oa_id": oa_id}
+
+            with mock.patch.dict(os.environ, {"PAO_OA_ID": "oa-deadline-test"}):
+                with mock.patch.object(oa_cli, "ensure_oa_writer", side_effect=delayed_ensure):
+                    with mock.patch.object(
+                        oa_cli, "publish_oa_presence", side_effect=record_presence
+                    ):
+                        with oa_cli.renewable_oa_writer(root, ttl_s=3):
+                            time.sleep(2.6)
+
+            self.assertGreaterEqual(len(stamps), 3)
+            self.assertLess(
+                stamps[2] - stamps[1],
+                1.2,
+                "renewal latency must not be added to the next wait interval",
+            )
 
     def test_f10_installer_discovers_and_copies_only_canonical_skills(self):
         with tempfile.TemporaryDirectory() as directory:

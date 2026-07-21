@@ -263,18 +263,29 @@ remains responsible for repetition and task execution.
 
 1. start the LWAR session, inspect OA presence, and self-register (OA may start later)
 2. receive OA approval for the `LWARn` identity
-3. run the ADP watcher
-4. poll the mailbox every five seconds
-5. if no message arrives, emit `idle_timeout` after 90 seconds and exit
-6. immediately run the watcher again
-7. when a task appears, atomically move it `incoming -> claimed` and emit it on stdout
-8. execute the task inside the same LWAR session
-9. atomically write the result to `outgoing`
-10. re-run the watcher
-11. stop on resumable `shutdown`, successful clean `retire`, fatal ADP error, or the documented context-exhaustion handoff
+3. run `response --resident`, which publishes the identity-bound `starting`
+   heartbeat and enters ADP in the same Python process
+4. replace `starting` with the first operational heartbeat without returning to
+   the agent; this closes the bounded startup phase independent of agent latency
+5. run the watcher in resident mode and poll the mailbox every five seconds
+6. cross each 90-second idle slice boundary inside the same watcher process,
+   continuously refreshing heartbeat without returning to the agent
+7. return to the agent only for a task, control event, or fatal watcher error
+8. when a task appears, atomically move it `incoming -> claimed` and emit it on stdout
+9. execute the task inside the same LWAR session
+10. atomically write the result to `outgoing`
+11. re-run the watcher
+12. stop on resumable `shutdown`, successful clean `retire`, fatal ADP error, or the documented context-exhaustion handoff
 
-OA liveness is carried by `var/oa/presence.json`, refreshed every 30 seconds
-with a 90-second expiry. The writer lease remains a 900-second single-writer
+OA status separates `registered_not_started`, `starting`, `active`, and `stale`.
+Only current-identity `watching`, `idle`, and `running` heartbeats are eligible
+for automatic routing; therefore an old-generation or startup marker cannot
+receive work accidentally.
+
+OA liveness is carried by `var/oa/presence.json`, refreshed on a monotonic
+fixed-rate 25-second target with a 30-second hard latest and a 90-second expiry.
+Deadlines advance from the prior deadline rather than command completion, so
+foreground work does not accumulate cadence drift. The writer lease remains a 900-second single-writer
 fence and must not be interpreted as process liveness. LWAR `oa-status`
 classifies the signal as `live`, `stale`, `missing`, or `invalid`.
 

@@ -39,7 +39,12 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --tas
 
 - The OA tool binds `instance_id`, `generation`, and `registry_version` from the registry into the task. OA must not edit mailbox files directly.
 - `send` (like every mutating OA command) refreshes the single-writer lease; see SKILL.md §1 — set `PAO_OA_ID` once per session.
-- `--auto` routes by capability and load: only `on` LWARs with a fresh, valid heartbeat and every `--require-capability` are eligible; ties break toward the lowest backlog, then the lowest LWAR number. No eligible LWAR is an explicit error — never fall back to an arbitrary or stale LWAR.
+- `--auto` routes by capability and load: only `on` LWARs whose current identity
+  has a fresh `watching`, `idle`, or `running` heartbeat and every
+  `--require-capability` are eligible. `starting`, registered-not-started,
+  identity-mismatched, and stale LWARs are excluded. Ties break toward the
+  lowest backlog, then the lowest LWAR number. No eligible LWAR is an explicit
+  error—never fall back to an arbitrary or unhealthy LWAR.
 - Every publication uses a durable outbox sequence: ledger `publishing` → atomic mailbox publish → ledger `published`. `recover` repairs an interruption between these steps from the stored TaskContract.
 - `workflow_id` and `task_id` are schema-validated safe identifiers; values that could escape `var/tasks/` are rejected.
 - The claim lease is aligned with the task budget: `effective_lease_s = max(lease_seconds, timeout_s + 30)`.

@@ -2,17 +2,17 @@
 name: pao-lwar
 description: "PAO LWAR (standalone, self-contained) — autonomously bootstrap, self-register, adopt an approved identity, and remain in the ADP watch/execute loop. Bundles the PAO runtime; installs by folder copy alone — no pip or plugin. Load on /pao-lwar or whenever a session is told to act as a PAO LWAR."
 user-invocable: true
-argument-hint: "start | info | doctor | oa-status | register [number] | response | adp | status | on | drain | off | retire | unregister"
+argument-hint: "start | info | doctor | oa-status | register [number] | response --resident | adp | status | on | drain | off | retire | unregister"
 ---
 
-# PAO-LWAR Skill v1.5 (standalone)
+# PAO-LWAR Skill v1.8 (standalone)
 
 ## Definitions
 
 - **PAO** — Persistent Agent Orchestration: local orchestration of long-running AI runtimes over a file bus.
 - **OA** — Orchestration Agent: approves registrations, publishes tasks, validates results.
 - **LWAR** — Long-running Worker Agent Runtime: the stable execution identity (`LWAR1`, `LWAR2`, ...) that hides provider and model names.
-- **ADP** — Agent Daemon Process: this already-running session repeatedly invokes a Python watcher, receives its mailbox, performs work, stores a result, and returns to the watcher. The watcher is a deterministic I/O tool; the repeating actor is this agent.
+- **ADP** — Agent Daemon Process: this already-running session invokes a resident Python watcher, receives its mailbox, performs work, stores a result, and returns to the watcher. The watcher deterministically owns idle polling and heartbeat continuity; this agent owns task execution and re-enters the watcher after every delivered event.
 - **TaskContract / ResultContract** — the task and result JSON payloads; schemas live in [schemas/](schemas/).
 
 ## 0. Self-Contained Invocation
@@ -63,7 +63,7 @@ Run this decision flow at the start of a session, before any other action:
    block registration: continue, then wait for OA reconciliation without
    self-assigning a slot. OA may start later.
 5. Did this session receive one explicit absolute identity_file through a
-   trusted handoff or its own earlier `identity_adopted` response?
+   trusted handoff or its own earlier watcher event?
    If so, run `lwar.py status --identity-file <that file>` and branch on its EXIT
    CODE (do not collapse them to present/absent — see lifecycle.md):
      exit 0 (slot present, tuple matches) → RESUME: skip registration. If state is
@@ -76,10 +76,16 @@ Run this decision flow at the start of a session, before any other action:
    No explicit identity handle → REGISTER fresh. Never scan `var/identities/`,
    guess ownership from filenames, or adopt another session's identity. Run
    `lwar.py register …` (register.md),
-     remember request_id, poll `lwar.py response REQUEST_ID` until `identity_adopted`,
-     keep the printed identity_file (absolute) for every later call.
-6. Enter the ADP loop (adp-loop.md) and keep it alive until a documented
-   terminator. Never return a completion summary while ADP should remain resident.
+     remember request_id, then poll `lwar.py response REQUEST_ID --resident`.
+     While approval is pending it returns `registration_pending`; retry after a
+     short wait. Once approved, that same Python process adopts the identity,
+     publishes `starting`, and enters resident ADP without returning to the
+     agent. The eventual task/control/error event carries the absolute
+     identity_file; keep it for every later call.
+6. A fresh registration is already inside ADP through `response --resident`.
+   A resumed trusted identity enters through `adp_watch.py --resident`. Keep
+   either path alive until a documented terminator. Never return a completion
+   summary while ADP should remain resident.
 ```
 
 Never re-register when a valid identity already exists — a needless re-registration
@@ -94,8 +100,8 @@ not a separate Python subcommand.
 
 1. Before registering, read [references/register.md](references/register.md). Before the **first** watch slice, read [references/adp-loop.md](references/adp-loop.md) **in full** — the exit-code contract, lease alignment, and stale-identity rejection are pre-loop knowledge, not lookup-on-event material. Read each reference in full once per session before its first use; re-read only if the file or the runtime version changes.
 2. Use only the approved `(lwar_id, instance_id, generation)` as your runtime identity. Never claim an `LWARn` identity before approval.
-3. **ADP is a Daemon — stay resident.** The **D** in ADP is **Daemon**: like an OS daemon, this loop runs continuously and **never exits on its own**. Do not assume an external process will relaunch the LWAR — keep ADP alive inside the current session. Elapsed time, many repeated `idle_timeout`/`state_wait` slices, a sense that "enough has happened", or the instinct to summarize and wrap up are **NOT** reasons to stop — a daemon that quits because it feels finished is a bug. Actively resist the natural tendency to conclude: immediately re-invoke the next watch slice, and **never return control or end your turn between slices**. The daemon terminates **only** on (a) `control:shutdown`, (b) successful `control:retire`, (c) a fatal `adp_error`, or (d) the context-exhaustion handoff ([references/lifecycle.md](references/lifecycle.md)). If you find yourself about to write a closing summary while none of these has occurred, do not — run the next slice instead.
-4. On `idle_timeout` and `state_wait`, generate no extra explanation. Re-run the same watcher immediately.
+3. **ADP is a Daemon — enter atomically and stay resident.** A fresh identity MUST use `lwar.py response REQUEST_ID --resident`; plain `response` followed by a separate watcher command is diagnostic compatibility only and is forbidden for normal startup. The atomic command writes `starting` and replaces it with the first operational heartbeat in the same Python process, removing agent scheduling from the 30-second startup contract. A resumed identity uses `adp_watch.py --resident`. The **D** in ADP is **Daemon**: like an OS daemon, this loop runs continuously and **never exits on its own**. It crosses idle slice boundaries and refreshes heartbeat inside one deterministic process, so agent turn latency cannot stop mailbox polling. Elapsed time, many internal idle periods, a sense that "enough has happened", or the instinct to summarize and wrap up are **NOT** reasons to stop. After any delivered task or control event, re-enter the resident watcher immediately. The daemon terminates **only** on (a) `control:shutdown`, (b) successful `control:retire`, (c) a fatal `adp_error`, or (d) the context-exhaustion handoff ([references/lifecycle.md](references/lifecycle.md)). If you find yourself about to write a closing summary while none of these has occurred, do not — run the resident watcher instead.
+4. `idle_timeout` and `state_wait` are compatibility events produced only when `--resident` is omitted for a deliberate single-slice operation. If one occurs, generate no extra explanation and re-run immediately. Never omit `--resident` from the normal idle ADP loop.
 5. On `task_received`, operate only within the TaskContract authority bounds and submit **exactly one terminal result** with `complete` before returning to the watcher, whenever this agent remains capable of submitting one. `complete` means terminal submission, **not success** — `failed`, `blocked`, `cancelled`, `timed_out`, and `protocol_error` outcomes are all submitted the same way. A crash or forced termination is recovered by lease expiry and OA `recover`; it is never inferred as success.
 6. ADP terminates on exactly the four conditions in Rule 3 and nothing else. For `retire`, stop only after `lwar.py retire` reports `lwar_retired`; `retire_waiting` means OA reconciliation is still required. For the handoff: only on an **objective** exhaustion signal (an explicit runtime context/token warning, not elapsed time or a feeling of being done), execute the procedure in [references/lifecycle.md](references/lifecycle.md). Never just stop.
 7. Do not modify registry, incoming, or lease files by hand; act only through the bundled CLI.
@@ -105,7 +111,9 @@ not a separate Python subcommand.
 11. Preserve the exact `task.claim_token` emitted by `task_received` and pass it to `complete`. A recovered/requeued claim has a new token; an old worker must fail closed instead of submitting into the new attempt.
 12. Treat the adopted identity's `bus_root` as immutable authority. Never redirect that identity to another bus; a root conflict is a fatal configuration error.
 
-Heartbeats are emitted by the watcher automatically; the agent never writes them.
+The atomic adoption command emits the one-time `starting` heartbeat and then
+emits operational heartbeats from its in-process watcher; the agent never
+writes them.
 
 ## 2. Action Routing
 
@@ -127,8 +135,8 @@ Before performing an action for the first time this session, read its reference 
 | `doctor` | `pao.py doctor --role lwar` |
 | `oa-status` | `lwar.py oa-status` before adoption; add `--identity-file <abs>` after adoption |
 | `register [number]` | `lwar.py register [number] --runtime-name … --model … --adapter-id … --vendor-family … --interface …` (register.md lists the required flags) |
-| `response` | `lwar.py response REQUEST_ID` |
-| `adp` | `adp_watch.py --identity-file <abs>` |
+| `response` | `lwar.py response REQUEST_ID --resident` (normal startup; pending returns, approval enters ADP in-process) |
+| `adp` | `adp_watch.py --identity-file <abs> --resident` |
 | `status` (this LWAR's own) | `lwar.py status --identity-file <abs>` (refreshes your identity state; use this, not `oa.py status`, for self-inspection) |
 | `on` / `drain` / `off` | `lwar.py state on` / `lwar.py state draining` / `lwar.py state off` |
 | `retire` | repeatedly run `lwar.py retire --identity-file <abs>` until `lwar_retired`; OA reconciles each requested transition |

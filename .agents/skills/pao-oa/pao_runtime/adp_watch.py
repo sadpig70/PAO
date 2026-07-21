@@ -32,6 +32,16 @@ def load_verified_identity(root: Path, identity_path: Path) -> tuple[dict[str, A
     return identity, slot
 
 
+def validate_watch_args(args: argparse.Namespace) -> None:
+    """Validate watcher timing arguments for both CLI entry paths."""
+    if args.interval <= 0 or args.timeout <= 0 or args.lease_seconds <= 0:
+        raise SystemExit("interval, timeout, and lease-seconds must be positive")
+    if args.interval > args.timeout:
+        raise SystemExit("--interval must be <= --timeout (a longer interval would overshoot the slice)")
+    if args.state_wait_backoff_max is not None and args.state_wait_backoff_max < args.interval:
+        raise SystemExit("--state-wait-backoff-max must be >= --interval")
+
+
 def watch(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     identity_path = Path(args.identity_file).resolve()
@@ -50,20 +60,46 @@ def watch(args: argparse.Namespace) -> int:
         # only safe error channel.
         if audit_root is not None:
             audit.record(audit_root, "adp", {"event": "adp_error", "error": str(error)})
-        emit({"event": "adp_error", "error": str(error), "action": "stop"})
+        emit(
+            {
+                "event": "adp_error",
+                "error": str(error),
+                "identity_file": str(identity_path),
+                "action": "stop",
+            }
+        )
         return 30
     deadline = time.monotonic() + args.timeout
     wait_s = args.interval
     consecutive_errors = 0
 
-    while time.monotonic() < deadline:
+    while True:
+        now = time.monotonic()
+        if now >= deadline:
+            if args.resident:
+                # Cross the idle slice boundary inside the same watcher
+                # process. The next poll re-verifies identity/registry state
+                # and refreshes heartbeat, so agent scheduling latency cannot
+                # turn a live resident session into a stale LWAR.
+                deadline = now + args.timeout
+                wait_s = args.interval
+                consecutive_errors = 0
+                continue
+            break
         try:
             identity, slot = load_verified_identity(root, identity_path)
         except Exception as error:
             # Identity no longer verifies (revoked, generation bump, gone) — a
             # genuinely fatal condition. Stop and report.
             audit.record(root, "adp", {"event": "adp_error", "error": str(error)})
-            emit({"event": "adp_error", "error": str(error), "action": "stop"})
+            emit(
+                {
+                    "event": "adp_error",
+                    "error": str(error),
+                    "identity_file": str(identity_path),
+                    "action": "stop",
+                }
+            )
             return 30
 
         try:
@@ -87,7 +123,14 @@ def watch(args: argparse.Namespace) -> int:
                         "control_id": control.get("control_id"),
                     },
                 )
-                emit({"event": "control", "command": control.get("command"), "message": control})
+                emit(
+                    {
+                        "event": "control",
+                        "command": control.get("command"),
+                        "identity_file": str(identity_path),
+                        "message": control,
+                    }
+                )
                 try:
                     transport.ack_control(identity, control)
                 except (OSError, TimeoutError) as error:
@@ -119,6 +162,7 @@ def watch(args: argparse.Namespace) -> int:
                             "event": "task_received",
                             "lwar_id": identity["lwar_id"],
                             "task_id": task["task_id"],
+                            "identity_file": str(identity_path),
                             "message_file": str(claimed_path),
                             "task": task,
                             "action": "execute_then_submit_result",
@@ -143,13 +187,20 @@ def watch(args: argparse.Namespace) -> int:
                 {"event": "adp_error", "error": str(error), "consecutive": consecutive_errors},
             )
             if consecutive_errors >= 3:
-                emit({"event": "adp_error", "error": str(error), "action": "stop"})
+                emit(
+                    {
+                        "event": "adp_error",
+                        "error": str(error),
+                        "identity_file": str(identity_path),
+                        "action": "stop",
+                    }
+                )
                 return 30
             wait_s = args.interval
 
         remaining = deadline - time.monotonic()
         if remaining <= 0:
-            break
+            continue
         # Clamp the sleep to the slice deadline so a large --interval can never
         # overshoot the intended --timeout and starve control messages.
         time.sleep(min(wait_s if slot["state"] != "on" else args.interval, remaining))
@@ -159,6 +210,7 @@ def watch(args: argparse.Namespace) -> int:
         {
             "event": "idle_timeout" if slot["state"] == "on" else "state_wait",
             "lwar_id": identity["lwar_id"],
+            "identity_file": str(identity_path),
             "state": slot["state"],
             "waited_s": args.timeout,
             "action": "watch_again",
@@ -168,12 +220,20 @@ def watch(args: argparse.Namespace) -> int:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="adp-watch", description="One ADP mailbox watch slice")
+    parser = argparse.ArgumentParser(prog="adp-watch", description="ADP mailbox watcher")
     parser.add_argument("--identity-file", required=True)
     parser.add_argument("--root", default=None)
     parser.add_argument("--interval", type=float, default=5.0)
     parser.add_argument("--timeout", type=float, default=90.0)
     parser.add_argument("--lease-seconds", type=int, default=180)
+    parser.add_argument(
+        "--resident",
+        action="store_true",
+        help=(
+            "stay inside the watcher across idle slice boundaries; return only "
+            "for a task, control event, or fatal error"
+        ),
+    )
     parser.add_argument(
         "--state-wait-backoff-max",
         type=float,
@@ -185,12 +245,7 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
-    if args.interval <= 0 or args.timeout <= 0 or args.lease_seconds <= 0:
-        raise SystemExit("interval, timeout, and lease-seconds must be positive")
-    if args.interval > args.timeout:
-        raise SystemExit("--interval must be <= --timeout (a longer interval would overshoot the slice)")
-    if args.state_wait_backoff_max is not None and args.state_wait_backoff_max < args.interval:
-        raise SystemExit("--state-wait-backoff-max must be >= --interval")
+    validate_watch_args(args)
     return watch(args)
 
 

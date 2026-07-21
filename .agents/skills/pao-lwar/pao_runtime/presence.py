@@ -9,7 +9,10 @@ from .contracts import ContractError, validate_contract
 
 
 OA_PRESENCE_TTL_S = 90.0
-OA_PRESENCE_REFRESH_S = 30.0
+# Renew ahead of the public 30-second contract so scheduler/tool overhead does
+# not push an otherwise healthy OA beyond its hard-latest cadence.
+OA_PRESENCE_REFRESH_S = 25.0
+OA_PRESENCE_MAX_REFRESH_S = 30.0
 
 
 def publish_oa_presence(root: Path, oa_id: str, ttl_s: float = OA_PRESENCE_TTL_S) -> dict[str, Any]:

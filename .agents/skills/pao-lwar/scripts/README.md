@@ -6,11 +6,18 @@ bundle it lives in (`Path(__file__).resolve().parents[1]`), so no pip install,
 no `PYTHONPATH`, and no plugin are required — the wrapper works from any working
 directory.
 
-Runtime v0.7.2 validates bundled JSON contracts at all trust boundaries. OA
+Runtime v0.7.7 validates bundled JSON contracts at all trust boundaries. OA
 mutations require `PAO_OA_ID` and refresh a short-TTL presence signal independently
-of the writer lease. LWARs inspect it with `oa-status`; clean one-time workers
+of the writer lease on a fixed-rate 25-second target with a 30-second hard-latest
+contract. LWARs inspect it with `oa-status`; clean one-time workers
 return their slots through `retire`. `complete` requires the exact claim token
-emitted in `task_received`.
+emitted in `task_received`. The default LWAR ADP uses a resident watcher that
+crosses idle slice boundaries internally, keeping heartbeat fresh without
+depending on agent turn scheduling.
+`lwar.py response REQUEST_ID --resident` performs identity adoption and resident
+watcher entry in one Python process. Adoption publishes a `starting` heartbeat;
+OA distinguishes that bounded startup phase from a watcher that was active and
+later became stale.
 
 Invoke them by the **absolute path of this bundle**. Follow the invocation
 contract in the bundle's `SKILL.md` §0: replace `<PAO_SKILL>` with the absolute
