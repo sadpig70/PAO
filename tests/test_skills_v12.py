@@ -76,7 +76,11 @@ class ClaimGuardTests(PaoTestCase):
                 "instance_id": adopted["instance_id"],
                 "generation": adopted["generation"],
                 "goal": "hand-planted escape",
+                "instructions": "attempt forbidden bus access",
+                "completion_criteria": ["must be rejected"],
                 "cwd": str(root / "var"),
+                "timeout_s": 60,
+                "permissions": {"read": [str(root)], "write": [str(root)], "network": False},
                 "created_at": "2026-01-01T00:00:00Z",
             }
             incoming = root / "mailbox" / "LWAR1" / "incoming" / "005_task-planted-1.json"
@@ -226,9 +230,9 @@ class ValidationDecisionTests(PaoTestCase):
             task_id = event["task_id"]
             self.complete_task(root, adopted, task_id)
             # The register helper's reconcile already holds the lease as
-            # oa-default, so the writer in this scenario is the default holder.
+            # oa-test, so the writer in this scenario is the test holder.
             self.run_module("pao_runtime.oa_cli", "collect", "--root", str(root), expected=0)
-            # Plain validate from a DIFFERENT id while oa-default holds the lease.
+            # Plain validate from a DIFFERENT id while oa-test holds the lease.
             _, report = self.run_module(
                 "pao_runtime.oa_cli", "validate", "--task-id", task_id, "--root", str(root),
                 env={"PAO_OA_ID": "oa-observer"}, expected=0,
@@ -240,13 +244,15 @@ class ValidationDecisionTests(PaoTestCase):
             # --record from the writer id persists the decision.
             _, recorded = self.run_module(
                 "pao_runtime.oa_cli", "validate", "--task-id", task_id, "--record",
+                "--decision", "accepted", "--reason", "criteria satisfied",
                 "--root", str(root), expected=0,
             )
             self.assertTrue(recorded["recorded"])
             decision = ledger_entry(root, task_id)["validation"]
             self.assertEqual(decision["schema_version"], "pao.validation-decision.v1")
             self.assertEqual(decision["verdict"], "ready_for_oa_review")
-            self.assertEqual(decision["decided_by"], "oa-default")
+            self.assertEqual(decision["semantic_verdict"], "accepted")
+            self.assertEqual(decision["decided_by"], "oa-test")
             # --record from the observer id is rejected by the writer lease.
             completed, _ = self.run_module(
                 "pao_runtime.oa_cli", "validate", "--task-id", task_id, "--record",

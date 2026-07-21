@@ -253,11 +253,15 @@ Raw stdout or logs may be preserved elsewhere, but OA consumes a normalized resu
 
 ## 12. ADP-Based LWAR Execution
 
-Each LWAR is started once by the user in an interactive or TUI session. The runtime loads the `lwar-runtime` skill and keeps ADP alive inside that session. The Python watcher handles deterministic message I/O; the LWAR agent remains responsible for repetition and task execution.
+Each LWAR is started once by the user in an interactive or TUI session. The
+runtime is told only to read `pao-lwar/SKILL.md` and act as a PAO LWAR; that
+skill autonomously bootstraps registration and keeps ADP alive inside the
+session. The Python watcher handles deterministic message I/O; the LWAR agent
+remains responsible for repetition and task execution.
 
 ### Basic loop
 
-1. start the LWAR session and self-register
+1. start the LWAR session, inspect OA presence, and self-register (OA may start later)
 2. receive OA approval for the `LWARn` identity
 3. run the ADP watcher
 4. poll the mailbox every five seconds
@@ -267,7 +271,18 @@ Each LWAR is started once by the user in an interactive or TUI session. The runt
 8. execute the task inside the same LWAR session
 9. atomically write the result to `outgoing`
 10. re-run the watcher
-11. stop only on `shutdown`
+11. stop on resumable `shutdown`, successful clean `retire`, fatal ADP error, or the documented context-exhaustion handoff
+
+OA liveness is carried by `var/oa/presence.json`, refreshed every 30 seconds
+with a 90-second expiry. The writer lease remains a 900-second single-writer
+fence and must not be interpreted as process liveness. LWAR `oa-status`
+classifies the signal as `live`, `stale`, `missing`, or `invalid`.
+
+Clean retirement is an idempotent lifecycle pipeline:
+`control:retire -> on -> draining -> off -> deregistered`. Each transition is
+approved by OA `reconcile`; ADP stops only after `lwar_retired` confirms the
+registry slot is absent. `shutdown` remains a distinct resumable stop that keeps
+the slot allocated.
 
 ## 13. Failure Recovery
 
@@ -314,10 +329,15 @@ The channel is vendor-neutral — proven on Claude Code and Kimi Code CLI. (A Cl
 Code plugin channel existed through 0.6.2 and was retired to `_legacy/` in favor of
 this single portable channel.)
 
-- the bus root resolves as explicit `--root` > `PAO_ROOT` environment variable > current directory
-- `python "$PAO_HOME/scripts/*.py"` works from any directory with no installation; the wrappers bootstrap their own import path
-- optional: `pip install -e PAO_HOME` provides the `pao`, `pao-oa`, `pao-lwar`, and `pao-adp-watch` console scripts
-- optional: `pao install-skills` performs the same skill copy as doing it by hand (default target `~/.agents/skills`)
+The two role skills are also the sole operating prompts. A runtime given only
+"read `pao-oa/SKILL.md` and act as OA" or "read `pao-lwar/SKILL.md` and act as
+LWAR" must execute the role bootstrap without a second repository guide or
+vendor-specific prompt. Repository documentation may point to those skills but
+must not duplicate their mutable command contracts.
+
+- the bus root resolves as explicit `--root` > `PAO_ROOT` environment variable > `<cwd>/.pao`
+- each copied skill's `scripts/*.py` wrappers work from any directory and bootstrap their bundled runtime without installation
+- the bundled `pao.py install-skills` command is only a convenience for copying the same two canonical skill folders; it does not create another distribution channel
 - the bus stays central (one registry, one `LWARn` identity space per machine) while each task executes in its own `cwd`, enabling cross-project orchestration
 - `send` rejects tasks whose `cwd` does not exist, failing fast on stale workspace paths
 

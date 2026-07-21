@@ -13,14 +13,17 @@ RUNTIME_HOME = REPO / ".agents" / "skills" / "pao-lwar"
 
 
 class ADPIntegrationTests(unittest.TestCase):
-    def run_module(self, module, *args, expected=None):
+    def run_module(self, module, *args, expected=None, env=None):
+        process_env = {**os.environ, "PYTHONPATH": str(RUNTIME_HOME), "PAO_OA_ID": "oa-test"}
+        process_env.pop("PAO_ROOT", None)
+        process_env.update(env or {})
         completed = subprocess.run(
             [sys.executable, "-m", module, *args],
             cwd=REPO,
             check=False,
             capture_output=True,
             text=True,
-            env={**os.environ, "PYTHONPATH": str(RUNTIME_HOME)},
+            env=process_env,
         )
         if expected is not None:
             self.assertEqual(completed.returncode, expected, completed.stderr + completed.stdout)
@@ -55,6 +58,7 @@ class ADPIntegrationTests(unittest.TestCase):
             root = Path(directory)
             _, identity = self.register_lwar(root)
             self.assertEqual(identity["lwar_id"], "LWAR1")
+            self.assertEqual(Path(identity["bus_root"]).resolve(), root.resolve())
 
             task_draft = root / "task.json"
             task_draft.write_text(
@@ -79,7 +83,6 @@ class ADPIntegrationTests(unittest.TestCase):
                 "pao_runtime.adp_watch",
                 "--identity-file", identity["identity_file"],
                 "--interval", "0.01", "--timeout", "0.5", "--lease-seconds", "30",
-                "--root", str(root),
                 expected=0,
             )
             self.assertEqual(event["event"], "task_received")
@@ -103,8 +106,9 @@ class ADPIntegrationTests(unittest.TestCase):
             self.run_module(
                 "pao_runtime.lwar_cli",
                 "complete", "--identity-file", identity["identity_file"],
-                "--task-id", published["task_id"], "--result-file", str(result_draft),
-                "--root", str(root),
+                "--task-id", published["task_id"],
+                "--claim-token", event["task"]["claim_token"],
+                "--result-file", str(result_draft),
                 expected=0,
             )
             _, collected = self.run_module(
@@ -121,11 +125,67 @@ class ADPIntegrationTests(unittest.TestCase):
                 "pao_runtime.adp_watch",
                 "--identity-file", identity["identity_file"],
                 "--interval", "0.01", "--timeout", "0.05",
-                "--root", str(root),
                 expected=10,
             )
             self.assertEqual(event["event"], "idle_timeout")
             self.assertEqual(event["action"], "watch_again")
+
+    def test_identity_bound_root_drives_status_state_and_legacy_resume(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, identity = self.register_lwar(root)
+            _, status = self.run_module(
+                "pao_runtime.lwar_cli",
+                "status", "--identity-file", identity["identity_file"],
+                expected=0,
+            )
+            self.assertEqual(status["event"], "lwar_status")
+            self.run_module(
+                "pao_runtime.lwar_cli",
+                "state", "draining", "--identity-file", identity["identity_file"],
+                expected=0,
+            )
+            self.assertEqual(
+                len(list((root / "control" / "lifecycle" / "requests").glob("*.json"))),
+                1,
+            )
+
+            # A pre-0.7.1 identity has no bus_root. Its canonical location under
+            # <root>/var/identities is sufficient for cold-resume discovery.
+            identity_path = Path(identity["identity_file"])
+            legacy = json.loads(identity_path.read_text(encoding="utf-8"))
+            legacy.pop("bus_root")
+            identity_path.write_text(json.dumps(legacy), encoding="utf-8")
+            _, legacy_status = self.run_module(
+                "pao_runtime.lwar_cli",
+                "status", "--identity-file", str(identity_path),
+                expected=0,
+            )
+            self.assertEqual(legacy_status["lwar_id"], "LWAR1")
+
+    def test_identity_root_conflict_fails_closed(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory) / "canonical"
+            other = Path(directory) / "other-bus"
+            _, identity = self.register_lwar(root)
+            completed, _ = self.run_module(
+                "pao_runtime.lwar_cli",
+                "status", "--identity-file", identity["identity_file"],
+                "--root", str(other),
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("conflicts with identity bus_root", completed.stderr)
+            self.assertFalse(other.exists())
+
+            completed, _ = self.run_module(
+                "pao_runtime.adp_watch",
+                "--identity-file", identity["identity_file"],
+                "--interval", "0.01", "--timeout", "0.05",
+                env={"PAO_ROOT": str(other)},
+            )
+            self.assertEqual(completed.returncode, 30)
+            self.assertIn("conflicts with identity bus_root", completed.stdout)
+            self.assertFalse(other.exists())
 
     def test_explicit_alias_collision_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

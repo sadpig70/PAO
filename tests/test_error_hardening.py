@@ -1,4 +1,4 @@
-"""Error / exception / edge-case hardening (from .pgf/REVIEW-PAOErrorHandling.md).
+"""Error, exception, and edge-case hardening regression tests.
 
 Each test pins one hardening fix so a regression to the old crash-or-wedge
 behavior fails loudly.
@@ -251,7 +251,7 @@ class WatcherGuardTests(PaoTestCase):
 
 
 class RoutingHardeningTests(PaoTestCase):
-    def test_corrupt_heartbeat_does_not_break_auto_routing(self):
+    def test_corrupt_heartbeat_is_excluded_from_auto_routing(self):
         with TemporaryDirectory() as directory:
             root = Path(directory)
             self.register_lwar(root, capabilities=("coding",))
@@ -260,11 +260,12 @@ class RoutingHardeningTests(PaoTestCase):
             heartbeat.write_text("not json", encoding="utf-8")
             draft = root / "auto.json"
             draft.write_text(json.dumps({"goal": "route me"}), encoding="utf-8")
-            _, published = self.run_module(
+            completed, _ = self.run_module(
                 "pao_runtime.oa_cli", "send", "--auto", "--require-capability", "coding",
-                "--task-file", str(draft), "--root", str(root), expected=0,
+                "--task-file", str(draft), "--root", str(root),
             )
-            self.assertEqual(published["lwar_id"], "LWAR1")
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("no eligible LWAR", completed.stderr)
 
 
 if __name__ == "__main__":

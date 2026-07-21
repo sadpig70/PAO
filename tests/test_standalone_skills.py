@@ -61,6 +61,51 @@ class StandaloneContractTests(unittest.TestCase):
             present = {path.name for path in (SKILLS / skill / "references").glob("*.md")}
             self.assertEqual(expected, present, skill)
 
+    def test_default_role_invocation_is_autonomous(self):
+        oa = (SKILLS / "pao-oa" / "SKILL.md").read_text(encoding="utf-8")
+        lwar = (SKILLS / "pao-lwar" / "SKILL.md").read_text(encoding="utf-8")
+        register = (SKILLS / "pao-lwar" / "references" / "register.md").read_text(
+            encoding="utf-8"
+        )
+
+        for skill, text in (("pao-oa", oa), ("pao-lwar", lwar)):
+            self.assertIn("### Default autonomous invocation", text, skill)
+            self.assertRegex(text, r"executable `start`\s+command", skill)
+            self.assertIn("ask for a second bootstrap prompt", text, skill)
+            self.assertIn("complete operating contract", text, skill)
+            self.assertIn("not a separate Python subcommand", text, skill)
+
+        self.assertIn("mint a unique `oa-<random>` id yourself", oa)
+        self.assertIn("If no goal was supplied, do not invent tasks", oa)
+        self.assertIn("Presence expires after 90 seconds", oa)
+        self.assertIn("writer lease is fencing, **not liveness**", oa)
+        self.assertIn("No explicit identity handle → REGISTER fresh", lwar)
+        self.assertIn("Never scan `var/identities/`", lwar)
+        self.assertIn("lwar.py oa-status", lwar)
+        self.assertIn("successful `control:retire`", lwar)
+        self.assertIn("Registration remains order-independent", register)
+        self.assertIn("`Unreported Runtime`", register)
+        self.assertIn("`Unreported Model`", register)
+        self.assertIn("`unreported_vendor`", register)
+        self.assertRegex(register, r"`unreported_\*`\s+sentinels")
+
+    def test_skill_markdown_links_resolve_inside_each_bundle(self):
+        for skill in GENERATED:
+            root = (SKILLS / skill).resolve()
+            text = (root / "SKILL.md").read_text(encoding="utf-8")
+            for target in re.findall(r"\[[^\]]+\]\(([^)]+)\)", text):
+                if target.startswith("#"):
+                    continue
+                resolved = (root / target).resolve()
+                self.assertTrue(resolved.is_relative_to(root), f"{skill}: {target}")
+                self.assertTrue(resolved.exists(), f"{skill}: {target}")
+
+    def test_repository_bootstrap_note_does_not_duplicate_runtime_commands(self):
+        text = (REPO / "docs" / "LWAR_ADP_Bootstrap.md").read_text(encoding="utf-8")
+        self.assertNotIn("scripts/", text)
+        self.assertNotIn("lwar-runtime", text)
+        self.assertIn("sole operating prompts", text)
+
     def test_authored_files_stay_plugin_and_home_agnostic(self):
         for skill in GENERATED:
             files = [SKILLS / skill / "SKILL.md"]

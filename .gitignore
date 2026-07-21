@@ -5,3 +5,9 @@ mailbox/
 var/
 _workspace/
 _legacy/
+.pao/
+.codex/
+.pgf/
+.pgxf/
+CLAUDE.md
+AGENTS.md

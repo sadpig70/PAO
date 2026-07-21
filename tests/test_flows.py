@@ -130,6 +130,11 @@ class WorkflowDagTests(PaoTestCase):
             self.run_module(
                 "pao_runtime.oa_cli", "collect", "--lwar-id", "LWAR1", "--root", str(root), expected=0
             )
+            self.run_module(
+                "pao_runtime.oa_cli", "validate", "--task-id", first["task_id"],
+                "--record", "--decision", "accepted", "--reason", "criteria satisfied",
+                "--root", str(root), expected=0,
+            )
             self.send_task(
                 root,
                 "LWAR1",

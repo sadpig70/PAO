@@ -1,28 +1,43 @@
 # LWAR Reference — Registration and Identity Adoption
 
 Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0). Before registering,
-run the Session Bootstrap flow (SKILL.md §0.5): if you already hold a valid
-identity file whose slot is still in the registry, **resume it instead of
-registering again**.
+run the Session Bootstrap flow (SKILL.md §0.5). Resume only an identity whose
+absolute file path was explicitly handed to this session or produced by this
+session's own `identity_adopted` response. Never scan `var/identities/` or guess
+ownership; without a trusted handle, register a fresh identity.
 
 ## Registration
+
+First inspect OA presence without requiring an identity:
+
+```bash
+python "<PAO_SKILL>/scripts/lwar.py" oa-status
+```
+
+Exit `0` means `live`; exit `2` means `missing` or `stale`; exit `3` means an
+invalid presence record. Only `live` proves an OA is currently supervising.
+Registration remains order-independent: when OA is unavailable, publish the
+registration request normally and wait. Never infer approval or self-assign a
+slot.
 
 Use your OWN actual runtime metadata — the example below is illustrative
 (Codex/OpenAI), not a template to copy. Fill each flag with the truth about the
 session you are:
 
-| Flag | What to put | If unknown |
+| Flag | What to put | Autonomous fallback if unavailable |
 |---|---|---|
-| `--runtime-name` | the harness/CLI you run in (e.g. "Claude Code", "Kimi Code CLI") | ask the user |
-| `--model` | your model name (e.g. "Claude Fable 5") | ask the user |
-| `--adapter-id` | a lowercase slug for the runtime (e.g. `claude_code`) | derive from runtime-name |
-| `--vendor-family` | lowercase vendor slug (e.g. `anthropic`, `moonshot`) | ask the user |
+| `--runtime-name` | the harness/CLI you run in (e.g. "Claude Code", "Kimi Code CLI") | `Unreported Runtime` |
+| `--model` | your model name (e.g. "Claude Fable 5") | `Unreported Model` |
+| `--adapter-id` | a lowercase slug for the runtime (e.g. `claude_code`) | derive from runtime-name; otherwise `unreported_runtime` |
+| `--vendor-family` | lowercase vendor slug (e.g. `anthropic`, `moonshot`) | `unreported_vendor` |
 | `--interface` | one of `cli` \| `tui` \| `agent` \| `build` | `agent` for an agentic CLI |
 | `--capability` | repeatable; what you can do (e.g. `coding`, `testing`) | omit if none apply |
 
-Do not invent values you cannot attest — a wrong model/vendor label corrupts the
-registry and any downstream (harness × model) matching. If you genuinely do not
-know a required value, stop and ask the user rather than guessing.
+Introspect metadata already exposed by the runtime/session first. Do not invent a
+specific identity you cannot attest: the explicit `Unreported ...` / `unreported_*`
+sentinels are truthful epistemic states and preserve autonomous bootstrap. Omit
+capabilities you cannot verify. Never claim a guessed vendor, model, capability,
+or adapter because that corrupts downstream routing.
 
 ```bash
 python "<PAO_SKILL>/scripts/lwar.py" register \
@@ -53,10 +68,15 @@ python "<PAO_SKILL>/scripts/lwar.py" response REQUEST_ID
 
 | Code | `event` | Meaning |
 |---:|---|---|
-| `0` | `identity_adopted` | The printed `identity_file` becomes the **only** valid identity input for later ADP calls |
+| `0` | `identity_adopted` | The printed `identity_file` becomes the **only** valid identity input for later ADP calls and stores the canonical `bus_root` |
 | `2` | `registration_pending` | OA has not reconciled yet — poll again after a short wait |
 | `3` | `registration_rejected` | Fail closed: inspect `reason`, do not retry the same request |
 | any other | (bus/IO error, unreadable response) | Fail closed: do **not** adopt an identity or self-assign a slot; report the error and stop |
 
 - If the response is `pending`, do not treat the identity as approved; retry after OA reconciles.
+- While pending, re-run `oa-status` periodically so you know whether OA is live.
+  `missing`, `stale`, or `invalid` means continue waiting; it is not rejection.
+- A pending response is a wait state, not completion. Continue light polling;
+  do not return a summary merely because OA has not reconciled yet.
 - Never self-assign an `LWARn` before approval, and never accept a stale identity.
+- After adoption, identity-bearing commands self-locate the bus from the identity file. If `--root` or `PAO_ROOT` is also supplied, it must resolve to the same canonical root or the command fails closed.

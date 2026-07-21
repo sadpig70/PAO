@@ -15,15 +15,17 @@ from .common import (
     new_id,
     parse_utc,
     quarantine_corrupt,
+    require_local_filesystem,
     safe_load_json,
     utc_now,
     validate_task_id,
 )
+from .contracts import validate_contract
 
 
 LEASE_MARGIN_S = 30
 
-CONTROL_COMMANDS = {"shutdown", "ping", "cancel", "drain"}
+CONTROL_COMMANDS = {"shutdown", "retire", "ping", "cancel", "drain"}
 
 PRUNE_CATEGORIES = (
     "archive/tasks",
@@ -31,6 +33,7 @@ PRUNE_CATEGORIES = (
     "archive/control",
     "failed",
     "quarantine",
+    "cancelled",
 )
 
 
@@ -61,6 +64,8 @@ class Transport(Protocol):
 
     def claim_control(self, identity: dict[str, Any]) -> dict[str, Any] | None: ...
 
+    def ack_control(self, identity: dict[str, Any], message: dict[str, Any]) -> Path | None: ...
+
     def write_cancel_tombstone(
         self, identity: dict[str, Any], task_id: str, control_id: str | None
     ) -> Path | None: ...
@@ -89,6 +94,10 @@ class Transport(Protocol):
         self, lwar_id: str, now: datetime, grace_s: float = ...
     ) -> list[tuple[Path, dict[str, Any]]]: ...
 
+    def expired_incoming(
+        self, lwar_id: str, now: datetime, delivery_timeout_s: float
+    ) -> list[tuple[Path, dict[str, Any]]]: ...
+
     def result_exists(self, lwar_id: str, task_id: str) -> bool: ...
 
     def claimed_task_for_lease(
@@ -103,7 +112,11 @@ class Transport(Protocol):
 
     def list_dead(self, lwar_id: str) -> list[tuple[Path, dict[str, Any]]]: ...
 
-    def requeue_dead(self, lwar_id: str, task_id: str) -> dict[str, Any] | None: ...
+    def find_dead_task(self, lwar_id: str, task_id: str) -> tuple[Path, dict[str, Any]] | None: ...
+
+    def requeue_dead(
+        self, lwar_id: str, task_id: str, attempt: int | None = None
+    ) -> dict[str, Any] | None: ...
 
     def incoming_backlog(self, lwar_id: str) -> int: ...
 
@@ -117,6 +130,7 @@ class FileTransport:
 
     def __init__(self, root: Path):
         self.root = root.resolve()
+        require_local_filesystem(self.root)
 
     def _mailbox(self, lwar_id: str) -> Path:
         return mailbox_root(self.root, lwar_id)
@@ -124,6 +138,7 @@ class FileTransport:
     # -- publication -------------------------------------------------------
 
     def publish_task(self, task: dict[str, Any]) -> Path:
+        validate_contract(task, "task.schema.json")
         mailbox = ensure_mailbox(self.root, task["lwar_id"])
         priority = int(task.get("priority", 5))
         target = mailbox / "incoming" / f"{priority:03d}_{task['task_id']}.json"
@@ -139,6 +154,7 @@ class FileTransport:
         return False
 
     def publish_control(self, message: dict[str, Any]) -> Path:
+        validate_contract(message, "control.schema.json")
         mailbox = ensure_mailbox(self.root, message["lwar_id"])
         target = mailbox / "control" / f"{message['control_id']}.json"
         atomic_write_json(target, message)
@@ -148,12 +164,18 @@ class FileTransport:
 
     def claim_control(self, identity: dict[str, Any]) -> dict[str, Any] | None:
         mailbox = ensure_mailbox(self.root, identity["lwar_id"])
-        for source in sorted((mailbox / "control").glob("*.json")):
-            destination = mailbox / "control_claimed" / source.name
-            if not claim_file(source, destination):
-                continue
+        candidates = list(sorted((mailbox / "control_claimed").glob("*.json")))
+        candidates += list(sorted((mailbox / "control").glob("*.json")))
+        for source in candidates:
+            if source.parent.name == "control":
+                destination = mailbox / "control_claimed" / source.name
+                if not claim_file(source, destination):
+                    continue
+            else:
+                destination = source
             try:
                 message = load_json(destination)
+                validate_contract(message, "control.schema.json")
             except Exception as error:
                 failed = mailbox / "failed" / f"control_{destination.name}"
                 destination.replace(failed)
@@ -182,11 +204,20 @@ class FileTransport:
                     {"reason": "invalid_control_command", "failed_at": utc_now()},
                 )
                 continue
-            archive = mailbox / "archive" / "control" / destination.name
-            archive.parent.mkdir(parents=True, exist_ok=True)
-            destination.replace(archive)
             return message
         return None
+
+    def ack_control(self, identity: dict[str, Any], message: dict[str, Any]) -> Path | None:
+        mailbox = ensure_mailbox(self.root, identity["lwar_id"])
+        name = f"{message['control_id']}.json"
+        source = mailbox / "control_claimed" / name
+        archive = mailbox / "archive" / "control" / name
+        archive.parent.mkdir(parents=True, exist_ok=True)
+        if source.is_file():
+            if not claim_file(source, archive):
+                return None
+            return archive
+        return archive if archive.is_file() else None
 
     # -- cancel tombstones -------------------------------------------------
 
@@ -277,6 +308,7 @@ class FileTransport:
         for source in sorted((mailbox / "incoming").glob("*.json")):
             try:
                 task = load_json(source)
+                validate_contract(task, "task.schema.json")
             except Exception as error:
                 self._reject_task(mailbox, source, f"invalid_json:{error}")
                 continue
@@ -313,9 +345,7 @@ class FileTransport:
                 continue
             lease_s = effective_lease_seconds(task, default_lease_s)
             expires_at = datetime.now(timezone.utc) + timedelta(seconds=lease_s)
-            atomic_write_json(
-                mailbox / "leases" / f"{task['task_id']}.json",
-                {
+            lease = {
                     "schema_version": "pao.lease.v1",
                     "task_id": task["task_id"],
                     "lwar_id": identity["lwar_id"],
@@ -326,8 +356,9 @@ class FileTransport:
                     "effective_lease_s": lease_s,
                     "leased_at": utc_now(),
                     "expires_at": expires_at.isoformat().replace("+00:00", "Z"),
-                },
-            )
+                }
+            validate_contract(lease, "lease.schema.json")
+            atomic_write_json(mailbox / "leases" / f"{task['task_id']}.json", lease)
             return task, destination
         return None
 
@@ -335,9 +366,7 @@ class FileTransport:
 
     def write_heartbeat(self, identity: dict[str, Any], status: str, task_id: str | None) -> None:
         mailbox = ensure_mailbox(self.root, identity["lwar_id"])
-        atomic_write_json(
-            mailbox / "heartbeat.json",
-            {
+        heartbeat = {
                 "schema_version": "pao.heartbeat.v1",
                 "lwar_id": identity["lwar_id"],
                 "instance_id": identity["instance_id"],
@@ -345,14 +374,22 @@ class FileTransport:
                 "status": status,
                 "current_task_id": task_id,
                 "last_seen": utc_now(),
-            },
-        )
+            }
+        validate_contract(heartbeat, "heartbeat.schema.json")
+        atomic_write_json(mailbox / "heartbeat.json", heartbeat)
 
     def read_heartbeat(self, lwar_id: str) -> dict[str, Any] | None:
         path = self._mailbox(lwar_id) / "heartbeat.json"
         # A corrupt heartbeat reads as absent (None) rather than crashing every
         # caller — routing and status treat None as "stale/unknown" already.
-        return safe_load_json(path) if path.is_file() else None
+        heartbeat = safe_load_json(path) if path.is_file() else None
+        if heartbeat is None:
+            return None
+        try:
+            validate_contract(heartbeat, "heartbeat.schema.json")
+        except ValueError:
+            return None
+        return heartbeat
 
     # -- results -----------------------------------------------------------
 
@@ -368,6 +405,7 @@ class FileTransport:
         raise FileNotFoundError(f"claimed task not found: {task_id}")
 
     def submit_result(self, identity: dict[str, Any], claimed_path: Path, result: dict[str, Any]) -> Path:
+        validate_contract(result, "result.schema.json")
         mailbox = self._mailbox(identity["lwar_id"])
         outgoing = mailbox / "outgoing" / f"{result['task_id']}.result.json"
         # Publish the result FIRST. Once `outgoing` exists, result_exists() is
@@ -394,6 +432,36 @@ class FileTransport:
 
     def outgoing_results(self, lwar_id: str) -> list[Path]:
         return sorted((self._mailbox(lwar_id) / "outgoing").glob("*.json"))
+
+    def archived_results(self, lwar_id: str) -> list[Path]:
+        return sorted((self._mailbox(lwar_id) / "archive" / "results").glob("*.json"))
+
+    def archived_task(self, lwar_id: str, task_id: str) -> dict[str, Any] | None:
+        for path in sorted((self._mailbox(lwar_id) / "archive" / "tasks").glob("*.json")):
+            task = safe_load_json(path)
+            if task is None:
+                quarantine_corrupt(path, "corrupt_archived_task")
+                continue
+            if task.get("task_id") == task_id:
+                return task
+        return None
+
+    def provenance_task(
+        self, lwar_id: str, task_id: str, claim_token: str | None, attempt: int | None
+    ) -> dict[str, Any] | None:
+        mailbox = self._mailbox(lwar_id)
+        candidates = list(sorted((mailbox / "claimed").glob("*.json")))
+        candidates += list(sorted((mailbox / "archive" / "tasks").glob("*.json")))
+        for path in candidates:
+            task = safe_load_json(path)
+            if task is None or task.get("task_id") != task_id:
+                continue
+            if task.get("claim_token") != claim_token:
+                continue
+            if int(task.get("attempt", 1)) != int(attempt or 1):
+                continue
+            return task
+        return None
 
     def archive_result(self, lwar_id: str, path: Path) -> Path:
         destination = self._mailbox(lwar_id) / "archive" / "results" / path.name
@@ -424,6 +492,11 @@ class FileTransport:
                 # One corrupt lease must not wedge recovery for every other
                 # lease of this LWAR: quarantine it and keep sweeping.
                 quarantine_corrupt(lease_path, "corrupt_lease")
+                continue
+            try:
+                validate_contract(lease, "lease.schema.json")
+            except ValueError:
+                quarantine_corrupt(lease_path, "invalid_lease_contract")
                 continue
             try:
                 expires = parse_utc(lease["expires_at"])
@@ -463,6 +536,35 @@ class FileTransport:
                 continue
             orphans.append((path, task))
         return orphans
+
+    def expired_incoming(
+        self, lwar_id: str, now: datetime, delivery_timeout_s: float
+    ) -> list[tuple[Path, dict[str, Any]]]:
+        expired = []
+        cutoff = now.timestamp() - delivery_timeout_s
+        for path in sorted((self._mailbox(lwar_id) / "incoming").glob("*.json")):
+            task = safe_load_json(path)
+            if task is None:
+                quarantine_corrupt(path, "corrupt_incoming_task")
+                continue
+            try:
+                if path.stat().st_mtime > cutoff:
+                    continue
+            except FileNotFoundError:
+                continue
+            expired.append((path, task))
+        return expired
+
+    def find_pending_task(self, lwar_id: str, task_id: str) -> tuple[Path, dict[str, Any]] | None:
+        suffix = f"_{task_id}.json"
+        for directory in ("incoming", "claimed"):
+            for path in sorted((self._mailbox(lwar_id) / directory).glob("*.json")):
+                if not path.name.endswith(suffix):
+                    continue
+                task = safe_load_json(path)
+                if task is not None:
+                    return path, task
+        return None
 
     def claimed_task_for_lease(
         self, lwar_id: str, lease: dict[str, Any]
@@ -528,16 +630,27 @@ class FileTransport:
             entries.append((path, task))
         return entries
 
-    def requeue_dead(self, lwar_id: str, task_id: str) -> dict[str, Any] | None:
+    def find_dead_task(self, lwar_id: str, task_id: str) -> tuple[Path, dict[str, Any]] | None:
         for path, task in self.list_dead(lwar_id):
-            if task.get("task_id") != task_id:
-                continue
+            if task.get("task_id") == task_id:
+                return path, task
+        return None
+
+    def requeue_dead(
+        self, lwar_id: str, task_id: str, attempt: int | None = None
+    ) -> dict[str, Any] | None:
+        found = self.find_dead_task(lwar_id, task_id)
+        if found is not None:
+            path, task = found
             # attempt is the collect-side fencing key and must stay monotonic:
             # resetting it would let a superseded result match a future attempt.
-            task["attempt"] = int(task.get("attempt", 1)) + 1
+            task["attempt"] = (
+                int(attempt) if attempt is not None else int(task.get("attempt", 1)) + 1
+            )
             atomic_write_json(path, task)
             incoming = self._mailbox(lwar_id) / "incoming" / path.name
-            path.replace(incoming)
+            if not claim_file(path, incoming):
+                return None
             path.with_suffix(".error.json").unlink(missing_ok=True)
             return task
         return None
@@ -585,6 +698,8 @@ class FileTransport:
                         # stat — nothing to do, keep pruning the rest.
                         continue
                     if modified <= older_than:
+                        if category == "cancelled" and self.task_pending(lwar_id, path.stem):
+                            continue
                         path.unlink(missing_ok=True)
                         removed += 1
             counts[category] = removed

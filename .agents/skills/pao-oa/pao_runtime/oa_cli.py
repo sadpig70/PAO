@@ -2,7 +2,8 @@ from __future__ import annotations
 
 import argparse
 import os
-import sys
+import threading
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
@@ -13,16 +14,22 @@ from .common import (
     atomic_write_json,
     authority_denied_reason,
     emit,
+    identity_leaks,
+    identity_terms,
     new_id,
     parse_utc,
+    require_local_filesystem,
     resolve_root,
     safe_load_json,
     sha256_file,
     utc_now,
     validate_lwar_id,
     validate_task_id,
+    validate_workflow_id,
 )
+from .contracts import ContractError, validate_contract
 from .ledger import TaskLedger
+from .presence import OA_PRESENCE_REFRESH_S, publish_oa_presence
 from .registry import RegistryService
 from .routing import (
     STALE_AFTER_S_DEFAULT,
@@ -48,21 +55,14 @@ def _require_int(value: Any, field: str) -> int:
 def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]:
     """Single-writer guard for mutating OA commands.
 
-    The OA identity is `PAO_OA_ID` (set once per OA session). Sessions that do
-    not set it share the `oa-default` holder, so exclusion is only effective
-    between sessions with distinct ids. Best-effort: the TTL, not the lock,
-    bounds a crashed writer — a command outliving the TTL can be superseded.
+    The OA identity is `PAO_OA_ID` (set once per OA session). Mutations fail
+    closed when it is absent. A renewable command guard refreshes the TTL.
     """
-    oa_id = os.environ.get("PAO_OA_ID", "").strip() or "oa-default"
-    if oa_id == "oa-default":
-        # No PAO_OA_ID set → the shared holder gives NO mutual exclusion; two
-        # such sessions would both mutate concurrently. Warn loudly on stderr so
-        # the operator knows the single-writer guarantee is inactive.
-        print(
-            "WARNING: PAO_OA_ID is unset (oa-default) — the writer lease grants "
-            "no mutual exclusion; set a unique PAO_OA_ID per OA session.",
-            file=sys.stderr,
-            flush=True,
+    require_local_filesystem(root)
+    oa_id = os.environ.get("PAO_OA_ID", "").strip()
+    if not oa_id:
+        raise SystemExit(
+            "PAO_OA_ID is required for mutating OA commands; set one unique id per OA session"
         )
     lease_path = root / "var" / "oa" / "writer_lease.json"
     now = datetime.now(timezone.utc)
@@ -86,12 +86,62 @@ def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]
         lease = {
             "schema_version": "pao.oa-writer-lease.v1",
             "oa_id": oa_id,
-            "exclusive": oa_id != "oa-default",
+            "exclusive": True,
             "refreshed_at": utc_now(),
             "expires_at": expires_at,
         }
+        validate_contract(lease, "oa-writer-lease.schema.json")
         atomic_write_json(lease_path, lease)
     return lease
+
+
+@contextmanager
+def renewable_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S):
+    """Hold OA ownership for a command and renew before its TTL expires."""
+    lease = ensure_oa_writer(root, ttl_s)
+    publish_oa_presence(root, lease["oa_id"])
+    stop = threading.Event()
+    renewal_errors: list[BaseException] = []
+
+    def renew() -> None:
+        while not stop.wait(max(1.0, min(ttl_s / 3, OA_PRESENCE_REFRESH_S))):
+            try:
+                renewed = ensure_oa_writer(root, ttl_s)
+                publish_oa_presence(root, renewed["oa_id"])
+            except BaseException as error:  # propagate to the command boundary
+                renewal_errors.append(error)
+                stop.set()
+                return
+
+    thread = threading.Thread(target=renew, name="pao-oa-lease-renew", daemon=True)
+    thread.start()
+    try:
+        yield lease
+        if renewal_errors:
+            raise SystemExit(f"OA writer lease renewal failed: {renewal_errors[0]}")
+    finally:
+        stop.set()
+        thread.join(timeout=2)
+
+
+def writer_guard(handler):
+    def guarded(args: argparse.Namespace) -> int:
+        root = resolve_root(args.root)
+        with renewable_oa_writer(root):
+            return handler(args)
+
+    return guarded
+
+
+def command_presence(args: argparse.Namespace) -> int:
+    root = resolve_root(args.root)
+    oa_id = os.environ["PAO_OA_ID"].strip()
+    try:
+        payload = publish_oa_presence(root, oa_id, args.ttl)
+    except ValueError as error:
+        raise SystemExit(str(error))
+    emit({"event": "oa_presence_published", **payload})
+    return 0
 
 
 def load_active_slot(root: Path, lwar_id: str, require_on: bool = False) -> tuple[dict[str, Any], dict[str, Any]]:
@@ -101,6 +151,10 @@ def load_active_slot(root: Path, lwar_id: str, require_on: bool = False) -> tupl
     registry = safe_load_json(registry_path)
     if registry is None:
         raise SystemExit("registry is unreadable or corrupt; run `pao doctor` and inspect var/registry/")
+    try:
+        validate_contract(registry, "registry-state.schema.json")
+    except ContractError as error:
+        raise SystemExit(f"registry contract invalid: {error}")
     slot = registry.get("slots", {}).get(validate_lwar_id(lwar_id))
     if slot is None:
         raise SystemExit(f"LWAR is not registered: {lwar_id}")
@@ -132,6 +186,15 @@ def _check_dependencies(ledger: TaskLedger, depends_on: list[str]) -> None:
             raise SystemExit(
                 f"dependency not satisfied: {dependency} result status={result.get('status')}"
             )
+        decision = entry.get("validation") or {}
+        if decision.get("semantic_verdict") != "accepted":
+            raise SystemExit(
+                f"dependency not satisfied: {dependency} semantic validation="
+                f"{decision.get('semantic_verdict') or 'missing'}"
+            )
+        criteria = decision.get("criteria", [])
+        if any(item.get("verdict") != "passed" for item in criteria):
+            raise SystemExit(f"dependency not satisfied: {dependency} has unpassed criteria")
 
 
 def command_send(args: argparse.Namespace) -> int:
@@ -193,10 +256,15 @@ def command_send(args: argparse.Namespace) -> int:
         raise SystemExit("depends_on must be an array of task ids")
     _check_dependencies(ledger, depends_on)
 
+    workflow_id = validate_workflow_id(source.get("workflow_id") or new_id("workflow"))
+    terms = identity_terms(slot.get("profile"))
+    public_id_leaks = identity_leaks({"task_id": task_id, "workflow_id": workflow_id}, terms)
+    if public_id_leaks:
+        raise SystemExit(f"public task identifiers expose runtime identity terms: {public_id_leaks}")
     task = {
         "schema_version": "pao.task.v1",
         "task_id": task_id,
-        "workflow_id": source.get("workflow_id") or new_id("workflow"),
+        "workflow_id": workflow_id,
         "parent_task_id": source.get("parent_task_id"),
         "depends_on": depends_on,
         "lwar_id": lwar_id,
@@ -222,6 +290,10 @@ def command_send(args: argparse.Namespace) -> int:
         "write": [task["cwd"]],
         "network": False,
     }
+    if task["max_retries"] < 0:
+        raise SystemExit("max_retries must be non-negative")
+    if task["attempt"] < 1:
+        raise SystemExit("attempt must be positive")
     if not Path(task["cwd"]).is_dir():
         raise SystemExit(f"task cwd does not exist: {task['cwd']}")
     denied = authority_denied_reason(Path(task["cwd"]), root)
@@ -232,22 +304,26 @@ def command_send(args: argparse.Namespace) -> int:
             denied = authority_denied_reason(Path(entry), root)
             if denied:
                 raise SystemExit(f"permissions.{key} path violates authority bounds: {denied} ({entry})")
+    validate_contract(task, "task.schema.json")
     if transport.task_pending(lwar_id, task_id):
         raise SystemExit(f"task already exists for {lwar_id}: {task_id}")
     existing = ledger.get(task["task_id"], task["workflow_id"])
-    if existing is not None and existing.get("status") in {"completed", "dead", "failed"}:
-        # Re-publishing a task that already reached a terminal ledger state would
-        # clobber its recorded result and re-execute it. Require a fresh task_id
-        # (or `dead --requeue` for the sanctioned retry path).
+    if existing is not None:
         raise SystemExit(
-            f"task already has a terminal ledger entry "
-            f"({existing['status']}): {task_id} — use a new task_id"
+            f"task already has a ledger entry ({existing['status']}): {task_id} — use a new task_id"
         )
     # Record the ledger entry BEFORE making the task claimable: a crash between
     # the two then leaves a benign `published` entry with no incoming task,
     # never an untracked live task that recovery cannot see.
-    ledger.record_published(task)
+    ledger.record_publishing(task)
     target = transport.publish_task(task)
+    ledger.transition(
+        task_id,
+        "published",
+        workflow_id=task["workflow_id"],
+        detail="mailbox_published",
+        message_file=str(target),
+    )
     audit.record(
         root,
         "oa",
@@ -320,44 +396,71 @@ def command_collect(args: argparse.Namespace) -> int:
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
     collected = []
     quarantined = []
+
+    def inspect_result(
+        lwar_id: str, slot: dict[str, Any] | None, result: dict[str, Any]
+    ) -> tuple[dict[str, Any] | None, str | None, dict[str, Any] | None]:
+        try:
+            validate_contract(result, "result.schema.json")
+        except ContractError as error:
+            return None, f"invalid_result_schema:{error}", None
+        if (
+            slot is None
+            or slot.get("instance_id") != result.get("instance_id")
+            or slot.get("generation") != result.get("generation")
+        ):
+            return None, "stale_identity_result", None
+        entry = ledger.get(result["task_id"], result.get("workflow_id"))
+        ledger_attempt = entry.get("attempt") if entry else None
+        result_attempt = result.get("attempt")
+        if ledger_attempt is not None and result_attempt is not None:
+            try:
+                attempt_mismatch = int(result_attempt) != int(ledger_attempt)
+            except (TypeError, ValueError):
+                return entry, "invalid_result_attempt", None
+            if attempt_mismatch:
+                return entry, "stale_attempt_result", None
+        if entry is not None and entry.get("task_contract") is not None:
+            claim_token = result.get("claim_token")
+            if not claim_token:
+                return entry, "missing_claim_token", None
+            provenance = transport.provenance_task(
+                lwar_id, result["task_id"], claim_token, result.get("attempt")
+            )
+            if provenance is None:
+                return entry, "claim_token_mismatch", None
+            if int(provenance.get("attempt", 1)) != int(result.get("attempt", 1)):
+                return entry, "claim_attempt_mismatch", None
+        verification = artifact_verification(root, result.get("artifacts"))
+        if not verification["verified"]:
+            return entry, "artifact_tampered", verification
+        return entry, None, verification
+
+    def quarantine(
+        lwar_id: str, path: Path, result: dict[str, Any] | None, reason: str,
+        verification: dict[str, Any] | None = None,
+    ) -> None:
+        destination = transport.quarantine_result(lwar_id, path, reason)
+        item = {
+            "lwar_id": lwar_id,
+            "task_id": result.get("task_id") if result else None,
+            "reason": reason,
+            "file": str(destination),
+        }
+        if verification and verification.get("failures"):
+            item["failures"] = verification["failures"]
+        quarantined.append(item)
+
     for lwar_id in targets:
         slot = registry.get("slots", {}).get(lwar_id)
         for path in transport.outgoing_results(lwar_id):
             result = safe_load_json(path)
             if result is None or "task_id" not in result:
-                # A corrupt/foreign result must not abort collection for every
-                # other result: quarantine it and keep collecting.
-                destination = transport.quarantine_result(lwar_id, path, "invalid_result_json")
-                quarantined.append(
-                    {"lwar_id": lwar_id, "task_id": None, "reason": "invalid_result_json", "file": str(destination)}
-                )
+                quarantine(lwar_id, path, result, "invalid_result_json")
                 continue
-            if (
-                slot is None
-                or slot.get("instance_id") != result.get("instance_id")
-                or slot.get("generation") != result.get("generation")
-            ):
-                destination = transport.quarantine_result(lwar_id, path, "stale_identity_result")
-                quarantined.append(
-                    {"lwar_id": lwar_id, "task_id": result.get("task_id"), "reason": "stale_identity_result", "file": str(destination)}
-                )
-                continue
-            entry = ledger.get(result["task_id"], result.get("workflow_id"))
-            ledger_attempt = entry.get("attempt") if entry else None
-            result_attempt = result.get("attempt")
-            if (
-                ledger_attempt is not None
-                and result_attempt is not None
-                and int(result_attempt) != int(ledger_attempt)
-            ):
-                # Attempt fence: the ledger's attempt is bumped by recover and
-                # dead-requeue, so a mismatched echo means this result belongs
-                # to a superseded claim. Legacy results without the echo skip
-                # the fence (optional-first rollout).
-                destination = transport.quarantine_result(lwar_id, path, "stale_attempt_result")
-                quarantined.append(
-                    {"lwar_id": lwar_id, "task_id": result["task_id"], "reason": "stale_attempt_result", "file": str(destination)}
-                )
+            entry, reason, verification = inspect_result(lwar_id, slot, result)
+            if reason:
+                quarantine(lwar_id, path, result, reason, verification)
                 continue
             if (
                 entry is not None
@@ -372,34 +475,37 @@ def command_collect(args: argparse.Namespace) -> int:
                     # re-verifying and re-growing the ledger history every poll.
                     if args.archive:
                         final_path = transport.archive_result(lwar_id, path)
-                        ledger.record_completed_result(result, str(final_path))
+                        ledger.update_result_file(result["task_id"], result["workflow_id"], str(final_path))
                         collected.append(
                             {"lwar_id": lwar_id, "result_file": str(final_path), "result": result}
                         )
                     continue
-                destination = transport.quarantine_result(lwar_id, path, "duplicate_result")
-                quarantined.append(
-                    {"lwar_id": lwar_id, "task_id": result["task_id"], "reason": "duplicate_result", "file": str(destination)}
-                )
+                quarantine(lwar_id, path, result, "duplicate_result")
                 continue
-            verification = artifact_verification(root, result.get("artifacts"))
-            if not verification["verified"]:
-                destination = transport.quarantine_result(lwar_id, path, "artifact_tampered")
-                quarantined.append(
-                    {
-                        "lwar_id": lwar_id,
-                        "task_id": result["task_id"],
-                        "reason": "artifact_tampered",
-                        "failures": verification["failures"],
-                        "file": str(destination),
-                    }
-                )
-                continue
+            # Canonical ledger commit happens before optional archival cleanup.
+            ledger.record_completed_result(result, str(path))
             final_path = path
             if args.archive:
                 final_path = transport.archive_result(lwar_id, path)
-            ledger.record_completed_result(result, str(final_path))
+                ledger.update_result_file(result["task_id"], result["workflow_id"], str(final_path))
             collected.append({"lwar_id": lwar_id, "result_file": str(final_path), "result": result})
+
+        # Repair either side of an interrupted archive transition. Archived
+        # results are durable inputs, not invisible cleanup debris.
+        for path in transport.archived_results(lwar_id):
+            result = safe_load_json(path)
+            if result is None or "task_id" not in result:
+                quarantine(lwar_id, path, result, "invalid_archived_result_json")
+                continue
+            entry, reason, verification = inspect_result(lwar_id, slot, result)
+            if reason:
+                quarantine(lwar_id, path, result, reason, verification)
+                continue
+            if entry is None or entry.get("status") != "completed":
+                ledger.record_completed_result(result, str(path))
+                collected.append({"lwar_id": lwar_id, "result_file": str(path), "result": result})
+            elif entry.get("result_file") != str(path):
+                ledger.update_result_file(result["task_id"], result["workflow_id"], str(path))
     audit.record(
         root,
         "oa",
@@ -412,13 +518,112 @@ def command_collect(args: argparse.Namespace) -> int:
 def command_recover(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     ensure_oa_writer(root)
+    if args.delivery_timeout <= 0:
+        raise SystemExit("--delivery-timeout must be positive")
     transport = FileTransport(root)
     ledger = TaskLedger(root)
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
     recovered = []
     dead_lettered = []
     failed_reconciled = []
+    publication_repaired = []
+    incoming_expired = []
     now = datetime.now(timezone.utc)
+
+    registry = RegistryService(root).load_registry()
+
+    # Repair interrupted publication and requeue transitions before sweeping
+    # leases. Transitional ledger states are durable outbox markers.
+    for entry in ledger.all_entries():
+        lwar_id = entry.get("lwar_id")
+        if not lwar_id or (args.lwar_id and lwar_id != args.lwar_id):
+            continue
+        task_id = entry.get("task_id")
+        workflow_id = entry.get("workflow_id")
+        status = entry.get("status")
+        if status in {"publishing", "published"}:
+            task = entry.get("task_contract")
+            if not isinstance(task, dict):
+                continue
+            if transport.task_pending(lwar_id, task_id):
+                if status == "publishing":
+                    ledger.transition(task_id, "published", workflow_id, detail="publication_reconciled")
+                continue
+            if transport.result_exists(lwar_id, task_id):
+                continue
+            slot = registry.get("slots", {}).get(lwar_id)
+            if (
+                slot is None
+                or slot.get("state") != "on"
+                or slot.get("instance_id") != task.get("instance_id")
+                or slot.get("generation") != task.get("generation")
+            ):
+                ledger.transition(
+                    task_id,
+                    "failed",
+                    workflow_id,
+                    detail="publication_target_unavailable",
+                )
+                failed_reconciled.append(
+                    {"lwar_id": lwar_id, "task_id": task_id, "reason": "publication_target_unavailable"}
+                )
+                continue
+            target = transport.publish_task(task)
+            ledger.transition(
+                task_id,
+                "published",
+                workflow_id,
+                detail="publication_repaired",
+                message_file=str(target),
+            )
+            publication_repaired.append({"lwar_id": lwar_id, "task_id": task_id})
+        elif status == "requeueing":
+            pending = transport.find_pending_task(lwar_id, task_id)
+            if pending is None:
+                dead = transport.find_dead_task(lwar_id, task_id)
+                if dead is not None:
+                    desired_attempt = int(entry.get("attempt", dead[1].get("attempt", 1)))
+                    repaired_task = transport.requeue_dead(lwar_id, task_id, desired_attempt)
+                    if repaired_task is not None:
+                        ledger.transition(
+                            task_id,
+                            "requeued",
+                            workflow_id,
+                            detail="dead_requeue_reconciled",
+                            attempt=desired_attempt,
+                        )
+                        recovered.append(
+                            {"lwar_id": lwar_id, "task_id": task_id, "attempt": desired_attempt}
+                        )
+                        continue
+            if pending is None:
+                if not transport.result_exists(lwar_id, task_id):
+                    ledger.transition(
+                        task_id,
+                        "failed",
+                        workflow_id,
+                        detail="requeue_state_lost",
+                    )
+                    failed_reconciled.append(
+                        {"lwar_id": lwar_id, "task_id": task_id, "reason": "requeue_state_lost"}
+                    )
+                continue
+            pending_path, pending_task = pending
+            desired_attempt = int(entry.get("attempt", pending_task.get("attempt", 1)))
+            if pending_path.parent.name == "incoming" and int(pending_task.get("attempt", 1)) != desired_attempt:
+                pending_task["attempt"] = desired_attempt
+                atomic_write_json(pending_path, pending_task)
+            elif pending_path.parent.name == "claimed":
+                # A new claimant won the race. Its claim token is canonical;
+                # align the ledger to the attempt actually being executed.
+                desired_attempt = int(pending_task.get("attempt", desired_attempt))
+            ledger.transition(
+                task_id,
+                "requeued",
+                workflow_id,
+                detail="requeue_reconciled",
+                attempt=desired_attempt,
+            )
 
     def recover_one(lwar_id: str, claimed_path: Path, task: dict[str, Any], detail: str) -> None:
         """Requeue or dead-letter one claimed task, from either an expired lease
@@ -428,9 +633,13 @@ def command_recover(args: argparse.Namespace) -> int:
         if task_id and transport.result_exists(lwar_id, task_id):
             claimed_path.unlink(missing_ok=True)
             return
-        attempt = int(task.get("attempt", 1)) + 1
+        entry = ledger.get(task_id, task.get("workflow_id"))
+        task_attempt = int(task.get("attempt", 1))
+        if entry and entry.get("status") == "requeueing" and int(entry.get("attempt", 0)) > task_attempt:
+            attempt = int(entry["attempt"])
+        else:
+            attempt = max(task_attempt, int((entry or {}).get("attempt", task_attempt))) + 1
         max_retries = int(task.get("max_retries", 3))
-        task["attempt"] = attempt
         # The interrupted terminal is recorded by OA, never inferred as a
         # submitted result: the LWAR may have died without submitting.
         interruption = {
@@ -440,6 +649,15 @@ def command_recover(args: argparse.Namespace) -> int:
             "recorded_at": utc_now(),
         }
         if attempt > max_retries:
+            ledger.transition(
+                task["task_id"],
+                "dead_lettering",
+                workflow_id=task.get("workflow_id"),
+                detail="retry_budget_exhausted",
+                attempt=attempt,
+                interruption=interruption,
+            )
+            task["attempt"] = attempt
             if transport.dead_letter(lwar_id, claimed_path, task, "retry_budget_exhausted") is None:
                 # A racing submit_result archived the claim first — superseded.
                 return
@@ -453,6 +671,15 @@ def command_recover(args: argparse.Namespace) -> int:
             )
             dead_lettered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
             return
+        ledger.transition(
+            task["task_id"],
+            "requeueing",
+            workflow_id=task.get("workflow_id"),
+            detail=detail,
+            attempt=attempt,
+            interruption=interruption,
+        )
+        task["attempt"] = attempt
         moved = transport.requeue_claimed(lwar_id, claimed_path, task)
         if moved is not None:
             ledger.transition(
@@ -466,6 +693,23 @@ def command_recover(args: argparse.Namespace) -> int:
             recovered.append({"lwar_id": lwar_id, "task_id": task["task_id"], "attempt": attempt})
 
     for lwar_id in targets:
+        for incoming_path, task in transport.expired_incoming(lwar_id, now, args.delivery_timeout):
+            task_id = task.get("task_id")
+            if not task_id or transport.result_exists(lwar_id, task_id):
+                continue
+            if transport.dead_letter(
+                lwar_id, incoming_path, task, "delivery_timeout_unclaimed"
+            ) is None:
+                continue
+            ledger.transition(
+                task_id,
+                "dead",
+                workflow_id=task.get("workflow_id"),
+                detail="delivery_timeout_unclaimed",
+            )
+            item = {"lwar_id": lwar_id, "task_id": task_id, "reason": "delivery_timeout_unclaimed"}
+            incoming_expired.append(item)
+            dead_lettered.append(item)
         for lease_path, lease in transport.expired_leases(lwar_id, now):
             if transport.result_exists(lwar_id, lease["task_id"]):
                 lease_path.unlink(missing_ok=True)
@@ -523,6 +767,8 @@ def command_recover(args: argparse.Namespace) -> int:
             "count": len(recovered),
             "dead_lettered": len(dead_lettered),
             "failed_reconciled": len(failed_reconciled),
+            "publication_repaired": len(publication_repaired),
+            "incoming_expired": len(incoming_expired),
         },
     )
     emit(
@@ -532,6 +778,8 @@ def command_recover(args: argparse.Namespace) -> int:
             "tasks": recovered,
             "dead_lettered": dead_lettered,
             "failed_reconciled": failed_reconciled,
+            "publication_repaired": publication_repaired,
+            "incoming_expired": incoming_expired,
         }
     )
     return 0
@@ -570,19 +818,40 @@ def command_dead(args: argparse.Namespace) -> int:
     if args.requeue:
         if not args.lwar_id:
             raise SystemExit("--requeue requires --lwar-id")
-        ensure_oa_writer(root)
-        task = transport.requeue_dead(args.lwar_id, validate_task_id(args.requeue))
-        if task is None:
-            raise SystemExit(f"dead task not found: {args.requeue}")
-        ledger.transition(
-            task["task_id"],
-            "requeued",
-            workflow_id=task.get("workflow_id"),
-            detail="manual_requeue",
-            attempt=int(task.get("attempt", 1)),
-        )
-        audit.record(root, "oa", {"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
-        emit({"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
+        with renewable_oa_writer(root):
+            task_id = validate_task_id(args.requeue)
+            found = transport.find_dead_task(args.lwar_id, task_id)
+            if found is None:
+                raise SystemExit(f"dead task not found: {args.requeue}")
+            dead_task = found[1]
+            entry = ledger.get(task_id, dead_task.get("workflow_id"))
+            attempt = max(
+                int(dead_task.get("attempt", 1)),
+                int((entry or {}).get("attempt", dead_task.get("attempt", 1))),
+            ) + 1
+            ledger.transition(
+                task_id,
+                "requeueing",
+                workflow_id=dead_task.get("workflow_id"),
+                detail="manual_requeue",
+                attempt=attempt,
+            )
+            task = transport.requeue_dead(args.lwar_id, task_id, attempt)
+            if task is None:
+                raise SystemExit(f"dead task requeue interrupted; run oa recover: {args.requeue}")
+            ledger.transition(
+                task["task_id"],
+                "requeued",
+                workflow_id=task.get("workflow_id"),
+                detail="manual_requeue",
+                attempt=int(task.get("attempt", 1)),
+            )
+            audit.record(
+                root,
+                "oa",
+                {"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]},
+            )
+            emit({"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
         return 0
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
     entries = []
@@ -629,8 +898,10 @@ def command_validate(args: argparse.Namespace) -> int:
         "artifacts": result.get("artifacts", []),
         "attempt": entry.get("attempt"),
     }
+    semantic_verdict = args.decision or "undecidable"
+    criterion_verdict = "passed" if semantic_verdict == "accepted" else "manual_check_required"
     criteria = [
-        {"criterion": criterion, "verdict": "manual_check_required"}
+        {"criterion": criterion, "verdict": criterion_verdict}
         for criterion in entry.get("completion_criteria", [])
     ]
     verification = artifact_verification(root, result.get("artifacts"))
@@ -642,19 +913,27 @@ def command_validate(args: argparse.Namespace) -> int:
     )
     verdict = "ready_for_oa_review" if mechanical_pass else "attention_required"
     if args.record:
-        # Persisting the decision is a mutation; plain reporting stays
-        # read-only so observer OAs can validate freely.
-        ensure_oa_writer(root)
+        if semantic_verdict == "accepted" and not mechanical_pass:
+            raise SystemExit("cannot record accepted: mechanical validation requires attention")
+        decided_by = os.environ.get("PAO_OA_ID", "").strip()
+        if not decided_by:
+            raise SystemExit(
+                "PAO_OA_ID is required for validate --record; set one unique id per OA session"
+            )
         decision = {
             "schema_version": "pao.validation-decision.v1",
             "verdict": verdict,
+            "semantic_verdict": semantic_verdict,
+            "reason": args.reason,
             "checks": checks,
             "criteria": criteria,
             "artifact_verification": verification,
-            "decided_by": os.environ.get("PAO_OA_ID", "").strip() or "oa-default",
+            "decided_by": decided_by,
             "decided_at": utc_now(),
         }
-        ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
+        validate_contract(decision, "validation-decision.schema.json")
+        with renewable_oa_writer(root):
+            ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
     audit.record(root, "oa", {"event": "validation_report", "task_id": args.task_id, "verdict": verdict})
     emit(
         {
@@ -665,6 +944,7 @@ def command_validate(args: argparse.Namespace) -> int:
             "checks": checks,
             "criteria": criteria,
             "artifact_verification": verification,
+            "semantic_verdict": semantic_verdict,
             "recorded": bool(args.record),
             "verdict": verdict,
         }
@@ -676,6 +956,7 @@ def command_prune(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     ensure_oa_writer(root)
     transport = FileTransport(root)
+    ledger = TaskLedger(root)
     if args.older_than_days <= 0:
         raise SystemExit("--older-than-days must be positive")
     cutoff = datetime.now(timezone.utc) - timedelta(days=args.older_than_days)
@@ -686,13 +967,43 @@ def command_prune(args: argparse.Namespace) -> int:
         removed = transport.prune(lwar_id, cutoff)
         counts[lwar_id] = removed
         total += sum(removed.values())
-    audit.record(root, "oa", {"event": "pruned", "total": total})
+    referenced = ledger.referenced_artifacts()
+    artifact_removed = 0
+    artifact_store = root / "var" / "artifacts"
+    if artifact_store.is_dir():
+        for path in sorted(artifact_store.glob("*")):
+            if not path.is_file():
+                continue
+            relative = path.relative_to(root).as_posix()
+            if relative in referenced:
+                continue
+            try:
+                modified = datetime.fromtimestamp(path.stat().st_mtime, tz=timezone.utc)
+            except FileNotFoundError:
+                continue
+            if modified <= cutoff:
+                path.unlink(missing_ok=True)
+                artifact_removed += 1
+    audit_removed = audit.prune_rotated(root, cutoff)
+    total += artifact_removed + audit_removed
+    audit.record(
+        root,
+        "oa",
+        {
+            "event": "pruned",
+            "total": total,
+            "artifact_removed": artifact_removed,
+            "audit_segments_removed": audit_removed,
+        },
+    )
     emit(
         {
             "event": "pruned",
             "cutoff": cutoff.isoformat().replace("+00:00", "Z"),
             "counts": counts,
             "total": total,
+            "artifact_removed": artifact_removed,
+            "audit_segments_removed": audit_removed,
         }
     )
     return 0
@@ -733,10 +1044,15 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="oa", description="OA control tool for PAO ADP file bus")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    presence = subparsers.add_parser("presence")
+    presence.add_argument("--root", default=None)
+    presence.add_argument("--ttl", type=float, default=90.0)
+    presence.set_defaults(handler=writer_guard(command_presence))
+
     reconcile = subparsers.add_parser("reconcile")
     reconcile.add_argument("--root", default=None)
     reconcile.add_argument("--tombstone-retention", type=int, default=300)
-    reconcile.set_defaults(handler=command_reconcile)
+    reconcile.set_defaults(handler=writer_guard(command_reconcile))
 
     send = subparsers.add_parser("send")
     send.add_argument("--lwar-id")
@@ -750,26 +1066,34 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--stale-after", type=float, default=STALE_AFTER_S_DEFAULT)
     send.add_argument("--task-file", required=True)
     send.add_argument("--root", default=None)
-    send.set_defaults(handler=command_send)
+    send.set_defaults(handler=writer_guard(command_send))
 
     control = subparsers.add_parser("control")
     control.add_argument("--lwar-id", required=True)
-    control.add_argument("--command", required=True, choices=("shutdown", "ping", "cancel", "drain"))
+    control.add_argument(
+        "--command", required=True, choices=("shutdown", "retire", "ping", "cancel", "drain")
+    )
     control.add_argument("--task-id")
     control.add_argument("--reason")
     control.add_argument("--root", default=None)
-    control.set_defaults(handler=command_control)
+    control.set_defaults(handler=writer_guard(command_control))
 
     collect = subparsers.add_parser("collect")
     collect.add_argument("--lwar-id")
     collect.add_argument("--archive", action="store_true")
     collect.add_argument("--root", default=None)
-    collect.set_defaults(handler=command_collect)
+    collect.set_defaults(handler=writer_guard(command_collect))
 
     recover = subparsers.add_parser("recover")
     recover.add_argument("--lwar-id")
+    recover.add_argument(
+        "--delivery-timeout",
+        type=float,
+        default=300.0,
+        help="dead-letter incoming tasks not claimed within this many seconds",
+    )
     recover.add_argument("--root", default=None)
-    recover.set_defaults(handler=command_recover)
+    recover.set_defaults(handler=writer_guard(command_recover))
 
     status = subparsers.add_parser("status")
     status.add_argument("--root", default=None)
@@ -790,6 +1114,12 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="persist the decision into the task ledger (mutating: takes the writer lease)",
     )
+    validate.add_argument(
+        "--decision",
+        choices=("accepted", "rejected", "undecidable"),
+        help="OA semantic decision to persist with --record (default: undecidable)",
+    )
+    validate.add_argument("--reason", help="reason for the semantic decision")
     validate.add_argument("--root", default=None)
     validate.set_defaults(handler=command_validate)
 
@@ -797,7 +1127,7 @@ def build_parser() -> argparse.ArgumentParser:
     prune.add_argument("--older-than-days", type=float, required=True)
     prune.add_argument("--lwar-id")
     prune.add_argument("--root", default=None)
-    prune.set_defaults(handler=command_prune)
+    prune.set_defaults(handler=writer_guard(command_prune))
 
     workflow_status = subparsers.add_parser("workflow-status")
     workflow_status.add_argument("--workflow-id", required=True)

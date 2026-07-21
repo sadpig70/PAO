@@ -81,47 +81,30 @@ pre-flight check.
 
 ## Quick Start
 
-### 1. Register an LWAR
+Start the two agent runtimes in the same project directory, or give both the same
+`PAO_ROOT`. Each runtime needs only its role skill; the skill owns bootstrap and
+all later commands.
 
-```bash
-python .agents/skills/pao-lwar/scripts/lwar.py register \
-  --runtime-name "Runtime" \
-  --model "Model" \
-  --adapter-id runtime \
-  --vendor-family vendor \
-  --interface tui \
-  --root .
+### 1. Start OA
+
+```text
+Read <absolute-path>/pao-oa/SKILL.md and act as the PAO OA.
 ```
 
-To request a specific slot, use `register 1`. If omitted, OA assigns the lowest available number.
+### 2. Start LWAR
 
-### 2. OA approval
-
-```bash
-python .agents/skills/pao-oa/scripts/oa.py reconcile --root .
-python .agents/skills/pao-lwar/scripts/lwar.py response <request_id> --root .
+```text
+Read <absolute-path>/pao-lwar/SKILL.md and act as a PAO LWAR.
 ```
 
-### 3. Run an ADP watch slice
-
-```bash
-python .agents/skills/pao-lwar/scripts/adp_watch.py \
-  --identity-file <identity_file> \
-  --root . \
-  --interval 5 \
-  --timeout 90
-```
-
-If the watcher reports `idle_timeout` or `state_wait`, the same LWAR session should immediately invoke it again. If it reports `task_received`, execute the task and submit the result with `lwar.py complete`.
+No registration prompt, ADP prompt, or copied command sequence is required. The
+two `SKILL.md` files and their bundled references are the sole operating contract.
 
 ## Documentation
 
 - [Technical specification](docs/PAO_TechSpec.md)
 - [ADP operations guide](docs/PAO_ADP_Operations.md)
-- [Runtime bootstrap prompts](docs/LWAR_ADP_Bootstrap.md)
-- [Canonical architecture](.pgf/DESIGN-PAO.md)
-- [ADP design](.pgf/DESIGN-PAOADP.md)
-- [Verification review](.pgf/REVIEW-PAOADP.md)
+- [Skill-only bootstrap note](docs/LWAR_ADP_Bootstrap.md)
 
 ## Verification
 
@@ -130,7 +113,7 @@ python -m unittest discover -s tests -v
 python -m py_compile .agents/skills/pao-lwar/pao_runtime/*.py .agents/skills/pao-lwar/scripts/*.py tests/*.py
 ```
 
-The integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown control, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+The integration suite verifies registration, collision rejection, full task/result flow, idle timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
 
 ## License
 

@@ -23,6 +23,10 @@
       "type": "string",
       "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
+    "workflow_id": {
+      "type": ["string", "null"],
+      "pattern": "^workflow-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
     "lwar_id": {
       "type": "string",
       "pattern": "^LWAR[1-9][0-9]*$"

@@ -6,12 +6,14 @@ from pathlib import Path
 from typing import Any
 
 from . import audit
-from .common import emit, load_json, resolve_root
+from .common import emit, load_json, require_local_filesystem, resolve_identity_root, resolve_root
+from .contracts import validate_contract
 from .transport import FileTransport
 
 
 def load_verified_identity(root: Path, identity_path: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     identity = load_json(identity_path)
+    validate_contract(identity, "identity.schema.json")
     registry_path = root / "var" / "registry" / "lwar_registry.json"
     if not registry_path.is_file():
         # A missing --root/PAO_ROOT resolves to the cwd and lands here looking
@@ -21,6 +23,7 @@ def load_verified_identity(root: Path, identity_path: Path) -> tuple[dict[str, A
             "verify --root (or PAO_ROOT) points at the bus root"
         )
     registry = load_json(registry_path)
+    validate_contract(registry, "registry-state.schema.json")
     slot = registry.get("slots", {}).get(identity["lwar_id"])
     if slot is None:
         raise ValueError("LWAR is not registered")
@@ -31,12 +34,22 @@ def load_verified_identity(root: Path, identity_path: Path) -> tuple[dict[str, A
 
 def watch(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
-    transport = FileTransport(root)
     identity_path = Path(args.identity_file).resolve()
+    audit_root: Path | None = None
     try:
+        identity_snapshot = load_json(identity_path)
+        validate_contract(identity_snapshot, "identity.schema.json")
+        root = resolve_identity_root(identity_snapshot, identity_path, args.root)
+        require_local_filesystem(root)
+        audit_root = root
+        transport = FileTransport(root)
         identity, slot = load_verified_identity(root, identity_path)
     except Exception as error:
-        audit.record(root, "adp", {"event": "adp_error", "error": str(error)})
+        # Never write an error record to an explicit/env root that conflicts
+        # with the adopted identity. Until root binding succeeds, stdout is the
+        # only safe error channel.
+        if audit_root is not None:
+            audit.record(audit_root, "adp", {"event": "adp_error", "error": str(error)})
         emit({"event": "adp_error", "error": str(error), "action": "stop"})
         return 30
     deadline = time.monotonic() + args.timeout
@@ -75,6 +88,16 @@ def watch(args: argparse.Namespace) -> int:
                     },
                 )
                 emit({"event": "control", "command": control.get("command"), "message": control})
+                try:
+                    transport.ack_control(identity, control)
+                except (OSError, TimeoutError) as error:
+                    # Delivery already reached stdout. Leave control_claimed in
+                    # place for at-least-once redelivery on the next slice.
+                    audit.record(
+                        root,
+                        "adp",
+                        {"event": "control_ack_failed", "error": str(error), "control_id": control.get("control_id")},
+                    )
                 return 20
 
             transport.write_heartbeat(

@@ -8,19 +8,21 @@ import time
 from pathlib import Path
 
 from . import __version__
-from .common import atomic_write_json, emit, load_json, resolve_root
+from .common import atomic_write_json, emit, load_json, local_filesystem_status, resolve_root
 
 
-SKILL_NAMES = ("oa-runtime", "lwar-runtime")
+SKILL_NAMES = ("pao-oa", "pao-lwar")
 
 RUNTIME_MODULES = (
     "adp_watch.py",
     "audit.py",
     "common.py",
+    "contracts.py",
     "ledger.py",
     "lwar_cli.py",
     "oa_cli.py",
     "pao_cli.py",
+    "presence.py",
     "registry.py",
     "routing.py",
     "transport.py",
@@ -36,12 +38,11 @@ LEFTOVER_TMP_AGE_S = 60
 def default_skills_source() -> Path | None:
     """Locate the canonical skills directory next to the package.
 
-    Valid for editable installs (`pip install -e PAO_HOME`) and in-repo runs;
-    wheel installs must pass --source explicitly. Probes the plugin layout
-    (`skills/`) first, then the pre-0.4 layout (`.agents/skills`).
+    Valid for the canonical standalone bundle layout. The bundle's parent is
+    `.agents/skills`, containing exactly the `pao-oa` and `pao-lwar` channels.
     """
-    repo = Path(__file__).resolve().parents[1]
-    for candidate in (repo / "skills", repo / ".agents" / "skills"):
+    bundle = Path(__file__).resolve().parents[1]
+    for candidate in (bundle.parent, bundle / "skills", bundle / ".agents" / "skills"):
         if all((candidate / name).is_dir() for name in SKILL_NAMES):
             return candidate
     return None
@@ -94,12 +95,8 @@ def command_doctor(args: argparse.Namespace) -> int:
         name for name in WRAPPER_SCRIPTS if not (bundle / "scripts" / name).is_file()
     ]
     checks.append(_check("wrapper_scripts", not missing_scripts, missing_scripts or None))
-    # Standalone bundles keep schemas/ and references/ at the bundle root;
-    # the plugin layout keeps schemas under skills/lwar-runtime/ and ships
-    # SKILL.md contracts instead of role reference files.
+    # The two standalone skills keep schemas/ and references/ at bundle root.
     schemas = bundle / "schemas"
-    if not schemas.is_dir():
-        schemas = bundle / "skills" / "lwar-runtime" / "schemas"
     checks.append(
         _check(
             "schemas_present",
@@ -107,6 +104,14 @@ def command_doctor(args: argparse.Namespace) -> int:
             str(schemas),
         )
     )
+    schema_errors = []
+    if schemas.is_dir():
+        for schema in sorted(schemas.glob("*.schema.json")):
+            try:
+                load_json(schema)
+            except Exception as error:
+                schema_errors.append(f"{schema.name}:{error}")
+    checks.append(_check("schemas_parse", not schema_errors, schema_errors or None))
     if args.role:
         references = bundle / "references"
         if references.is_dir():
@@ -116,11 +121,12 @@ def command_doctor(args: argparse.Namespace) -> int:
                 _check("role_references", expected <= present, sorted(expected - present) or None)
             )
         else:
-            contract = bundle / "skills" / f"{args.role}-runtime" / "SKILL.md"
-            checks.append(_check("role_contract", contract.is_file(), str(contract)))
+            checks.append(_check("role_references", False, str(references)))
 
     inside_skill = root == bundle or bundle in root.parents
     checks.append(_check("root_outside_skill_dir", not inside_skill, str(root)))
+    filesystem_local, filesystem_detail = local_filesystem_status(root)
+    checks.append(_check("local_filesystem", filesystem_local, filesystem_detail))
 
     if inside_skill:
         # Never write probe files into the skill bundle itself.
@@ -185,7 +191,7 @@ def command_install_skills(args: argparse.Namespace) -> int:
         source = default_skills_source()
         if source is None:
             raise SystemExit(
-                "skills source not found next to the package; pass --source PAO_HOME/skills"
+                "skills source not found next to the bundle; pass --source <skills-directory>"
             )
     if not source.is_dir():
         raise SystemExit(f"skills source is not a directory: {source}")
@@ -199,7 +205,7 @@ def command_install_skills(args: argparse.Namespace) -> int:
         skill_source = source / name
         if not skill_source.is_dir():
             raise SystemExit(
-                f"skill source missing: {skill_source} (canonical skills live in PAO_HOME/skills since 0.4)"
+                f"skill source missing: {skill_source} (canonical skills live in .agents/skills)"
             )
         destination = target / name
         if destination.exists():

@@ -4,6 +4,7 @@ import unittest
 from pathlib import Path
 
 from pao_helpers import PaoTestCase
+from pao_runtime.transport import FileTransport
 
 
 class TaskLedgerTests(PaoTestCase):
@@ -28,7 +29,7 @@ class TaskLedgerTests(PaoTestCase):
             self.assertEqual(entry["status"], "completed")
             self.assertEqual(entry["result"]["status"], "succeeded")
             statuses = [item["status"] for item in entry["history"]]
-            self.assertEqual(statuses, ["published", "completed"])
+            self.assertEqual(statuses, ["publishing", "published", "completed"])
 
 
 class HeartbeatMonitorTests(PaoTestCase):
@@ -92,8 +93,11 @@ class AutoRouteTests(PaoTestCase):
     def test_auto_route_matches_required_capability(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.register_lwar(root, capabilities=("coding",))
-            self.register_lwar(root, capabilities=("coding", "testing"))
+            _, first = self.register_lwar(root, capabilities=("coding",))
+            _, second = self.register_lwar(root, capabilities=("coding", "testing"))
+            transport = FileTransport(root)
+            transport.write_heartbeat(first, "idle", None)
+            transport.write_heartbeat(second, "idle", None)
             draft = root / "auto_task.json"
             draft.write_text(json.dumps({"goal": "Route by capability"}), encoding="utf-8")
             _, published = self.run_module(
@@ -107,8 +111,11 @@ class AutoRouteTests(PaoTestCase):
     def test_auto_route_prefers_lower_backlog(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.register_lwar(root, capabilities=("coding",))
-            self.register_lwar(root, capabilities=("coding",))
+            _, first = self.register_lwar(root, capabilities=("coding",))
+            _, second = self.register_lwar(root, capabilities=("coding",))
+            transport = FileTransport(root)
+            transport.write_heartbeat(first, "idle", None)
+            transport.write_heartbeat(second, "idle", None)
             self.send_task(root, "LWAR1", {"goal": "Backlog one"})
             self.send_task(root, "LWAR1", {"goal": "Backlog two"})
             draft = root / "auto_task.json"
@@ -124,7 +131,8 @@ class AutoRouteTests(PaoTestCase):
     def test_auto_route_without_eligible_lwar_fails(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
-            self.register_lwar(root, capabilities=("coding",))
+            _, identity = self.register_lwar(root, capabilities=("coding",))
+            FileTransport(root).write_heartbeat(identity, "idle", None)
             draft = root / "auto_task.json"
             draft.write_text(json.dumps({"goal": "Impossible route"}), encoding="utf-8")
             completed, _ = self.run_module(

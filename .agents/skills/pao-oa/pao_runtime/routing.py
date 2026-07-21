@@ -62,6 +62,9 @@ def auto_route(
         capabilities = set(slot.get("profile", {}).get("capabilities", []))
         if not require <= capabilities:
             continue
+        heartbeat = transport.read_heartbeat(lwar_id)
+        if heartbeat_stale(heartbeat, now, stale_after_s):
+            continue
         score = load_score(transport, lwar_id, now, stale_after_s)
         candidates.append((score, lwar_number(lwar_id), lwar_id))
     if not candidates:

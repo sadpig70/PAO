@@ -97,6 +97,9 @@ class ResultGuardTests(PaoTestCase):
                         "status": "succeeded",
                         "summary": "stale replay",
                         "evidence": {},
+                        "artifacts": [],
+                        "exit_code": 0,
+                        "submitted_at": "2026-01-01T00:00:00Z",
                     }
                 ),
                 encoding="utf-8",
@@ -123,22 +126,10 @@ class ResultGuardTests(PaoTestCase):
             self.assertEqual(first["count"], 1)
             workflow_id = first["results"][0]["result"]["workflow_id"]
             replay = root / "mailbox" / "LWAR1" / "outgoing" / f"{published['task_id']}.result.json"
-            replay.write_text(
-                json.dumps(
-                    {
-                        "schema_version": "pao.result.v1",
-                        "task_id": published["task_id"],
-                        "workflow_id": workflow_id,
-                        "lwar_id": "LWAR1",
-                        "instance_id": identity["instance_id"],
-                        "generation": identity["generation"],
-                        "status": "succeeded",
-                        "summary": "replayed",
-                        "evidence": {},
-                    }
-                ),
-                encoding="utf-8",
-            )
+            replay_result = dict(first["results"][0]["result"])
+            replay_result["workflow_id"] = workflow_id
+            replay_result["summary"] = "replayed"
+            replay.write_text(json.dumps(replay_result), encoding="utf-8")
             _, second = self.run_module(
                 "pao_runtime.oa_cli", "collect", "--lwar-id", "LWAR1", "--root", str(root), expected=0
             )

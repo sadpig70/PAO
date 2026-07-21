@@ -20,6 +20,7 @@ class PaoTestCase(unittest.TestCase):
 
     def run_module(self, module, *args, expected=None, env=None, cwd=None):
         merged_env = {**os.environ, **(env or {})}
+        merged_env.setdefault("PAO_OA_ID", "oa-test")
         if "PYTHONPATH" not in (env or {}):
             merged_env["PYTHONPATH"] = str(RUNTIME_HOME)
         completed = subprocess.run(
@@ -89,10 +90,22 @@ class PaoTestCase(unittest.TestCase):
         }
         result_path = root / f"result_{task_id}.json"
         result_path.write_text(json.dumps(payload), encoding="utf-8")
+        claim_token = None
+        claimed_dir = root / "mailbox" / identity["lwar_id"] / "claimed"
+        for claimed_path in claimed_dir.glob("*.json"):
+            claimed = json.loads(claimed_path.read_text(encoding="utf-8"))
+            if claimed.get("task_id") == task_id:
+                claim_token = claimed.get("claim_token")
+                break
+        # A duplicate completion no longer has a live claimed file. Pass a
+        # syntactically valid sentinel so the CLI can report its terminal-state
+        # idempotency error instead of the test harness failing first.
+        claim_token = claim_token or ("claim-" + "0" * 32)
         return self.run_module(
             "pao_runtime.lwar_cli",
             "complete", "--identity-file", identity["identity_file"],
-            "--task-id", task_id, "--result-file", str(result_path),
+            "--task-id", task_id, "--claim-token", claim_token,
+            "--result-file", str(result_path),
             "--root", str(root),
             expected=expected,
         )

@@ -11,9 +11,14 @@ from . import __version__, audit
 from .common import (
     atomic_write_json,
     emit,
+    file_identity_leaks,
+    identity_leaks,
+    identity_terms,
     new_id,
     path_within,
+    resolve_identity_root,
     resolve_root,
+    require_local_filesystem,
     safe_load_json,
     snapshot_artifact,
     utc_now,
@@ -21,11 +26,15 @@ from .common import (
     validate_lwar_id,
     validate_task_id,
 )
+from .contracts import validate_contract
+from .presence import read_oa_presence
 from .registry import ALLOWED_TRANSITIONS
 from .transport import FileTransport
 
 
 SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
+REGISTRATION_REQUEST_ID_RE = re.compile(r"^lwar-reg-[a-f0-9]{32}$")
+CLAIM_TOKEN_RE = re.compile(r"^claim-[a-f0-9]{32}$")
 
 
 def _load_or_exit(path: Path, label: str) -> dict[str, Any]:
@@ -35,6 +44,18 @@ def _load_or_exit(path: Path, label: str) -> dict[str, Any]:
     if data is None:
         raise SystemExit(f"cannot read or parse {label}: {path}")
     return data
+
+
+def _identity_context(args: argparse.Namespace) -> tuple[Path, Path, dict[str, Any]]:
+    identity_path = Path(args.identity_file).resolve()
+    identity = _load_or_exit(identity_path, "identity file")
+    validate_contract(identity, "identity.schema.json")
+    try:
+        root = resolve_identity_root(identity, identity_path, args.root)
+    except ValueError as error:
+        raise SystemExit(str(error))
+    require_local_filesystem(root)
+    return root, identity_path, identity
 
 
 def positive_int(value: str) -> int:
@@ -78,6 +99,7 @@ def command_register(args: argparse.Namespace) -> int:
     }
     request_path = root / "control" / "registration" / "requests" / f"{request_id}.json"
     pending_path = root / "var" / "identities" / f"{instance_id}.pending.json"
+    validate_contract(request, "registration-request.schema.json")
     atomic_write_json(request_path, request)
     atomic_write_json(pending_path, {"request_id": request_id, "instance_id": instance_id, "profile": profile})
     audit.record(
@@ -100,11 +122,14 @@ def command_register(args: argparse.Namespace) -> int:
 
 def command_response(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    if not REGISTRATION_REQUEST_ID_RE.fullmatch(args.request_id):
+        raise SystemExit("request_id must match lwar-reg-<32 lowercase hex>")
     response_path = root / "control" / "registration" / "responses" / f"{args.request_id}.json"
     if not response_path.is_file():
         emit({"event": "registration_pending", "request_id": args.request_id})
         return 2
     response = _load_or_exit(response_path, "registration response")
+    validate_contract(response, "registration-response.schema.json")
     if response.get("accepted") is not True:
         emit({"event": "registration_rejected", **response})
         return 3
@@ -121,9 +146,11 @@ def command_response(args: argparse.Namespace) -> int:
         "state": response["state"],
         "behavior_contract": response["behavior_contract"],
         "profile": pending.get("profile", {}),
+        "bus_root": str(root),
         "adopted_at": utc_now(),
     }
     identity_path = root / "var" / "identities" / f"{instance_id}.json"
+    validate_contract(identity, "identity.schema.json")
     atomic_write_json(identity_path, identity)
     pending_path.unlink(missing_ok=True)
     audit.record(
@@ -135,9 +162,23 @@ def command_response(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_oa_status(args: argparse.Namespace) -> int:
+    if args.identity_file:
+        root, _identity_path, _identity = _identity_context(args)
+    else:
+        root = resolve_root(args.root)
+        require_local_filesystem(root)
+    report = read_oa_presence(root)
+    emit({"event": "oa_status", **report})
+    if report["status"] == "live":
+        return 0
+    if report["status"] == "invalid":
+        return 3
+    return 2
+
+
 def command_state(args: argparse.Namespace) -> int:
-    root = resolve_root(args.root)
-    identity = _load_or_exit(Path(args.identity_file).resolve(), "identity file")
+    root, _identity_path, identity = _identity_context(args)
     lwar_id = validate_lwar_id(identity["lwar_id"])
     # Locally reject a definitively stale or illegal transition before writing
     # the request (OA reconcile is still authoritative). When the registry is
@@ -170,6 +211,7 @@ def command_state(args: argparse.Namespace) -> int:
         "created_at": utc_now(),
     }
     request_path = root / "control" / "lifecycle" / "requests" / f"{request_id}.json"
+    validate_contract(request, "lifecycle-request.schema.json")
     atomic_write_json(request_path, request)
     audit.record(
         root,
@@ -181,9 +223,7 @@ def command_state(args: argparse.Namespace) -> int:
 
 
 def command_status(args: argparse.Namespace) -> int:
-    root = resolve_root(args.root)
-    identity_path = Path(args.identity_file).resolve()
-    identity = _load_or_exit(identity_path, "identity file")
+    root, identity_path, identity = _identity_context(args)
     registry_path = root / "var" / "registry" / "lwar_registry.json"
     if not registry_path.is_file():
         emit({"event": "registry_unavailable"})
@@ -214,13 +254,66 @@ def command_status(args: argparse.Namespace) -> int:
             "generation": slot["generation"],
             "registry_version": registry["registry_version"],
             "heartbeat": FileTransport(root).read_heartbeat(identity["lwar_id"]),
+            "oa": read_oa_presence(root),
         }
     )
     return 0
 
 
+def command_retire(args: argparse.Namespace) -> int:
+    root, _identity_path, identity = _identity_context(args)
+    registry_path = root / "var" / "registry" / "lwar_registry.json"
+    registry = safe_load_json(registry_path) if registry_path.is_file() else None
+    slot = (registry or {}).get("slots", {}).get(identity["lwar_id"])
+    if slot is None:
+        emit({"event": "lwar_retired", "lwar_id": identity["lwar_id"]})
+        return 0
+    if slot.get("instance_id") != identity["instance_id"] or slot.get("generation") != identity["generation"]:
+        raise SystemExit("cannot retire: your identity is stale versus the registry")
+
+    claimed = []
+    for path in sorted((root / "mailbox" / identity["lwar_id"] / "claimed").glob("*.json")):
+        task = safe_load_json(path)
+        if task and task.get("instance_id") == identity["instance_id"] and task.get("generation") == identity["generation"]:
+            claimed.append(task.get("task_id"))
+    if claimed:
+        emit({"event": "retire_blocked", "reason": "active_claims", "task_ids": claimed})
+        return 4
+
+    next_state = {"on": "draining", "draining": "off", "off": "deregistered"}.get(slot["state"])
+    if next_state is None:
+        raise SystemExit(f"cannot retire from lifecycle state: {slot['state']}")
+
+    pending_dir = root / "control" / "lifecycle" / "requests"
+    for path in sorted(pending_dir.glob("*.json")):
+        request = safe_load_json(path)
+        if not request:
+            continue
+        if (
+            request.get("lwar_id") == identity["lwar_id"]
+            and request.get("instance_id") == identity["instance_id"]
+            and request.get("generation") == identity["generation"]
+            and request.get("requested_state") == next_state
+        ):
+            emit(
+                {
+                    "event": "retire_waiting",
+                    "lwar_id": identity["lwar_id"],
+                    "state": slot["state"],
+                    "requested_state": next_state,
+                    "request_id": request.get("request_id"),
+                    "oa": read_oa_presence(root),
+                }
+            )
+            return 2
+
+    args.state = next_state
+    command_state(args)
+    return 2
+
+
 def normalize_artifacts(
-    root: Path, task: dict[str, Any], artifacts: list[Any]
+    root: Path, task: dict[str, Any], artifacts: list[Any], profile: dict[str, Any] | None = None
 ) -> tuple[list[Any], list[str]]:
     """Resolve, bound-check, and snapshot declared artifacts.
 
@@ -240,13 +333,20 @@ def normalize_artifacts(
     store = root / "var" / "artifacts"
     entries: list[Any] = []
     warnings: list[str] = []
+    terms = identity_terms(profile)
     for item in artifacts:
         raw = item.get("path") if isinstance(item, dict) else item
         if not isinstance(raw, str) or not raw:
             raise SystemExit("artifact entries must be non-empty path strings")
+        leaked = identity_leaks(raw, terms)
+        if leaked:
+            raise SystemExit(f"artifact path exposes runtime identity terms: {leaked}")
         resolved = (Path(raw) if os.path.isabs(raw) else cwd / raw).resolve()
         if not resolved.is_file():
             raise SystemExit(f"declared artifact is not a regular file: {resolved}")
+        leaked = file_identity_leaks(resolved, terms)
+        if leaked:
+            raise SystemExit(f"artifact content exposes runtime identity terms: {leaked}")
         in_bounds = path_within(resolved, cwd) or any(
             path_within(resolved, write_root) for write_root in write_roots
         )
@@ -272,9 +372,8 @@ def normalize_artifacts(
 
 
 def command_complete(args: argparse.Namespace) -> int:
-    root = resolve_root(args.root)
+    root, _identity_path, identity = _identity_context(args)
     transport = FileTransport(root)
-    identity = _load_or_exit(Path(args.identity_file).resolve(), "identity file")
     lwar_id = validate_lwar_id(identity["lwar_id"])
     task_id = validate_task_id(args.task_id)
     try:
@@ -291,6 +390,10 @@ def command_complete(args: argparse.Namespace) -> int:
         )
     if task["instance_id"] != identity["instance_id"] or task["generation"] != identity["generation"]:
         raise SystemExit("task identity does not match this LWAR identity")
+    if not CLAIM_TOKEN_RE.fullmatch(args.claim_token):
+        raise SystemExit("claim_token must match claim-<32 lowercase hex>")
+    if task.get("claim_token") != args.claim_token:
+        raise SystemExit("claim superseded: claim_token does not match the active claim")
     result = _load_or_exit(Path(args.result_file).resolve(), "result file")
     for required in ("status", "summary", "evidence"):
         if required not in result:
@@ -310,7 +413,19 @@ def command_complete(args: argparse.Namespace) -> int:
         raise SystemExit("result evidence must be an object")
     if not isinstance(result.get("artifacts", []), list):
         raise SystemExit("result artifacts must be an array")
-    artifacts, artifact_warnings = normalize_artifacts(root, task, result.get("artifacts", []))
+    profile = identity.get("profile") or {}
+    if not profile:
+        registry = safe_load_json(root / "var" / "registry" / "lwar_registry.json") or {}
+        profile = (registry.get("slots", {}).get(lwar_id) or {}).get("profile", {})
+    terms = identity_terms(profile)
+    metadata_leaks = identity_leaks(
+        {"summary": result.get("summary"), "evidence": result.get("evidence")}, terms
+    )
+    if metadata_leaks:
+        raise SystemExit(f"result metadata exposes runtime identity terms: {metadata_leaks}")
+    artifacts, artifact_warnings = normalize_artifacts(
+        root, task, result.get("artifacts", []), profile
+    )
     normalized = {
         "schema_version": "pao.result.v1",
         "task_id": task_id,
@@ -370,6 +485,11 @@ def build_parser() -> argparse.ArgumentParser:
     response.add_argument("--root", default=None)
     response.set_defaults(handler=command_response)
 
+    oa_status = subparsers.add_parser("oa-status")
+    oa_status.add_argument("--identity-file")
+    oa_status.add_argument("--root", default=None)
+    oa_status.set_defaults(handler=command_oa_status)
+
     state = subparsers.add_parser("state")
     state.add_argument("state", choices=("on", "draining", "off", "deregistered"))
     state.add_argument("--identity-file", required=True)
@@ -381,9 +501,15 @@ def build_parser() -> argparse.ArgumentParser:
     status.add_argument("--root", default=None)
     status.set_defaults(handler=command_status)
 
+    retire = subparsers.add_parser("retire")
+    retire.add_argument("--identity-file", required=True)
+    retire.add_argument("--root", default=None)
+    retire.set_defaults(handler=command_retire)
+
     complete = subparsers.add_parser("complete")
     complete.add_argument("--identity-file", required=True)
     complete.add_argument("--task-id", required=True)
+    complete.add_argument("--claim-token", required=True)
     complete.add_argument("--result-file", required=True)
     complete.add_argument("--root", default=None)
     complete.set_defaults(handler=command_complete)
@@ -392,6 +518,8 @@ def build_parser() -> argparse.ArgumentParser:
 
 def main() -> int:
     args = build_parser().parse_args()
+    if not getattr(args, "identity_file", None):
+        require_local_filesystem(resolve_root(args.root))
     return args.handler(args)
 
 

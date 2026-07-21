@@ -16,6 +16,7 @@ from .common import (
     validate_instance_id,
     validate_lwar_id,
 )
+from .contracts import validate_contract
 
 
 ALLOWED_TRANSITIONS = {
@@ -42,12 +43,16 @@ class RegistryService:
                 "slots": {},
                 "updated_at": utc_now(),
             }
-        return load_json(self.registry_path)
+        registry = load_json(self.registry_path)
+        validate_contract(registry, "registry-state.schema.json")
+        return registry
 
     def load_tombstones(self) -> dict[str, Any]:
         if not self.tombstones_path.is_file():
             return {"schema_version": "pao.lwar-tombstones.v1", "entries": {}, "updated_at": utc_now()}
-        return load_json(self.tombstones_path)
+        tombstones = load_json(self.tombstones_path)
+        validate_contract(tombstones, "tombstones.schema.json")
+        return tombstones
 
     def _tombstone_blocked(self, entry: dict[str, Any] | None) -> bool:
         if not entry:
@@ -70,6 +75,7 @@ class RegistryService:
 
     def process_registration(self, request_path: Path) -> dict[str, Any]:
         request = load_json(request_path)
+        validate_contract(request, "registration-request.schema.json")
         request_id = request["request_id"]
         instance_id = validate_instance_id(request["instance_id"])
         response_path = self.root / "control" / "registration" / "responses" / f"{request_id}.json"
@@ -159,12 +165,14 @@ class RegistryService:
             "reason": reason,
             "decided_at": utc_now(),
         }
+        validate_contract(response, "registration-response.schema.json")
         atomic_write_json(response_path, response)
         self._archive_request(request_path, "registration")
         return response
 
     def process_lifecycle(self, request_path: Path) -> dict[str, Any]:
         request = load_json(request_path)
+        validate_contract(request, "lifecycle-request.schema.json")
         request_id = request["request_id"]
         lwar_id = validate_lwar_id(request["lwar_id"])
         instance_id = validate_instance_id(request["instance_id"])
@@ -246,6 +254,7 @@ class RegistryService:
             "reason": reason,
             "decided_at": utc_now(),
         }
+        validate_contract(response, "lifecycle-response.schema.json")
         atomic_write_json(response_path, response)
         self._archive_request(request_path, "lifecycle")
         return response

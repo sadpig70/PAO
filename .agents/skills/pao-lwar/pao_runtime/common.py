@@ -4,6 +4,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 import time
 import uuid
@@ -15,6 +16,7 @@ from typing import Any
 LWAR_ID_RE = re.compile(r"^LWAR[1-9][0-9]*$")
 INSTANCE_ID_RE = re.compile(r"^lwar-instance-[a-f0-9]{32}$")
 TASK_ID_RE = re.compile(r"^task-[A-Za-z0-9][A-Za-z0-9._-]*$")
+WORKFLOW_ID_RE = re.compile(r"^workflow-[A-Za-z0-9][A-Za-z0-9._-]*$")
 
 
 def resolve_root(value: str | None) -> Path:
@@ -31,6 +33,48 @@ def resolve_root(value: str | None) -> Path:
     env_value = os.environ.get("PAO_ROOT", "").strip()
     if env_value:
         return Path(env_value).resolve()
+    return (Path.cwd() / ".pao").resolve()
+
+
+def resolve_identity_root(
+    identity: dict[str, Any], identity_path: Path, value: str | None
+) -> Path:
+    """Resolve an identity-bound bus root and reject split-brain overrides.
+
+    Newly adopted identities persist ``bus_root``. Legacy v1 identities can
+    still self-locate when they remain under ``<root>/var/identities``.
+    Explicit ``--root`` or ``PAO_ROOT`` may repeat the canonical root, but may
+    never redirect an adopted identity to another bus.
+    """
+    identity_path = Path(identity_path).resolve()
+    declared = identity.get("bus_root")
+    canonical: Path | None = None
+    if declared is not None:
+        if not isinstance(declared, str) or not declared.strip():
+            raise ValueError("identity bus_root must be a non-empty absolute path")
+        candidate = Path(declared).expanduser()
+        if not candidate.is_absolute():
+            raise ValueError("identity bus_root must be an absolute path")
+        canonical = candidate.resolve()
+    elif (
+        identity_path.parent.name == "identities"
+        and identity_path.parent.parent.name == "var"
+    ):
+        canonical = identity_path.parents[2].resolve()
+
+    env_root = os.environ.get("PAO_ROOT", "").strip()
+    requested_raw = value or env_root or None
+    requested = Path(requested_raw).expanduser().resolve() if requested_raw else None
+    if canonical is not None and requested is not None:
+        if os.path.normcase(str(canonical)) != os.path.normcase(str(requested)):
+            source = "--root" if value else "PAO_ROOT"
+            raise ValueError(
+                f"{source} resolves to {requested}, which conflicts with identity bus_root {canonical}"
+            )
+    if canonical is not None:
+        return canonical
+    if requested is not None:
+        return requested
     return (Path.cwd() / ".pao").resolve()
 
 
@@ -161,6 +205,14 @@ def validate_task_id(value: str) -> str:
     return value
 
 
+def validate_workflow_id(value: str) -> str:
+    if not isinstance(value, str) or not WORKFLOW_ID_RE.fullmatch(value):
+        raise ValueError(
+            "workflow_id must start with workflow- and contain only safe filename characters"
+        )
+    return value
+
+
 BUS_CONTROL_SUBDIRS = ("mailbox", "var", "control")
 
 
@@ -234,6 +286,88 @@ def sha256_file(path: Path) -> str:
         while chunk := handle.read(1 << 20):
             digest.update(chunk)
     return digest.hexdigest()
+
+
+def identity_terms(profile: dict[str, Any] | None) -> set[str]:
+    terms = set()
+    for key in ("runtime_name", "model", "adapter_id", "vendor_family"):
+        value = (profile or {}).get(key)
+        if isinstance(value, str) and len(value.strip()) >= 3:
+            terms.add(value.strip().casefold())
+    return terms
+
+
+def identity_leaks(value: Any, terms: set[str]) -> list[str]:
+    if not terms:
+        return []
+    if isinstance(value, (dict, list)):
+        text = json.dumps(value, ensure_ascii=False, sort_keys=True).casefold()
+    else:
+        text = str(value).casefold()
+    return sorted(term for term in terms if term in text)
+
+
+def file_identity_leaks(path: Path, terms: set[str]) -> list[str]:
+    encoded = {term: term.encode("utf-8").lower() for term in terms}
+    if not encoded:
+        return []
+    found = set()
+    overlap = max(len(value) for value in encoded.values()) - 1
+    tail = b""
+    with path.open("rb") as handle:
+        while chunk := handle.read(1 << 20):
+            data = (tail + chunk).lower()
+            for term, needle in encoded.items():
+                if needle in data:
+                    found.add(term)
+            tail = data[-overlap:] if overlap > 0 else b""
+    return sorted(found)
+
+
+def local_filesystem_status(path: Path) -> tuple[bool, str]:
+    resolved = path.resolve()
+    if os.name == "nt":
+        text = str(resolved)
+        if text.startswith("\\\\"):
+            return False, "UNC/network path"
+        try:
+            import ctypes
+
+            drive_type = ctypes.windll.kernel32.GetDriveTypeW(resolved.drive + "\\")
+            if drive_type == 4:
+                return False, "Windows remote drive"
+            return True, f"Windows drive type {drive_type}"
+        except (AttributeError, OSError):
+            return True, "Windows local status unavailable; UNC guard passed"
+    mounts = Path("/proc/mounts")
+    if mounts.is_file():
+        network_types = {"nfs", "nfs4", "cifs", "smbfs", "sshfs", "9p", "fuse.sshfs"}
+        best_mount = Path("/")
+        best_type = "unknown"
+        try:
+            for raw in mounts.read_text(encoding="utf-8").splitlines():
+                parts = raw.split()
+                if len(parts) < 3:
+                    continue
+                mount = Path(parts[1].replace("\\040", " "))
+                if path_within(resolved, mount) and len(str(mount)) >= len(str(best_mount)):
+                    best_mount = mount
+                    best_type = parts[2]
+        except OSError:
+            return True, "mount table unavailable"
+        if best_type in network_types:
+            return False, f"network filesystem {best_type} at {best_mount}"
+        return True, f"filesystem {best_type} at {best_mount}"
+    return True, f"local filesystem assumed on {sys.platform}"
+
+
+def require_local_filesystem(path: Path) -> None:
+    """Fail closed when PAO's atomic-rename bus is placed on remote storage."""
+    local, detail = local_filesystem_status(path)
+    if not local:
+        raise SystemExit(
+            f"PAO_ROOT must be on a single-host local filesystem: {detail}"
+        )
 
 
 MAILBOX_DIRS = (

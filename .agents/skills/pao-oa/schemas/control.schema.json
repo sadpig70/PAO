@@ -9,7 +9,7 @@
     "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
     "instance_id": {"type": "string", "pattern": "^lwar-instance-[a-f0-9]{32}$"},
     "generation": {"type": "integer", "minimum": 1},
-    "command": {"enum": ["shutdown", "ping", "cancel", "drain"]},
+    "command": {"enum": ["shutdown", "retire", "ping", "cancel", "drain"]},
     "task_id": {"type": ["string", "null"]},
     "reason": {"type": ["string", "null"]},
     "created_at": {"type": "string", "format": "date-time"}

@@ -1,102 +1,26 @@
-# LWAR ADP Bootstrap Guide
+# PAO Skill-Only Bootstrap
 
-## Purpose
+This file is intentionally not an operating prompt. The two role skills are
+PAO's sole operating prompts and canonical runtime instructions:
 
-This guide provides the bootstrap prompt and operating contract for an LWAR session that will register itself, adopt an approved identity, and remain in the ADP watch/execute loop.
+- `.agents/skills/pao-oa/SKILL.md`
+- `.agents/skills/pao-lwar/SKILL.md`
 
-> Commands below use the in-repo form (`python .agents/skills/pao-lwar/scripts/...` with `--root .`). In operation mode, substitute the absolute path of the installed skill folder (the `<PAO_SKILL>` placeholder in SKILL.md §0) and rely on `PAO_ROOT` or the `.pao/` default instead of `--root .`.
+Start the runtimes on the same local bus and give each only its role instruction:
 
-## Bootstrap Summary
-
-An LWAR session should:
-
-1. load the `lwar-runtime` skill
-2. request registration, optionally with a specific slot number
-3. wait for OA approval
-4. adopt the returned identity file
-5. run the watcher
-6. react only to watcher events
-7. keep looping until `shutdown`
-
-## Registration
-
-Automatic slot:
-
-```bash
-python .agents/skills/pao-lwar/scripts/lwar.py register \
-  --runtime-name "Codex" \
-  --model "GPT 5.5 Sol" \
-  --adapter-id codex \
-  --vendor-family openai \
-  --interface cli \
-  --root .
+```text
+Read <absolute-path>/pao-oa/SKILL.md and act as the PAO OA.
 ```
 
-Specific slot:
-
-```bash
-python .agents/skills/pao-lwar/scripts/lwar.py register 1 \
-  --runtime-name "Codex" \
-  --model "GPT 5.5 Sol" \
-  --adapter-id codex \
-  --vendor-family openai \
-  --interface cli \
-  --root .
+```text
+Read <absolute-path>/pao-lwar/SKILL.md and act as a PAO LWAR.
 ```
 
-## Identity Adoption
+The role skill resolves its own folder, runs pre-flight, reads its bundled
+references, and performs bootstrap. Do not copy a second registration, watcher,
+completion, or supervision prompt from repository documentation; duplicated
+commands drift from the bundled contract.
 
-After OA reconciliation:
-
-```bash
-python .agents/skills/pao-lwar/scripts/lwar.py response <request_id> --root .
-```
-
-Only when the event confirms identity adoption should the session continue. The returned identity file is the canonical identity handle for all later commands.
-
-## Watch Loop
-
-```bash
-python .agents/skills/pao-lwar/scripts/adp_watch.py \
-  --identity-file <identity_file> \
-  --root . \
-  --interval 5 \
-  --timeout 90
-```
-
-Loop behavior:
-
-- `idle_timeout` -> invoke the watcher again
-- `state_wait` -> invoke the watcher again
-- `task_received` -> perform the task, submit the result, invoke the watcher again
-- `control` -> handle the command, then invoke the watcher again unless it is `shutdown`
-- `shutdown` -> stop
-
-## Result Completion
-
-```bash
-python .agents/skills/pao-lwar/scripts/lwar.py complete \
-  --identity-file <identity_file> \
-  --task-id <task_id> \
-  --result-file mailbox/LWARn/work/<task_id>/result.json \
-  --root .
-```
-
-## Lifecycle Changes
-
-```bash
-python .agents/skills/pao-lwar/scripts/lwar.py state draining --identity-file <identity_file> --root .
-python .agents/skills/pao-lwar/scripts/lwar.py state off --identity-file <identity_file> --root .
-python .agents/skills/pao-lwar/scripts/lwar.py state on --identity-file <identity_file> --root .
-python .agents/skills/pao-lwar/scripts/lwar.py state deregistered --identity-file <identity_file> --root .
-```
-
-Use `deregistered` only after `off`.
-
-## Prohibited Behavior
-
-- do not self-assign `LWARn` before OA approval
-- do not edit registry or mailbox files by hand
-- do not accept stale identities
-- do not abandon a claimed task without a result
-- do not stop the loop without `shutdown` unless an unrecoverable watcher error occurs
+The only shared deployment prerequisite is one single-host local bus. Launch
+both sessions from the same project directory to use `<cwd>/.pao`, or configure
+the same `PAO_ROOT` for both before invoking their skills.

@@ -14,6 +14,12 @@ def ADP(identity_file: Path) -> None:
             report_error_and_stop(event)
             return                                 # fatal terminator — stop ADP
         if event.event == "control":
+            if event.command == "retire":
+                submit_terminal_result_if_holding_a_claim()
+                while run_lwar_retire(identity_file) != "lwar_retired":
+                    observe_oa_status(identity_file)
+                    wait_for_oa_reconcile_without_stopping()
+                return
             if event.command == "shutdown":
                 # If a task is still claimed, submit its terminal result FIRST
                 # (§1.5) — a shutdown that arrives via an interleaved slice mid-
@@ -36,7 +42,7 @@ def ADP(identity_file: Path) -> None:
     #   - ADP is a daemon: the loop stays resident and never exits on its own
     #   - the loop is never terminated by elapsed time, iteration/slice count, or
     #     the agent's own judgment that it is "done" — only by control:shutdown,
-    #     a fatal adp_error, or the context-exhaustion handoff
+    #     successful control:retire, a fatal adp_error, or context exhaustion
     #   - watcher timeout does not terminate the LWAR session
     #   - after timeout, the watcher is re-run without extra reasoning and without
     #     returning control between slices
@@ -54,6 +60,12 @@ python "<PAO_SKILL>/scripts/adp_watch.py" \
   --lease-seconds 180
 ```
 
+The adopted identity stores its canonical `bus_root`, so this identity-only
+invocation is safe even when the bus is not `<cwd>/.pao`. A supplied `--root` or
+`PAO_ROOT` must match the identity; a mismatch emits fatal `adp_error` without
+touching the conflicting bus. Legacy identities still self-locate when stored at
+their canonical `<root>/var/identities/` path.
+
 ## Exit codes and stdout events
 
 The agent must inspect both the exit code and the stdout JSON `event`.
@@ -65,9 +77,10 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 | `20` | `control:ping` | Re-run the watcher |
 | `20` | `control:drain` | Finish current work, then request lifecycle `draining` (read [lifecycle.md](lifecycle.md) first) and **keep watching** until `shutdown` |
 | `20` | `control:cancel` | Stop the task if you already hold it and submit a `cancelled` result. A cancel for a task you have **not** claimed yet needs no memory: the watcher has already written a tombstone (see below) that auto-cancels the task deterministically whenever it is claimed |
+| `20` | `control:retire` | Submit any held task's terminal result, then repeatedly run `lwar.py retire --identity-file IDENTITY_FILE`. Exit `2` means a lifecycle step is pending: inspect `oa-status` and keep waiting for OA `reconcile`. Stop ADP only on exit `0` / `lwar_retired`; exit `4` means an active claim must be completed first |
 | `20` | `control:shutdown` | If you currently hold a claimed task, submit its terminal result first — `interrupted` (no verdict reached), or the `failed`/`blocked` verdict if you already have one; never invent `blocked` just because shutdown arrived. Then stop ADP |
 | `30` | `adp_error` | Report the error, then stop ADP (this is the fatal terminator) |
-| any other | any unknown event | **Fail closed on the SLICE, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the **next** watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP — only the three terminators in SKILL Rule 3 (`shutdown`, a fatal `adp_error`, the context-exhaustion handoff) do that |
+| any other | any unknown event | **Fail closed on the SLICE, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the **next** watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP — only the four terminators in SKILL Rule 3 do that |
 
 Heartbeats are written by the watcher itself on every poll — the agent never emits or edits them.
 

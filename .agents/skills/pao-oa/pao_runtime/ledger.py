@@ -3,7 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from .common import atomic_write_json, safe_load_json, utc_now
+from .common import (
+    atomic_write_json,
+    path_within,
+    safe_load_json,
+    utc_now,
+    validate_task_id,
+    validate_workflow_id,
+)
+from .contracts import validate_contract
 
 
 class TaskLedger:
@@ -19,13 +27,19 @@ class TaskLedger:
         self.base = self.root / "var" / "tasks"
 
     def path(self, workflow_id: str, task_id: str) -> Path:
-        return self.base / workflow_id / f"{task_id}.json"
+        workflow_id = validate_workflow_id(workflow_id)
+        task_id = validate_task_id(task_id)
+        target = (self.base / workflow_id / f"{task_id}.json").resolve()
+        if not path_within(target, self.base):
+            raise ValueError("task ledger path escapes var/tasks")
+        return target
 
     def _write(self, entry: dict[str, Any]) -> None:
         entry["updated_at"] = utc_now()
+        validate_contract(entry, "task-ledger.schema.json")
         atomic_write_json(self.path(entry["workflow_id"], entry["task_id"]), entry)
 
-    def record_published(self, task: dict[str, Any]) -> dict[str, Any]:
+    def record_publishing(self, task: dict[str, Any]) -> dict[str, Any]:
         entry = {
             "schema_version": "pao.task-ledger.v1",
             "task_id": task["task_id"],
@@ -36,16 +50,24 @@ class TaskLedger:
             "goal": task["goal"],
             "completion_criteria": task.get("completion_criteria", []),
             "depends_on": task.get("depends_on", []),
-            "status": "published",
+            "status": "publishing",
             "attempt": int(task.get("attempt", 1)),
             "max_retries": int(task.get("max_retries", 3)),
             "published_at": task.get("created_at", utc_now()),
             "result": None,
             "result_file": None,
-            "history": [{"status": "published", "at": utc_now(), "detail": None}],
+            "task_contract": task,
+            "history": [{"status": "publishing", "at": utc_now(), "detail": None}],
         }
         self._write(entry)
         return entry
+
+    def record_published(self, task: dict[str, Any]) -> dict[str, Any]:
+        """Compatibility helper for callers that already published the task."""
+        entry = self.record_publishing(task)
+        return self.transition(
+            task["task_id"], "published", workflow_id=task["workflow_id"], detail="published"
+        ) or entry
 
     def get(self, task_id: str, workflow_id: str | None = None) -> dict[str, Any] | None:
         if workflow_id:
@@ -120,7 +142,36 @@ class TaskLedger:
         self._write(entry)
         return entry
 
+    def update_result_file(
+        self, task_id: str, workflow_id: str, result_file: str
+    ) -> dict[str, Any] | None:
+        entry = self.get(task_id, workflow_id)
+        if entry is None:
+            return None
+        entry["result_file"] = result_file
+        self._write(entry)
+        return entry
+
+    def all_entries(self) -> list[dict[str, Any]]:
+        entries = []
+        if not self.base.is_dir():
+            return entries
+        for path in sorted(self.base.glob("*/*.json")):
+            entry = safe_load_json(path)
+            if entry is not None:
+                entries.append(entry)
+        return entries
+
+    def referenced_artifacts(self) -> set[str]:
+        referenced = set()
+        for entry in self.all_entries():
+            for artifact in (entry.get("result") or {}).get("artifacts", []):
+                if isinstance(artifact, dict) and isinstance(artifact.get("snapshot"), str):
+                    referenced.add(artifact["snapshot"])
+        return referenced
+
     def workflow_entries(self, workflow_id: str) -> list[dict[str, Any]]:
+        workflow_id = validate_workflow_id(workflow_id)
         directory = self.base / workflow_id
         if not directory.is_dir():
             return []

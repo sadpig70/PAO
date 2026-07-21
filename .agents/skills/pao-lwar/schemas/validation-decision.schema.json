@@ -8,6 +8,8 @@
     "checks",
     "criteria",
     "artifact_verification",
+    "semantic_verdict",
+    "reason",
     "decided_by",
     "decided_at"
   ],
@@ -21,13 +23,28 @@
         "attention_required"
       ]
     },
+    "semantic_verdict": {
+      "enum": [
+        "accepted",
+        "rejected",
+        "undecidable"
+      ]
+    },
+    "reason": {
+      "type": ["string", "null"]
+    },
     "checks": {
       "type": "object"
     },
     "criteria": {
       "type": "array",
       "items": {
-        "type": "object"
+        "type": "object",
+        "required": ["criterion", "verdict"],
+        "properties": {
+          "criterion": {"type": "string"},
+          "verdict": {"enum": ["passed", "failed", "manual_check_required"]}
+        }
       }
     },
     "artifact_verification": {
