@@ -57,6 +57,44 @@ def bundle_diff(master: Path, mirror: Path) -> dict[str, dict[str, list[str]]]:
     return differences
 
 
+def inplace_sync_locked_mirror(master: Path, mirror: Path) -> None:
+    """Converge generated trees when Windows blocks renaming the open skill root."""
+    for name in MIRRORED:
+        source_root = master / name
+        destination_root = mirror / name
+        if not source_root.is_dir():
+            raise SystemExit(f"master source missing: {source_root}")
+        destination_root.mkdir(parents=True, exist_ok=True)
+        expected_manifest = manifest(source_root)
+        actual_manifest = manifest(destination_root)
+        changed = {
+            relative
+            for relative, digest in expected_manifest.items()
+            if actual_manifest.get(relative) != digest
+        }
+        for relative in sorted(changed):
+            source = source_root / relative
+            destination = destination_root / relative
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            temporary = destination.parent / f".{destination.name}.sync-{uuid.uuid4().hex}"
+            try:
+                shutil.copy2(source, temporary)
+                os.replace(temporary, destination)
+            finally:
+                temporary.unlink(missing_ok=True)
+        for relative in sorted(set(actual_manifest) - set(expected_manifest), reverse=True):
+            (destination_root / relative).unlink(missing_ok=True)
+        for directory in sorted(
+            (path for path in destination_root.rglob("*") if path.is_dir()),
+            key=lambda path: len(path.parts),
+            reverse=True,
+        ):
+            try:
+                directory.rmdir()
+            except OSError:
+                pass
+
+
 def transactional_sync(master: Path, mirror: Path) -> None:
     parent = mirror.parent
     token = uuid.uuid4().hex
@@ -66,7 +104,11 @@ def transactional_sync(master: Path, mirror: Path) -> None:
         shutil.copytree(mirror, staging, ignore=IGNORE)
         for name in MIRRORED:
             replace(master / name, staging / name)
-        os.replace(mirror, backup)
+        try:
+            os.replace(mirror, backup)
+        except PermissionError:
+            inplace_sync_locked_mirror(master, mirror)
+            return
         try:
             os.replace(staging, mirror)
         except BaseException:

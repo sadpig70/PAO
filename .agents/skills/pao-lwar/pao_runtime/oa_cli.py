@@ -43,6 +43,8 @@ from .transport import FileTransport
 
 
 OA_WRITER_TTL_S = 900
+OA_COMMAND_LOCK_TIMEOUT_S = 30
+OA_COMMAND_LOCK_STALE_S = 30
 
 
 def _next_renewal_deadline(deadline: float, interval_s: float, now: float) -> float:
@@ -110,38 +112,62 @@ def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]
 
 @contextmanager
 def renewable_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S):
-    """Hold OA ownership for a command and renew before its TTL expires."""
+    """Serialize one mutating OA command and renew ownership until it exits."""
+    # Check the writer identity before waiting so a different OA fails fast.
     lease = ensure_oa_writer(root, ttl_s)
-    publish_oa_presence(root, lease["oa_id"])
-    stop = threading.Event()
-    renewal_errors: list[BaseException] = []
-
-    def renew() -> None:
-        interval_s = max(1.0, min(ttl_s / 3, OA_PRESENCE_REFRESH_S))
-        deadline = time.monotonic() + interval_s
-        while not stop.wait(max(0.0, deadline - time.monotonic())):
-            try:
-                renewed = ensure_oa_writer(root, ttl_s)
-                publish_oa_presence(root, renewed["oa_id"])
-            except BaseException as error:  # propagate to the command boundary
-                renewal_errors.append(error)
-                stop.set()
-                return
-            deadline = _next_renewal_deadline(deadline, interval_s, time.monotonic())
-
-    thread = threading.Thread(target=renew, name="pao-oa-lease-renew", daemon=True)
-    thread.start()
     try:
-        yield lease
-        if renewal_errors:
-            raise SystemExit(f"OA writer lease renewal failed: {renewal_errors[0]}")
-    finally:
-        stop.set()
-        thread.join(timeout=2)
+        with FileLock(
+            root / "var" / "oa" / ".command.lock",
+            timeout_s=OA_COMMAND_LOCK_TIMEOUT_S,
+            stale_s=OA_COMMAND_LOCK_STALE_S,
+        ):
+            # Revalidate after waiting: ownership could have changed while the
+            # prior same-id command was finishing.
+            lease = ensure_oa_writer(root, ttl_s)
+            publish_oa_presence(root, lease["oa_id"])
+            stop = threading.Event()
+            renewal_errors: list[BaseException] = []
+
+            def renew() -> None:
+                interval_s = max(1.0, min(ttl_s / 3, OA_PRESENCE_REFRESH_S))
+                deadline = time.monotonic() + interval_s
+                while not stop.wait(max(0.0, deadline - time.monotonic())):
+                    try:
+                        renewed = ensure_oa_writer(root, ttl_s)
+                        publish_oa_presence(root, renewed["oa_id"])
+                    except BaseException as error:  # propagate to the command boundary
+                        renewal_errors.append(error)
+                        stop.set()
+                        return
+                    deadline = _next_renewal_deadline(deadline, interval_s, time.monotonic())
+
+            thread = threading.Thread(target=renew, name="pao-oa-lease-renew", daemon=True)
+            thread.start()
+            try:
+                yield lease
+                if renewal_errors:
+                    raise SystemExit(f"OA writer lease renewal failed: {renewal_errors[0]}")
+            finally:
+                stop.set()
+                thread.join(timeout=2)
+    except TimeoutError as error:
+        raise SystemExit(f"OA mutation command lock unavailable: {error}")
 
 
 def writer_guard(handler):
     def guarded(args: argparse.Namespace) -> int:
+        root = resolve_root(args.root)
+        with renewable_oa_writer(root):
+            return handler(args)
+
+    return guarded
+
+
+def conditional_writer_guard(handler, predicate):
+    """Guard commands whose read form is safe but an option enables mutation."""
+    def guarded(args: argparse.Namespace) -> int:
+        if not predicate(args):
+            return handler(args)
         root = resolve_root(args.root)
         with renewable_oa_writer(root):
             return handler(args)
@@ -577,6 +603,54 @@ def command_collect(args: argparse.Namespace) -> int:
 def command_recover(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     ensure_oa_writer(root)
+    if args.reap_startup:
+        if not args.lwar_id or not args.instance_id or args.generation is None:
+            raise SystemExit(
+                "--reap-startup requires --lwar-id, --instance-id, and --generation"
+            )
+        if args.startup_deadline <= 0:
+            raise SystemExit("--startup-deadline must be positive")
+        service = RegistryService(root)
+        outcome = service.reap_startup(
+            args.lwar_id,
+            args.instance_id,
+            args.generation,
+            args.startup_deadline,
+        )
+        audit_operation = (
+            f"startup-reap:{args.lwar_id}:{args.instance_id}:{args.generation}"
+        )
+        if outcome.get("deadline_missed"):
+            audit.record_once(
+                root,
+                "oa",
+                {
+                    "event": "startup_deadline_missed",
+                    "lwar_id": args.lwar_id,
+                    "instance_id": args.instance_id,
+                    "generation": args.generation,
+                    "heartbeat_age_s": outcome.get("heartbeat_age_s"),
+                    "startup_deadline_s": args.startup_deadline,
+                },
+                f"{audit_operation}:startup_deadline_missed",
+            )
+        event = "startup_slot_reaped" if outcome["accepted"] else "startup_slot_reap_rejected"
+        audit_payload = {
+            "event": event,
+            "lwar_id": args.lwar_id,
+            "instance_id": args.instance_id,
+            "generation": args.generation,
+            "reason": outcome.get("reason"),
+            "active_work": outcome.get("active_work", {}),
+        }
+        if outcome["accepted"]:
+            audit.record_once(root, "oa", audit_payload, f"{audit_operation}:{event}")
+        else:
+            audit.record(root, "oa", audit_payload)
+        emit({"event": event, "lwar_id": args.lwar_id, **outcome})
+        return 0 if outcome["accepted"] else 2
+    if args.instance_id or args.generation is not None:
+        raise SystemExit("--instance-id and --generation are valid only with --reap-startup")
     if args.delivery_timeout <= 0:
         raise SystemExit("--delivery-timeout must be positive")
     transport = FileTransport(root)
@@ -887,40 +961,39 @@ def command_dead(args: argparse.Namespace) -> int:
     if args.requeue:
         if not args.lwar_id:
             raise SystemExit("--requeue requires --lwar-id")
-        with renewable_oa_writer(root):
-            task_id = validate_task_id(args.requeue)
-            found = transport.find_dead_task(args.lwar_id, task_id)
-            if found is None:
-                raise SystemExit(f"dead task not found: {args.requeue}")
-            dead_task = found[1]
-            entry = ledger.get(task_id, dead_task.get("workflow_id"))
-            attempt = max(
-                int(dead_task.get("attempt", 1)),
-                int((entry or {}).get("attempt", dead_task.get("attempt", 1))),
-            ) + 1
-            ledger.transition(
-                task_id,
-                "requeueing",
-                workflow_id=dead_task.get("workflow_id"),
-                detail="manual_requeue",
-                attempt=attempt,
-            )
-            task = transport.requeue_dead(args.lwar_id, task_id, attempt)
-            if task is None:
-                raise SystemExit(f"dead task requeue interrupted; run oa recover: {args.requeue}")
-            ledger.transition(
-                task["task_id"],
-                "requeued",
-                workflow_id=task.get("workflow_id"),
-                detail="manual_requeue",
-                attempt=int(task.get("attempt", 1)),
-            )
-            audit.record(
-                root,
-                "oa",
-                {"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]},
-            )
-            emit({"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
+        task_id = validate_task_id(args.requeue)
+        found = transport.find_dead_task(args.lwar_id, task_id)
+        if found is None:
+            raise SystemExit(f"dead task not found: {args.requeue}")
+        dead_task = found[1]
+        entry = ledger.get(task_id, dead_task.get("workflow_id"))
+        attempt = max(
+            int(dead_task.get("attempt", 1)),
+            int((entry or {}).get("attempt", dead_task.get("attempt", 1))),
+        ) + 1
+        ledger.transition(
+            task_id,
+            "requeueing",
+            workflow_id=dead_task.get("workflow_id"),
+            detail="manual_requeue",
+            attempt=attempt,
+        )
+        task = transport.requeue_dead(args.lwar_id, task_id, attempt)
+        if task is None:
+            raise SystemExit(f"dead task requeue interrupted; run oa recover: {args.requeue}")
+        ledger.transition(
+            task["task_id"],
+            "requeued",
+            workflow_id=task.get("workflow_id"),
+            detail="manual_requeue",
+            attempt=int(task.get("attempt", 1)),
+        )
+        audit.record(
+            root,
+            "oa",
+            {"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]},
+        )
+        emit({"event": "dead_requeued", "lwar_id": args.lwar_id, "task_id": task["task_id"]})
         return 0
     targets = [args.lwar_id] if args.lwar_id else transport.list_lwar_ids()
     entries = []
@@ -1001,8 +1074,7 @@ def command_validate(args: argparse.Namespace) -> int:
             "decided_at": utc_now(),
         }
         validate_contract(decision, "validation-decision.schema.json")
-        with renewable_oa_writer(root):
-            ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
+        ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
     audit.record(root, "oa", {"event": "validation_report", "task_id": args.task_id, "verdict": verdict})
     emit(
         {
@@ -1076,6 +1148,50 @@ def command_prune(args: argparse.Namespace) -> int:
         }
     )
     return 0
+
+
+def command_audit_health(args: argparse.Namespace) -> int:
+    report = audit.health(resolve_root(args.root))
+    emit(report)
+    return 2 if report["status"] == "blocked" else 0
+
+
+def command_audit_repair(args: argparse.Namespace) -> int:
+    root = resolve_root(args.root)
+    try:
+        report = audit.repair(
+            root,
+            segment=args.segment,
+            expected_sha256=args.expected_sha256,
+            drop_lines=args.drop_lines,
+        )
+    except (OSError, TimeoutError, ValueError) as error:
+        raise SystemExit(f"audit repair refused: {error}")
+    audit_committed = audit.record_once(
+        root,
+        "oa",
+        {
+            "event": "audit_repair_committed",
+            "segment": report["segment"],
+            "original_sha256": report["original_sha256"],
+            "repaired_sha256": report["repaired_sha256"],
+            "dropped_lines": report["dropped_lines"],
+            "backup": report["backup"],
+        },
+        f"audit-repair:{report['segment']}:{report['original_sha256']}",
+    )
+    current_health = audit.health(root)
+    report.update(
+        {
+            "audit_event_committed": audit_committed,
+            "health_status": current_health["status"],
+            "keyed_append_blocked": current_health["keyed_append_blocked"],
+            "blocked_replay": current_health["blocked_replay"],
+            "pending_count": current_health["pending_count"],
+        }
+    )
+    emit(report)
+    return 2 if current_health["status"] == "blocked" else 0
 
 
 def command_workflow_status(args: argparse.Namespace) -> int:
@@ -1156,6 +1272,14 @@ def build_parser() -> argparse.ArgumentParser:
     recover = subparsers.add_parser("recover")
     recover.add_argument("--lwar-id")
     recover.add_argument(
+        "--reap-startup",
+        action="store_true",
+        help="reclaim one deadline-missed starting slot using exact identity fencing",
+    )
+    recover.add_argument("--instance-id")
+    recover.add_argument("--generation", type=int)
+    recover.add_argument("--startup-deadline", type=float, default=STARTUP_DEADLINE_S_DEFAULT)
+    recover.add_argument(
         "--delivery-timeout",
         type=float,
         default=300.0,
@@ -1174,7 +1298,7 @@ def build_parser() -> argparse.ArgumentParser:
     dead.add_argument("--lwar-id")
     dead.add_argument("--requeue", metavar="TASK_ID")
     dead.add_argument("--root", default=None)
-    dead.set_defaults(handler=command_dead)
+    dead.set_defaults(handler=conditional_writer_guard(command_dead, lambda args: bool(args.requeue)))
 
     validate = subparsers.add_parser("validate")
     validate.add_argument("--task-id", required=True)
@@ -1191,13 +1315,33 @@ def build_parser() -> argparse.ArgumentParser:
     )
     validate.add_argument("--reason", help="reason for the semantic decision")
     validate.add_argument("--root", default=None)
-    validate.set_defaults(handler=command_validate)
+    validate.set_defaults(
+        handler=conditional_writer_guard(command_validate, lambda args: bool(args.record))
+    )
 
     prune = subparsers.add_parser("prune")
     prune.add_argument("--older-than-days", type=float, required=True)
     prune.add_argument("--lwar-id")
     prune.add_argument("--root", default=None)
     prune.set_defaults(handler=writer_guard(command_prune))
+
+    audit_health = subparsers.add_parser("audit-health")
+    audit_health.add_argument("--root", default=None)
+    audit_health.set_defaults(handler=command_audit_health)
+
+    audit_repair = subparsers.add_parser("audit-repair")
+    audit_repair.add_argument("--segment", required=True)
+    audit_repair.add_argument("--expected-sha256", required=True)
+    audit_repair.add_argument(
+        "--drop-line",
+        dest="drop_lines",
+        action="append",
+        type=int,
+        required=True,
+        help="malformed 1-based line to remove (repeat for every malformed line)",
+    )
+    audit_repair.add_argument("--root", default=None)
+    audit_repair.set_defaults(handler=writer_guard(command_audit_repair))
 
     workflow_status = subparsers.add_parser("workflow-status")
     workflow_status.add_argument("--workflow-id", required=True)

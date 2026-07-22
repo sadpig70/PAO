@@ -2,10 +2,10 @@
 name: pao-oa
 description: "PAO Orchestration Agent (standalone, self-contained) — autonomously bootstrap and act as OA: approve LWAR registrations, publish mailbox tasks, collect and semantically validate results, recover failures. Bundles the PAO runtime; installs by folder copy alone — no pip or plugin. Load on /pao-oa or whenever a session is told to act as the PAO OA."
 user-invocable: true
-argument-hint: "start | info | doctor | presence | status | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
+argument-hint: "start | info | doctor | presence | status | audit-health | audit-repair | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
 ---
 
-# PAO-OA Skill v1.7 (standalone)
+# PAO-OA Skill v1.21 (standalone)
 
 ## Definitions
 
@@ -91,7 +91,7 @@ export PAO_OA_ID="oa-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
 $env:PAO_OA_ID = "oa-$([guid]::NewGuid().ToString('N'))"
 ```
 
-Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, plain `validate`, `workflow-status`, `dead` listing, `info`) never touch either signal.
+Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`, `audit-repair`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. A separate process-wide command mutex at `var/oa/.command.lock` serializes the complete mutation, including two processes that reuse the same `PAO_OA_ID`; contention waits up to 30 seconds and then fails closed. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**, and is not the command mutex. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, `audit-health`, plain `validate`, `workflow-status`, `dead` listing, `info`) never acquire either OA mutation guard.
 
 For the agent-level supervision loop, maintain `next_presence_deadline` from the
 monotonic time of each successful presence-publishing command. Set it to
@@ -102,6 +102,12 @@ and every other foreground step; never start a fresh interval from cycle
 completion. Never implement the cadence as `do work -> sleep 30s`.
 
 **On a writer-lease rejection**: first confirm no other live OA is actually running (check `status` and heartbeats, ask the operator). If the holder is a crashed prior session, either wait out the TTL (≤900s) or re-run once the lease has expired; if it is your own prior id, re-export the **same** `PAO_OA_ID`. Never hand-edit or delete `writer_lease.json` (or any bus file) to force a mutation — that defeats the guard and can corrupt concurrent state.
+
+**On a command-lock timeout**: do not delete `.command.lock`. Confirm whether a
+same-ID command is still running, then retry after it exits. On POSIX and
+Windows, the bundled lock protocol checks the recorded PID and reclaims a lock
+only when it is older than 30 seconds and its owner is no longer alive. Manual
+deletion can grant two writers.
 
 ## 2. Core Loop
 
@@ -117,6 +123,36 @@ OA // PAO supervising agent
 
 Recovery is not a final step only: on any detected inconsistency (stale lease, crash, quarantine, duplicate), reconcile authoritative state first, then resume the loop.
 
+When `status` reports `startup_deadline_missed=true`, do not delete bus files or
+route work to that slot. Copy the exact current `lwar_id`, `instance_id`, and
+`generation` from that status result and use the fenced `recover
+--reap-startup` procedure in `recover-maintain.md`. It may reclaim only a
+matching, overdue `starting` identity with no active mailbox work.
+If that command is interrupted, retry the identical tuple after stale locks are
+automatically reclaimed. Tombstone-first commit ordering keeps the slot fenced,
+and the retry converges without generation duplication. If both state writes
+already committed before the interruption, replay leaves them byte-stable,
+returns `already_reaped`, and restores only missing audit records. Deterministic
+startup-reap audit keys prevent replay from duplicating events already present
+in the active log, rotated segments, or the degraded backlog. Repeated audit
+outages retain only one degraded entry per deterministic key. Post-flush crash
+recovery filters spool keys already committed to active or rotated logs.
+Active and degraded audit appends are flushed and `fsync`-committed before the
+runtime reports durability or deletes the spool.
+Audit pruning shares the append lock order and preserves rotated segments that
+still carry deterministic-key evidence referenced by the degraded spool.
+Deterministic append/replay fails closed when any active or rotated audit
+segment cannot be read completely; the pending event remains degraded.
+Strict JSONL validation auto-repairs only a crash-truncated final fragment in
+the mutable active/degraded file after durably quarantining its raw bytes.
+Use read-only `audit-health` to inspect blocked keyed append/replay, malformed
+segments, pending degraded records, and `.corrupt/` fragments before recovery.
+For terminated, interior, or rotated corruption, copy the segment SHA-256 and
+all malformed line numbers from the same diagnosis, then follow the guarded
+`audit-repair` procedure in `recover-maintain.md`. Never hand-edit or delete the
+segment: repair rejects fingerprint drift and valid-line deletion, preserves
+the original bytes, and installs only a fully valid JSON-object JSONL result.
+
 `start` is the agent-level default action: it runs §0.5 and then this loop. It is
 not a separate Python subcommand.
 
@@ -130,7 +166,7 @@ Before performing an action for the first time this session, read its reference 
 | `presence`, `reconcile`, registration and lifecycle approval, `status`, state transitions | [references/reconcile.md](references/reconcile.md) |
 | `send`, task drafting, `--auto` routing, `depends_on` | [references/publish.md](references/publish.md) |
 | `collect`, `validate`, `workflow-status`, result acceptance | [references/collect-validate.md](references/collect-validate.md) |
-| `recover`, `dead`, `control`, `prune`, audit | [references/recover-maintain.md](references/recover-maintain.md) |
+| `recover`, `dead`, `control`, `prune`, `audit-health`, `audit-repair`, audit | [references/recover-maintain.md](references/recover-maintain.md) |
 
 JSON Schemas for every bus message live in [schemas/](schemas/).
 

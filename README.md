@@ -30,6 +30,30 @@ OA (Orchestration Agent)
   the watcher in one Python process; OA distinguishes registered-not-started
   from active-then-stale, and auto-routing waits for the first operational
   heartbeat
+- explicit startup-failure recovery: OA reclaims an overdue `starting` slot
+  only with its exact identity tuple and only when no active mailbox work exists
+- tombstone-first startup-reap commit with retry convergence after a process
+  crash between the tombstone and registry writes
+- post-commit startup-reap replay that preserves state bytes and registry
+  version while restoring a response and audit trail
+- deterministic audit idempotency across active, rotated, and degraded logs for
+  crash-safe startup-reap event recovery
+- lock-serialized degraded audit spooling that retains one pending record per
+  deterministic key across repeated active-log failures
+- crash-consistent degraded promotion that filters keys already committed to
+  active or rotated logs after a post-flush process stop
+- `fsync` durability barriers for active and degraded audit appends before
+  reporting durability or deleting the recovery spool
+- lock-serialized, spool-aware audit pruning that retains rotated idempotency
+  evidence until pending degraded replay has converged
+- fail-closed deterministic key scans that defer append when any active or
+  rotated audit segment is unreadable
+- strict audit JSONL validation with durable quarantine and bounded repair of
+  only crash-truncated mutable tails
+- read-only `oa audit-health` diagnostics for blocked replay, malformed
+  segments, pending degraded records, and quarantine evidence
+- fingerprint-fenced `oa audit-repair` that removes exactly the diagnosed
+  malformed lines, durably preserves original evidence, and resumes replay
 - lifecycle transitions: `on → draining → off → deregistered`
 - support for long-running runtimes, including TUIs
 - provider-neutral task and result contracts
@@ -41,6 +65,10 @@ OA (Orchestration Agent)
 - capability- and load-based automatic routing (`send --auto --require-capability`)
 - `depends_on` task gating for simple workflow DAGs
 - append-only audit log (`var/audit/events.jsonl`) and archive pruning (`prune`)
+- command-wide OA mutation serialization, including concurrent processes that
+  reuse the same `PAO_OA_ID`
+- cross-platform stale-lock recovery that preserves live holders and reclaims
+  command locks left by terminated OA processes
 - replaceable message plane: the `Transport` protocol with `FileTransport` as the local implementation
 - distributed as two self-contained skills (`.agents/skills/pao-oa`, `.agents/skills/pao-lwar`): each bundles the contract, wrapper scripts, and the full stdlib-only runtime; installs by folder copy alone (no pip, no plugin). Vendor-neutral — proven on Claude Code and Kimi Code CLI
 
@@ -82,6 +110,8 @@ or `schemas/` only there, then run `python tools/sync_bundles.py` to mirror
 into `pao-oa`. The test suite byte-verifies the two bundles match. `pao info`
 diagnoses version and root resolution; `pao doctor --role oa|lwar` is a
 pre-flight check.
+On Windows, the sync tool falls back to atomic replacement of hash-different
+generated files when an open runtime prevents renaming the whole skill root.
 
 ## Quick Start
 
@@ -117,7 +147,7 @@ python -m unittest discover -s tests -v
 python -m py_compile .agents/skills/pao-lwar/pao_runtime/*.py .agents/skills/pao-lwar/scripts/*.py tests/*.py
 ```
 
-The integration suite verifies registration, collision rejection, bounded startup classification, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair and exact-once replay dogfooding, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
 
 ## License
 

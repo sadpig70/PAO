@@ -289,6 +289,17 @@ foreground work does not accumulate cadence drift. The writer lease remains a 90
 fence and must not be interpreted as process liveness. LWAR `oa-status`
 classifies the signal as `live`, `stale`, `missing`, or `invalid`.
 
+OA mutations are additionally serialized by `var/oa/.command.lock`. The writer
+lease fences different OA identities; the command mutex prevents two processes
+using the same identity from overlapping stale reads and writes. A contender
+waits at most 30 seconds and then fails closed, while the active command keeps
+presence and the writer lease renewed.
+
+The command lock records its owner PID. POSIX and Windows liveness probes
+prevent an old but live lock from being stolen. If the owner process terminates,
+the orphaned lock becomes reclaimable after the 30-second stale threshold; this
+restores mutation availability without operator file deletion.
+
 Clean retirement is an idempotent lifecycle pipeline:
 `control:retire -> on -> draining -> off -> deregistered`. Each transition is
 approved by OA `reconcile`; ADP stops only after `lwar_retired` confirms the
@@ -306,6 +317,72 @@ PAO must recover from:
 - stale identities after slot reuse
 
 OA recovery returns expired claimed tasks to the queue and never trusts stale generation output as current work.
+
+A current-identity `starting` heartbeat that exceeds the 30-second startup
+deadline remains non-routable. OA may explicitly reclaim that orphan only with
+`recover --reap-startup` and the exact `lwar_id + instance_id + generation`.
+The registry-locked operation rechecks identity, heartbeat state/age, and the
+absence of active mailbox work before removing the slot and writing a
+generation-preserving tombstone. Fresh startup, an operational/stale watcher,
+an identity mismatch, or queued/claimed/control/result work fails closed.
+
+The two-file reap commit is ordered tombstone first, registry second. A process
+crash between writes therefore retains an occupied slot plus its generation
+tombstone rather than exposing an unfenced free alias. Once orphaned locks age
+past the stale threshold, repeating the exact recovery tuple completes registry
+removal with one version increment. A crash after both writes converges through
+the matching-tombstone `already_reaped` path. That post-commit replay does not
+rewrite either state file or increment the registry version; it supplies the
+lost response and records the deadline/reap audit events.
+
+Accepted startup-reap audit events carry deterministic idempotency keys built
+from the current identity tuple and event name. Key lookup and append occur
+under the audit lock against the active log, rotated segments, and degraded
+backlog. A crash between the deadline and reap audit appends can therefore be
+retried without duplicating the first event while still restoring the second.
+Fallback writes serialize under a separate degraded-spool lock and check that
+backlog before appending. Repeated active-log failures therefore retain one
+pending line per deterministic key, which the next healthy record promotes
+once into the active stream. Promotion also filters backlog keys already found
+in active or rotated segments. A process stop after active flush but before
+spool deletion therefore converges on retry without duplicating keyed events.
+Both active and degraded append paths cross an `fsync` durability barrier after
+flush. The runtime deletes the spool only after active `fsync` succeeds; an
+active durability failure falls back to an independently `fsync`-committed
+spool entry.
+Rotated-segment pruning acquires `.audit.lock` and then `.degraded.lock`, the
+same order as append/replay. Before deleting an eligible old segment it checks
+pending degraded keys; an intersecting segment is retained until replay clears
+the spool. Unreadable pending or segment evidence fails closed.
+Keyed append/replay also requires a complete readable key snapshot across all
+active and rotated segments. A file read or UTF-8 decode failure raises the
+audit operation into its non-fatal degraded path rather than treating unknown
+evidence as key absence and risking a duplicate append.
+Audit JSONL readers require every non-empty line to decode as a JSON object, so
+valid unkeyed events remain distinct from unknown malformed evidence. Recovery
+is deliberately bounded: only a malformed final fragment without a terminating
+newline in mutable `events.jsonl` or `degraded.jsonl` is treated as a crash tail.
+Its raw bytes are written and `fsync`-committed under `var/audit/.corrupt/`
+before truncating and `fsync`-committing the source. Malformed rotated,
+newline-terminated, or interior records stay unchanged and block keyed append
+until explicit operator repair.
+
+The read-only `oa audit-health` command scans the same JSONL contract without
+locks or repair side effects. Its JSON response reports overall
+`healthy|attention|blocked`, `keyed_append_blocked`, `blocked_replay`, each
+segment's line/key/malformed state and SHA-256, exact `repair_candidates`,
+degraded pending count, quarantine files, and safe remediation guidance.
+Blocked health returns exit code 2; diagnostics never create OA lease/presence
+or audit state.
+
+Non-automatic corruption is repaired only through the writer-guarded `oa
+audit-repair` command. The operator supplies a top-level audit segment name,
+the SHA-256 of the diagnosed bytes, and exactly every malformed 1-based line.
+The runtime rejects traversal, fingerprint drift, partial selection, and valid
+line deletion. It holds `.audit.lock` then `.degraded.lock`, durably preserves
+the original under `.corrupt/`, validates the complete candidate, and performs
+an atomic replacement. A deterministic repair audit then drives degraded replay;
+other corrupt segments remain fail-closed and cause exit code 2.
 
 Concretely, since 0.3:
 

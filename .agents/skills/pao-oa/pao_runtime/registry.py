@@ -12,6 +12,7 @@ from .common import (
     ensure_mailbox,
     load_json,
     parse_utc,
+    safe_load_json,
     utc_now,
     validate_instance_id,
     validate_lwar_id,
@@ -72,6 +73,140 @@ class RegistryService:
         archive.parent.mkdir(parents=True, exist_ok=True)
         if request_path.exists():
             os.replace(request_path, archive)
+
+    def _active_mailbox_work(self, lwar_id: str) -> dict[str, int]:
+        """Count work whose loss would make startup-slot reaping unsafe."""
+        mailbox = self.root / "mailbox" / lwar_id
+        active = {}
+        for name in ("incoming", "claimed", "leases", "outgoing", "control", "control_claimed"):
+            count = sum(1 for path in (mailbox / name).glob("*.json") if path.is_file())
+            if count:
+                active[name] = count
+        return active
+
+    def reap_startup(
+        self,
+        lwar_id: str,
+        instance_id: str,
+        generation: int,
+        startup_deadline_s: float,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Reclaim one orphaned startup slot with identity and state fencing.
+
+        This is deliberately operator-directed. The current slot, heartbeat,
+        deadline, and mailbox are all rechecked while the registry lock is held
+        so a stale status observation cannot reclaim a replacement generation.
+        """
+        lwar_id = validate_lwar_id(lwar_id)
+        instance_id = validate_instance_id(instance_id)
+        if generation <= 0:
+            raise ValueError("generation must be positive")
+        if startup_deadline_s <= 0:
+            raise ValueError("startup deadline must be positive")
+        observed_at = now or datetime.now(timezone.utc)
+
+        with FileLock(self.lock_path):
+            registry = self.load_registry()
+            tombstones = self.load_tombstones()
+            slot = registry["slots"].get(lwar_id)
+            tombstone = tombstones["entries"].get(lwar_id)
+
+            if slot is None:
+                already_reaped = bool(
+                    tombstone
+                    and tombstone.get("instance_id") == instance_id
+                    and tombstone.get("last_generation") == generation
+                )
+                return {
+                    "accepted": already_reaped,
+                    "reason": "already_reaped" if already_reaped else "lwar_not_registered",
+                    "deadline_missed": already_reaped,
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+            if slot.get("instance_id") != instance_id or slot.get("generation") != generation:
+                return {
+                    "accepted": False,
+                    "reason": "identity_mismatch",
+                    "deadline_missed": False,
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+
+            heartbeat_path = self.root / "mailbox" / lwar_id / "heartbeat.json"
+            heartbeat = safe_load_json(heartbeat_path) if heartbeat_path.is_file() else None
+            try:
+                if heartbeat is not None:
+                    validate_contract(heartbeat, "heartbeat.schema.json")
+            except ValueError:
+                heartbeat = None
+            if heartbeat is None:
+                reason = "heartbeat_missing_or_invalid"
+                age_s = None
+            elif (
+                heartbeat.get("instance_id") != instance_id
+                or heartbeat.get("generation") != generation
+            ):
+                reason = "heartbeat_identity_mismatch"
+                age_s = None
+            elif heartbeat.get("status") != "starting":
+                reason = "heartbeat_not_starting"
+                age_s = None
+            else:
+                try:
+                    age_s = max(0.0, (observed_at - parse_utc(heartbeat["last_seen"])).total_seconds())
+                except (KeyError, TypeError, ValueError):
+                    reason = "heartbeat_missing_or_invalid"
+                    age_s = None
+                else:
+                    reason = None if age_s > startup_deadline_s else "startup_deadline_not_missed"
+
+            deadline_missed = reason is None
+            if reason is not None:
+                return {
+                    "accepted": False,
+                    "reason": reason,
+                    "deadline_missed": False,
+                    "heartbeat_age_s": age_s,
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+
+            active_work = self._active_mailbox_work(lwar_id)
+            if active_work:
+                return {
+                    "accepted": False,
+                    "reason": "active_mailbox_work",
+                    "deadline_missed": deadline_missed,
+                    "heartbeat_age_s": age_s,
+                    "registry_version": registry["registry_version"],
+                    "active_work": active_work,
+                }
+
+            registry["registry_version"] = int(registry["registry_version"]) + 1
+            registry["updated_at"] = utc_now()
+            del registry["slots"][lwar_id]
+            reusable_after = observed_at + timedelta(seconds=self.tombstone_retention_s)
+            tombstones["entries"][lwar_id] = {
+                "last_generation": generation,
+                "instance_id": instance_id,
+                "deregistered_at": utc_now(),
+                "reusable_after": reusable_after.isoformat().replace("+00:00", "Z"),
+            }
+            tombstones["updated_at"] = utc_now()
+            # Tombstone first: an interruption can temporarily retain an
+            # occupied slot, but can never expose an unfenced free slot.
+            atomic_write_json(self.tombstones_path, tombstones)
+            atomic_write_json(self.registry_path, registry)
+            return {
+                "accepted": True,
+                "reason": None,
+                "deadline_missed": True,
+                "heartbeat_age_s": age_s,
+                "registry_version": registry["registry_version"],
+                "active_work": {},
+            }
 
     def process_registration(self, request_path: Path) -> dict[str, Any]:
         request = load_json(request_path)

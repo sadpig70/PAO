@@ -31,6 +31,11 @@ python "<PAO_SKILL>/scripts/oa.py" status --startup-deadline 30
   with the first resident watcher heartbeat within 30 seconds (configurable for
   observation with `status --startup-deadline`). A deadline miss is therefore
   an in-process startup failure, not ordinary agent scheduling latency.
+- On `startup_deadline_missed=true`, recover only through `recover
+  --reap-startup` with the exact identity tuple returned by the same current
+  `status` observation. The command revalidates the tuple, heartbeat, deadline,
+  and empty active-work directories before creating a tombstone and freeing the
+  slot; it never reaps an active/stale watcher or a slot with queued work.
 - `status` reports `runtime_status=registered_not_started` when there is no
   current-identity heartbeat or the startup deadline was missed,
   `runtime_status=starting` inside the startup window, `active` for a fresh
@@ -86,3 +91,4 @@ ask for a second bootstrap prompt after a no-action `/pao-oa` invocation.
 | `incoming` → `claimed` | LWAR watcher | bus atomic move | identity tuple matches, state `on` |
 | `claimed` → terminal result | LWAR `complete` | OA `collect` + validation | generation and attempt match the ledger |
 | expired claim → requeue / dead | OA `recover` | retry budget | `attempt > max_retries` dead-letters |
+| overdue `starting` → tombstoned slot | OA `recover --reap-startup` | OA fenced recovery | exact identity tuple, startup deadline missed, no active mailbox work |
