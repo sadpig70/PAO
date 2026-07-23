@@ -27,8 +27,19 @@ policy, unreadable live state, or an API error.
 - on manual dispatch
 
 A failed scheduled run is the drift alert. The job uses only `contents: read`;
-the GitHub token is used to read current branch protection and is never written
-to disk or output.
+the default workflow token is used only for checkout and is not persisted.
+GitHub does not grant that token access to repository-administration endpoints,
+so the audit reads protection with the encrypted
+`REPOSITORY_POLICY_AUDIT_TOKEN` Actions secret.
+
+Provision that secret with a fine-grained token limited to this repository and
+these read-only permissions:
+
+- Administration: read
+- Metadata: read
+
+The token is passed only to the audit process and is never written to disk or
+output. A missing, expired, or underprivileged secret fails closed.
 
 For a local authenticated audit:
 

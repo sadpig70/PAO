@@ -250,10 +250,15 @@ def main(argv: list[str] | None = None) -> int:
                 raise ValueError(
                     "--repository or GITHUB_REPOSITORY is required without --live-file"
                 )
+            token = os.environ.get("GITHUB_TOKEN")
+            if not token:
+                raise ValueError(
+                    "GITHUB_TOKEN is required to read live branch protection"
+                )
             live = fetch_branch_protection(
                 args.repository,
                 policy.branch,
-                token=os.environ.get("GITHUB_TOKEN"),
+                token=token,
                 api_url=args.api_url,
             )
         errors = compare_policy(policy, live)
