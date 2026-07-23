@@ -1,0 +1,49 @@
+# PR Evidence Gate
+
+The `PR Evidence` check turns the repository's pull-request template into an
+enforced evidence contract.
+
+## Contract
+
+`.github/pull_request_template.md` is the single contract source. The validator
+derives the required H2 sections and checkbox labels directly from that file.
+It fails closed when evidence is:
+
+- empty or missing
+- duplicated or out of order
+- still only an HTML template comment
+- missing a contract checkbox
+- carrying an unchecked contract checkbox
+
+The PR body is parsed as inert Markdown. No body content is evaluated,
+interpolated, or executed.
+
+## Trust boundary
+
+`.github/workflows/pr-evidence.yml` runs on `pull_request_target` and checks out
+the exact base commit, not the PR branch. A pull request therefore cannot pass
+the gate by changing its own validator or workflow.
+
+The workflow has only:
+
+- `contents: read`
+- `pull-requests: read`
+- `checks: write`
+
+After validation, the trusted base code publishes a completed `PR Evidence`
+check directly to `pull_request.head.sha`. The check records either `success`
+or actionable validation errors. Failure to parse, validate, or publish leaves
+the pull request blocked.
+
+## Recovery
+
+The workflow runs for opened, synchronized, reopened, and edited pull requests.
+To recover a failed check:
+
+1. fill every required narrative section with concrete evidence
+2. check every required verification and source-boundary item
+3. edit the pull-request body
+4. wait for the replacement `PR Evidence` check
+
+Do not use a retry to conceal missing evidence. A retry against unchanged
+content should fail again.
