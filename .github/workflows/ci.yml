@@ -35,7 +35,7 @@ jobs:
           python-version: "3.13"
 
       - name: Compile Python
-        run: python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests
+        run: python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests tools
 
       - name: Run tests
         if: ${{ !cancelled() }}

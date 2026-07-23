@@ -25,7 +25,8 @@ jobs before merge.
 4. If runtime master files changed, synchronize the bundles.
 5. Run the local verification gates.
 6. Push the feature branch and open a pull request against `main`.
-7. Wait for both required GitHub Actions jobs:
+7. Wait for all required GitHub Actions jobs:
+   - `PR Evidence`
    - `Verify (ubuntu-latest)`
    - `Verify (windows-latest)`
 8. Merge without an administrator bypass, then delete the feature branch.
@@ -33,14 +34,14 @@ jobs before merge.
    is clean.
 
 The branch protection rule is strict: a pull request must be current with
-`main`, and both required checks must come from the GitHub Actions app.
+`main`, and every required check must come from the GitHub Actions app.
 
 ## Local verification
 
 Run these commands from the repository root:
 
 ```bash
-python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests
+python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests tools
 python -m unittest discover -s tests -q
 python tools/sync_bundles.py --check
 git diff --check
@@ -61,6 +62,11 @@ Keep each pull request reviewable and state:
 Do not hide a failing check with a retry-only workaround. Reproduce the
 failure, fix the cause or make the assertion deterministic, and let both
 platform jobs validate the correction.
+
+`PR Evidence` derives its required headings and checkboxes from
+`.github/pull_request_template.md`. It fails closed on missing, duplicate,
+out-of-order, placeholder-only, or unchecked evidence. Editing the PR body
+triggers validation again.
 
 ## Windows development
 
