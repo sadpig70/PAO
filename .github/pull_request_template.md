@@ -25,4 +25,4 @@
 - [ ] The generated OA mirror was synchronized after runtime changes, or this is not applicable.
 - [ ] Tracked text is English and examples use repository-relative paths.
 - [ ] No credentials, machine-specific paths, `.pao/` state, or generated runtime data are included.
-- [ ] This pull request is current with `main` and is ready for both required CI jobs.
+- [ ] This pull request is current with `main` and is ready for all required checks.
