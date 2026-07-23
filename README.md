@@ -160,6 +160,7 @@ two `SKILL.md` files and their bundled references are the sole operating contrac
 ## Documentation
 
 - [Contribution guide](CONTRIBUTING.md)
+- [PR evidence gate](docs/PR_EVIDENCE_GATE.md)
 - [Technical specification](docs/PAO_TechSpec.md)
 - [ADP operations guide](docs/PAO_ADP_Operations.md)
 - [Skill-only bootstrap note](docs/LWAR_ADP_Bootstrap.md)
