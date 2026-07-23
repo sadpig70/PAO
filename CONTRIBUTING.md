@@ -35,6 +35,8 @@ jobs before merge.
 
 The branch protection rule is strict: a pull request must be current with
 `main`, and every required check must come from the GitHub Actions app.
+The scheduled repository policy audit detects live drift from that contract;
+see `docs/REPOSITORY_POLICY_AUDIT.md`.
 
 ## Local verification
 

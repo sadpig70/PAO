@@ -1,0 +1,21 @@
+{
+  "branch": "main",
+  "required_status_checks": {
+    "strict": true,
+    "checks": [
+      {
+        "context": "PR Evidence",
+        "app_id": 15368
+      },
+      {
+        "context": "Verify (ubuntu-latest)",
+        "app_id": 15368
+      },
+      {
+        "context": "Verify (windows-latest)",
+        "app_id": 15368
+      }
+    ]
+  },
+  "enforce_admins": true
+}
