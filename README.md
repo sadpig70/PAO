@@ -53,7 +53,8 @@ OA (Orchestration Agent)
 - read-only `oa audit-health` diagnostics for blocked replay, malformed
   segments, pending degraded records, and quarantine evidence
 - fingerprint-fenced `oa audit-repair` that removes exactly the diagnosed
-  malformed lines, durably preserves original evidence, and resumes replay
+  malformed lines, durably preserves original evidence, and uses a durable
+  receipt to resume replacement/audit commit exactly once after process stops
 - lifecycle transitions: `on → draining → off → deregistered`
 - support for long-running runtimes, including TUIs
 - provider-neutral task and result contracts
@@ -64,7 +65,29 @@ OA (Orchestration Agent)
 - durable OA task ledger (`var/tasks/`) with `validate` and `workflow-status` commands
 - capability- and load-based automatic routing (`send --auto --require-capability`)
 - `depends_on` task gating for simple workflow DAGs
-- append-only audit log (`var/audit/events.jsonl`) and archive pruning (`prune`)
+- append-only audit log (`var/audit/events.jsonl`) and fail-closed archive and
+  committed-repair-evidence pruning (`prune`)
+- durable `.repair-prune/` transactions that converge receipt and backup
+  cleanup after a process stop at any deletion boundary
+- read-only `audit-health` classification of retention transactions as
+  `resumable` or reason-coded `blocked`
+- rotated-audit retention fences that preserve tombstone targets and key
+  carriers and cancel pruning when tombstone keys are unreadable
+- pre-delete JSON-object JSONL validation with separate rotated
+  removed/protected/blocked prune counts and reason-coded per-segment outcomes
+- fingerprint-bound `.rotated-prune/` receipts that resume partial segment
+  deletion and recover the deterministic `pruned` event after process stops
+- read-only `audit-health` classification of rotated-prune receipts as
+  `resumable` or stable reason-coded `blocked`
+- fingerprint-fenced `audit-prune-resolve` with durable
+  `.rotated-preserve/` markers for operator-preserved recreated segments
+- read-only `.rotated-preserve/` health classification for valid protection,
+  orphaned markers, duplicate target claims, target drift, and missing audit
+  bindings
+- fingerprint-fenced `audit-preserve-release` with event-before-unlink
+  convergence that removes only the marker and leaves the segment intact
+- read-only release-event health classification for completed, event-first
+  resumable, duplicate, payload-conflicting, and marker-drift topologies
 - command-wide OA mutation serialization, including concurrent processes that
   reuse the same `PAO_OA_ID`
 - cross-platform stale-lock recovery that preserves live holders and reclaims
@@ -147,7 +170,12 @@ python -m unittest discover -s tests -v
 python -m py_compile .agents/skills/pao-lwar/pao_runtime/*.py .agents/skills/pao-lwar/scripts/*.py tests/*.py
 ```
 
-The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair and exact-once replay dogfooding, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair, receipt-driven crash-boundary convergence, committed-only repair-evidence retention, hard-crash retention-tombstone convergence, read-only resumable/blocked topology classification, rotated target/key-carrier retention fencing, pre-delete rotated JSONL validation and outcome accounting, ambiguous-evidence preservation, and exact-once replay dogfooding, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+
+Preservation-release verification includes real subprocess `os._exit` crashes
+at both event-append-to-marker-unlink and marker-unlink-to-CLI-response
+boundaries, followed by read-only health discovery, dead-holder lock recovery,
+and exact-once CLI completion.
 
 ## License
 

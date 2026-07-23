@@ -384,6 +384,192 @@ the original under `.corrupt/`, validates the complete candidate, and performs
 an atomic replacement. A deterministic repair audit then drives degraded replay;
 other corrupt segments remain fail-closed and cause exit code 2.
 
+Repair intent is crash-durable. Before target replacement, the runtime writes a
+receipt under `var/audit/.repairs/` binding the segment, original and repaired
+SHA-256 values, exact dropped lines, sizes, and preserved backup. The receipt
+advances `prepared -> replaced -> committed`. An exact retry with a `prepared`
+receipt may replace an unchanged original or recognize the already-repaired
+digest after a post-replace crash. A `replaced` receipt resumes the deterministic
+audit append, whose idempotency key prevents duplication; a `committed` receipt
+is a stable replay. Any other receipt/target combination fails closed.
+`audit-health` surfaces receipt validity, phase, backup presence, and the pending
+repair count without mutating recovery state.
+
+Repair-evidence retention is committed-only and fail-closed. Under the audit and
+degraded locks, `prune` requires an old parseable `committed_at`, the
+deterministic repair audit key in a complete readable audit snapshot, a matching
+original backup, and a target that proves the repaired content. For the active
+log, later valid append-only records may follow the repaired prefix; for the
+degraded spool, healthy replay may consume the file. The receipt is removed
+before its backup, so a stop can leak evidence but cannot erase an unbound
+backup. Any incomplete, invalid, drifted, missing, or ambiguous evidence remains
+untouched.
+
+Deletion is a resumable file transaction. Before removing evidence, the runtime
+writes `var/audit/.repair-prune/<segment>.<original-sha256>.json`, binding the
+receipt byte fingerprint, original and repaired hashes and sizes, deterministic
+audit key, source backup, and deterministic staging path. Its initial
+`authorized` phase precedes receipt removal. The original backup then moves by
+atomic same-filesystem replacement into the staging path; the tombstone advances
+durably to `backup_staged` before the staged bytes are removed. The tombstone is
+removed last. On the next `prune`, file presence plus the strict tombstone,
+audit-key, target, receipt, and backup checks identify the last safe transition.
+An already-authorized cleanup completes independently of the new cutoff.
+Malformed or conflicting state remains fail-closed.
+
+Retention diagnosis is read-only. `audit-health` builds a non-repairing audit
+key snapshot and validates every `.repair-prune/*.json` marker, repaired target,
+receipt fingerprint, and original or staged backup. The five legitimate
+topologies across `authorized` and `backup_staged` are reported as `resumable`.
+Every other topology or validation failure is `blocked` with stable
+`reason_codes`. The report exposes `retention_tombstones`,
+`resumable_retention_count`, and `blocked_retention_count`. Either nonzero count
+sets overall health to `attention`; it does not set `keyed_append_blocked` or
+`blocked_replay`, whose meanings remain limited to audit-log safety.
+
+Rotation retention is transaction-aware. Under the same audit/degraded lock
+order, rotated pruning strictly snapshots every `.repair-prune/*.json` marker
+before deleting any segment. It protects the marker's named target when that
+target is `events.<digits>.jsonl`, plus every rotated segment whose parsed keys
+contain the marker's deterministic repair audit key. Protection applies to
+resumable and blocked transactions. If a marker is malformed, unreadable, or
+not a regular file, no rotated segment is removed. Once retention completion
+removes the marker, both fences disappear and normal age-based pruning resumes.
+
+All remaining age-eligible rotated candidates pass a complete pre-delete
+validation. The prune classifier accepts only readable UTF-8 JSONL whose every
+line is a JSON object. Malformed, non-object, unreadable, metadata-inaccessible, or
+unlink-failed candidates remain present and increment
+`audit_segments_blocked`. Reference-fenced candidates increment
+`audit_segments_protected`; successful deletions increment
+`audit_segments_removed`. OA emits all three counts, while `total` includes
+only successful deletion.
+
+`audit_segment_outcomes` is the normalized evidence behind those aggregates.
+Each item has a bus-root-relative `path`, one
+`removed|protected|blocked` status, and stable `reason_codes`. Removal uses
+`valid_expired`; protection distinguishes `retention_target`,
+`retention_audit_key`, and `degraded_replay_key`; blocked outcomes distinguish
+invalid retention/degraded snapshots, file read and JSONL validation failures,
+metadata failures, disappearance, and unlink failure. Optional `error` text is
+diagnostic only. The invariant is:
+
+```text
+len(audit_segment_outcomes)
+  == audit_segments_removed
+   + audit_segments_protected
+   + audit_segments_blocked
+```
+
+OA includes the identical ordered list in command output and the `pruned` audit
+event.
+
+Rotated deletion uses a write-ahead run receipt under
+`var/audit/.rotated-prune/<run_id>.json`. The receipt is atomically durable
+before the first deletion and binds the original cutoff, path-sorted decisions,
+and SHA-256 plus byte count for every `valid_expired` removal. Only one pending
+receipt is allowed. A later invocation resumes it before taking a new candidate
+snapshot, even when the new CLI-derived cutoff differs.
+
+The apply phase rechecks each present authorized target against its witness.
+Mismatch changes the outcome to reason-coded `segment_drifted` and retains the
+file. Absence is accepted because deletion was already durably authorized; this
+is the proof that lets a run converge after a process stop between unlink and
+receipt advancement. Once every decision is terminal, the receipt advances
+from `prepared` to `applied`.
+
+OA writes `pruned` with deterministic idempotency key
+`rotated-prune:<run_id>`. `commit_rotated_prune_receipt` reloads and matches the
+public report, requires the receipt to be `applied`, and scans the complete
+audit log for that key before removing the receipt. A degraded append therefore
+returns `audit_prune_audit_committed=false` and retains the receipt. Retry
+reconstructs the same outcomes, promotes or deduplicates the event exactly
+once, and only then completes the receipt.
+
+`audit-health` snapshots `.rotated-prune/` without acquiring locks or changing
+filesystem state. `rotated_prune_receipts` exposes each path, phase, run ID,
+cutoff, audit-key presence, outcome count, deletion-target states, and stable
+`reason_codes`. Valid `prepared` targets may be fingerprint-matching or
+authorized-absent; valid `applied` removal targets must be absent. These states
+are `resumable`.
+
+The classifier marks invalid schema, a non-directory receipt root, unexpected
+or multiple entries, unreadable/non-file targets, fingerprint drift,
+incomplete audit snapshots, and any `applied` deletion target that is present
+as `blocked`. `resumable_rotated_prune_count` and
+`blocked_rotated_prune_count` raise overall health to `attention`; only audit
+segment validity controls `keyed_append_blocked`.
+
+`audit-prune-resolve` is the guarded transition for
+`applied_target_present`. Its operator fence is the tuple `(run_id,
+receipt_sha256, segment, segment_sha256, decision=preserve-recreated)`. Under
+the audit/degraded lock order, the runtime requires one exact applied receipt
+and one regular target matching that tuple.
+
+Before receipt mutation it writes
+`var/audit/.rotated-preserve/<run_id>.<segment>.json`, binding the recreated
+bytes, original deletion witness, receipt fingerprint, operator decision, and
+resolution audit key. The receipt outcome changes from authorized removal to
+retained `operator_preserved_recreated_segment`. A retry after marker-first or
+receipt-first interruption reuses the same binding.
+
+OA recovers or deduplicates the original `pruned` event under
+`rotated-prune:<run_id>`, then appends `audit_prune_resolved` under
+`rotated-prune-resolve:<run_id>:<segment>:<preserved_sha256>`. Receipt removal
+requires both keys, the exact marker, and unchanged preserved target. Normal
+rotated pruning strictly loads every preservation marker and classifies its
+target as protected `operator_preserved_target`; any invalid marker snapshot
+blocks the rotated pass as `preservation_snapshot_invalid`.
+
+The read-only health classifier independently snapshots
+`var/audit/.rotated-preserve/`. It emits `rotated_preservations`,
+`protected_rotated_preservation_count`, and
+`blocked_rotated_preservation_count`. A marker is `protected` only if its
+strict schema/filename is valid, its regular target matches the recorded
+SHA-256 and byte count, and both `rotated-prune:<run_id>` and its deterministic
+resolution key exist in a complete audit-key snapshot. Stable blocked reasons
+include invalid or unexpected entries, an orphaned marker, unreadable or
+non-file target, fingerprint drift, duplicate claims on one target, incomplete
+audit visibility, and missing original-prune or resolution keys. Inspection
+acquires no lock and changes no file. Protected or blocked markers raise
+overall health to `attention`; audit segment validity alone controls
+`keyed_append_blocked`.
+
+`audit-preserve-release` is the guarded retirement transition for one valid
+permanent protection. Its operator fence is `(run_id, segment, marker_sha256,
+segment_sha256, decision=release-protection)`. Preparation requires the strict
+marker file, a matching regular target, both the original prune and resolution
+audit keys, and no duplicate valid marker claim on the segment.
+
+The deterministic release key is
+`rotated-preserve-release:<run_id>:<segment>:<marker_sha256>:<segment_sha256>`.
+OA records `audit_preservation_released` with the complete binding before
+marker deletion. Commit reloads the exact event payload, marker bytes, target
+bytes, prior audit keys, and health classification under the audit/degraded
+lock order, then unlinks only the marker. An append failure leaves protection
+active. A process stop after event commit resumes marker deletion; a stop after
+unlink is recognized from the exact committed event. Payload collision or
+duplicate event evidence fails closed. The segment is not mutated or deleted
+by this transition and is eligible for a later normal rotated prune.
+
+Read-only release diagnosis scans committed `events*.jsonl` bytes without
+locks, tail repair, or mutation, selecting both canonical
+`audit_preservation_released` events and every event occupying the
+`rotated-preserve-release:` key namespace. Evidence is grouped by exact key.
+The classifier validates the key-derived run, segment, marker hash, target
+hash, prior audit keys, canonical event payload, and nonnegative target byte
+count.
+
+One valid event with an absent marker is `completed`. One valid event with the
+exact marker still present and health-classified `protected` is `resumable`
+with `release_event_committed_marker_present`. Duplicate events,
+key/payload disagreement, marker fingerprint drift, non-file/unreadable
+markers, and missing or blocked marker bindings are stable `blocked` states.
+`preservation_releases` exposes event locations and the complete retry fence;
+aggregate completed/resumable/blocked counts support automation. Completed
+history is informational. Resumable or blocked evidence raises overall health
+to `attention`, while JSONL validity alone controls `keyed_append_blocked`.
+
 Concretely, since 0.3:
 
 - each requeue increments `attempt`; exceeding `max_retries` dead-letters the task into `dead/` (manual `dead --requeue` resets the budget)

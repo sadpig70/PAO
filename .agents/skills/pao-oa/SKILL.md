@@ -2,10 +2,10 @@
 name: pao-oa
 description: "PAO Orchestration Agent (standalone, self-contained) — autonomously bootstrap and act as OA: approve LWAR registrations, publish mailbox tasks, collect and semantically validate results, recover failures. Bundles the PAO runtime; installs by folder copy alone — no pip or plugin. Load on /pao-oa or whenever a session is told to act as the PAO OA."
 user-invocable: true
-argument-hint: "start | info | doctor | presence | status | audit-health | audit-repair | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
+argument-hint: "start | info | doctor | presence | status | audit-health | audit-repair | audit-prune-resolve | audit-preserve-release | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
 ---
 
-# PAO-OA Skill v1.21 (standalone)
+# PAO-OA Skill v1.34 (standalone)
 
 ## Definitions
 
@@ -91,7 +91,7 @@ export PAO_OA_ID="oa-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
 $env:PAO_OA_ID = "oa-$([guid]::NewGuid().ToString('N'))"
 ```
 
-Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`, `audit-repair`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. A separate process-wide command mutex at `var/oa/.command.lock` serializes the complete mutation, including two processes that reuse the same `PAO_OA_ID`; contention waits up to 30 seconds and then fails closed. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**, and is not the command mutex. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, `audit-health`, plain `validate`, `workflow-status`, `dead` listing, `info`) never acquire either OA mutation guard.
+Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`, `audit-repair`, `audit-prune-resolve`, `audit-preserve-release`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. A separate process-wide command mutex at `var/oa/.command.lock` serializes the complete mutation, including two processes that reuse the same `PAO_OA_ID`; contention waits up to 30 seconds and then fails closed. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**, and is not the command mutex. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, `audit-health`, plain `validate`, `workflow-status`, `dead` listing, `info`) never acquire either OA mutation guard.
 
 For the agent-level supervision loop, maintain `next_presence_deadline` from the
 monotonic time of each successful presence-publishing command. Set it to
@@ -152,6 +152,85 @@ all malformed line numbers from the same diagnosis, then follow the guarded
 `audit-repair` procedure in `recover-maintain.md`. Never hand-edit or delete the
 segment: repair rejects fingerprint drift and valid-line deletion, preserves
 the original bytes, and installs only a fully valid JSON-object JSONL result.
+The runtime writes a `prepared -> replaced -> committed` repair receipt before
+changing the segment. If the command is interrupted, retry the exact same
+segment, original fingerprint, and line set; receipt/target reconciliation
+continues the missing replacement or audit step without duplicating evidence.
+Retention is equally fail-closed: `prune` deletes only old `committed` receipts
+whose audit key, backup, and repaired-or-consumed target state all agree.
+Incomplete, invalid, missing, or drifted repair evidence is permanently
+preserved until an operator resolves it.
+Eligible cleanup is crash-convergent: the runtime durably authorizes a
+`.repair-prune/` tombstone, removes the receipt, atomically stages the bound
+backup, records `backup_staged`, and removes the tombstone last. Retry `prune`
+after interruption; an authorized transaction resumes even when the new
+retention cutoff differs.
+Use read-only `audit-health` before maintenance when `.repair-prune/` evidence
+may exist. It enumerates `retention_tombstones`, classifies exact crash
+topologies as `resumable`, classifies uncertainty as `blocked` with
+`reason_codes`, and reports both aggregate counts. Retention blockage raises
+health to `attention`; it does not imply keyed audit append is blocked.
+`prune` also fences rotated audit evidence for every retention tombstone,
+including blocked transactions. It preserves the named rotated repair target
+and any segment containing the bound repair audit key. If any tombstone cannot
+be loaded strictly, rotated pruning removes nothing.
+Before deleting any otherwise eligible rotated segment, `prune` requires
+complete readable JSON-object JSONL. It preserves malformed, non-object,
+unreadable, metadata-inaccessible, and unlink-failed segments, and reports
+removed, protected, and blocked counts separately. `total` counts removals
+only. `audit_segment_outcomes` traces every counted segment to its
+bus-root-relative path, `removed|protected|blocked` status, and stable
+`reason_codes`. The same ordered list is recorded in the `pruned` audit event;
+its length equals the sum of the three aggregate counts.
+Rotated deletion is receipt-authorized before mutation. `.rotated-prune/`
+stores one strict pending run with its cutoff, per-segment decisions, and
+fingerprint witnesses. `prune` resumes that run before starting another,
+recognizes an authorized missing target as an already completed deletion, and
+blocks fingerprint drift as `segment_drifted`. The final `pruned` event is
+idempotent under `rotated-prune:<run_id>`; only confirmation of that key in the
+audit log permits receipt removal. Check `audit_prune_audit_committed`; `false`
+means the event is degraded and the receipt must be preserved for retry.
+`audit-health` inspects these receipts strictly read-only. It exposes
+`rotated_prune_receipts` plus resumable/blocked aggregate counts. Valid
+prepared/applied interruption states are `resumable`; invalid schema, multiple
+or unexpected entries, witness drift, unreadable/non-file targets, incomplete
+audit snapshots, and a target present after `applied` are `blocked` with stable
+`reason_codes`. These states raise health to `attention` but do not redefine
+`keyed_append_blocked`.
+For the specific blocked reason `applied_target_present`, use
+`audit-prune-resolve` with the exact run ID, receipt SHA-256, segment name,
+segment SHA-256, and `--decision preserve-recreated`. It never deletes the
+recreated segment. A fingerprint-bound `.rotated-preserve/` marker is durable
+first, then the receipt outcome becomes
+`operator_preserved_recreated_segment`. The command recovers the original
+deterministic `pruned` event, records an exact-once resolution event, and
+completes the receipt only after both keys and the preservation binding verify.
+Future `prune` reports `operator_preserved_target`. Invalid/multiple receipts
+and all fence drift are refused.
+Read-only `audit-health` additionally inspects `.rotated-preserve/` and reports
+`rotated_preservations`, `protected_rotated_preservation_count`, and
+`blocked_rotated_preservation_count`. A valid marker/target/two-key binding is
+`protected`; orphaned markers, target fingerprint drift, duplicate target
+claims, invalid entries, and missing original-prune or resolution audit keys
+are stable reason-coded `blocked` states. Both classifications raise health to
+`attention` without changing `keyed_append_blocked`. Do not delete blocked
+evidence manually.
+To retire a valid permanent protection, use `audit-preserve-release` with the
+exact run ID, segment, marker SHA-256, target SHA-256, and
+`--decision release-protection`. The command requires a currently protected
+marker/target/two-key binding with no duplicate target claim. It commits one
+strict deterministic release event before unlinking only the marker, then
+revalidates every fence. Audit failure preserves the marker; exact retry
+converges both before and after unlink. The segment is never deleted or
+modified by release and becomes eligible for a later normal `prune`.
+Read-only `audit-health` groups committed preservation-release evidence by its
+deterministic key. It reports `preservation_releases` and completed, resumable,
+and blocked counts. One valid event with an absent marker is `completed`; the
+same event with its exact protected marker still present is `resumable`.
+Duplicate events, key/payload disagreement, marker fingerprint drift, and a
+blocked marker binding are stable blocked states. Completed history does not
+raise health; resumable or blocked evidence raises `attention` without
+changing `keyed_append_blocked`.
 
 `start` is the agent-level default action: it runs §0.5 and then this loop. It is
 not a separate Python subcommand.
@@ -166,7 +245,7 @@ Before performing an action for the first time this session, read its reference 
 | `presence`, `reconcile`, registration and lifecycle approval, `status`, state transitions | [references/reconcile.md](references/reconcile.md) |
 | `send`, task drafting, `--auto` routing, `depends_on` | [references/publish.md](references/publish.md) |
 | `collect`, `validate`, `workflow-status`, result acceptance | [references/collect-validate.md](references/collect-validate.md) |
-| `recover`, `dead`, `control`, `prune`, `audit-health`, `audit-repair`, audit | [references/recover-maintain.md](references/recover-maintain.md) |
+| `recover`, `dead`, `control`, `prune`, `audit-health`, `audit-repair`, `audit-prune-resolve`, `audit-preserve-release`, audit | [references/recover-maintain.md](references/recover-maintain.md) |
 
 JSON Schemas for every bus message live in [schemas/](schemas/).
 

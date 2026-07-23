@@ -1125,26 +1125,34 @@ def command_prune(args: argparse.Namespace) -> int:
             if modified <= cutoff:
                 path.unlink(missing_ok=True)
                 artifact_removed += 1
-    audit_removed = audit.prune_rotated(root, cutoff)
-    total += artifact_removed + audit_removed
-    audit.record(
+    repair_removed = audit.prune_committed_repairs(root, cutoff)
+    audit_pruned = audit.prune_rotated(root, cutoff)
+    total += (
+        artifact_removed
+        + audit_pruned["audit_segments_removed"]
+        + sum(repair_removed.values())
+    )
+    audit_payload = {
+        "event": "pruned",
+        "cutoff": audit_pruned["audit_prune_cutoff"],
+        "total": total,
+        "artifact_removed": artifact_removed,
+        **audit_pruned,
+        **repair_removed,
+    }
+    audit_committed = audit.record_once(
         root,
         "oa",
-        {
-            "event": "pruned",
-            "total": total,
-            "artifact_removed": artifact_removed,
-            "audit_segments_removed": audit_removed,
-        },
+        audit_payload,
+        audit_pruned["audit_prune_audit_key"],
     )
+    if audit_committed:
+        audit.commit_rotated_prune_receipt(root, audit_pruned)
     emit(
         {
-            "event": "pruned",
-            "cutoff": cutoff.isoformat().replace("+00:00", "Z"),
+            **audit_payload,
             "counts": counts,
-            "total": total,
-            "artifact_removed": artifact_removed,
-            "audit_segments_removed": audit_removed,
+            "audit_prune_audit_committed": audit_committed,
         }
     )
     return 0
@@ -1180,6 +1188,15 @@ def command_audit_repair(args: argparse.Namespace) -> int:
         },
         f"audit-repair:{report['segment']}:{report['original_sha256']}",
     )
+    if audit_committed:
+        try:
+            receipt = audit.commit_repair_receipt(root, report)
+        except (OSError, TimeoutError, ValueError) as error:
+            raise SystemExit(
+                "audit repair target and audit event committed, but receipt completion failed; "
+                f"retry the exact command: {error}"
+            )
+        report["receipt_phase"] = receipt["phase"]
     current_health = audit.health(root)
     report.update(
         {
@@ -1188,6 +1205,148 @@ def command_audit_repair(args: argparse.Namespace) -> int:
             "keyed_append_blocked": current_health["keyed_append_blocked"],
             "blocked_replay": current_health["blocked_replay"],
             "pending_count": current_health["pending_count"],
+        }
+    )
+    emit(report)
+    return 2 if current_health["status"] == "blocked" else 0
+
+
+def command_audit_prune_resolve(args: argparse.Namespace) -> int:
+    root = resolve_root(args.root)
+    try:
+        report = audit.resolve_rotated_prune(
+            root,
+            run_id=args.run_id,
+            expected_receipt_sha256=args.expected_receipt_sha256,
+            segment=args.segment,
+            expected_segment_sha256=args.expected_segment_sha256,
+            decision=args.decision,
+        )
+    except (OSError, TimeoutError, ValueError) as error:
+        raise SystemExit(f"audit prune resolve refused: {error}")
+
+    pruned_payload = {
+        **report,
+        "event": "pruned",
+        "cutoff": report["audit_prune_cutoff"],
+        "total": report["audit_segments_removed"],
+        "artifact_removed": 0,
+        "reconstruction_scope": "rotated_audit_only",
+    }
+    pruned_event_committed = audit.record_once(
+        root,
+        "oa",
+        pruned_payload,
+        report["audit_prune_audit_key"],
+    )
+    resolution_event_committed = False
+    if pruned_event_committed:
+        resolution_event_committed = audit.record_once(
+            root,
+            "oa",
+            {
+                "event": "audit_prune_resolved",
+                "run_id": report["audit_prune_run_id"],
+                "decision": report["decision"],
+                "segment": report["segment"],
+                "preserved_sha256": report["preserved_sha256"],
+                "preserved_bytes": report["preserved_bytes"],
+                "receipt_sha256_before": report["receipt_sha256_before"],
+                "preservation": report["preservation"],
+                "pruned_audit_key": report["audit_prune_audit_key"],
+            },
+            report["resolution_audit_key"],
+        )
+
+    receipt_completed = False
+    if pruned_event_committed and resolution_event_committed:
+        try:
+            receipt_completed = audit.commit_rotated_prune_receipt(root, report)
+        except (OSError, TimeoutError, ValueError) as error:
+            raise SystemExit(
+                "audit prune resolution events committed, but receipt completion "
+                f"failed; retry the exact command: {error}"
+            )
+    current_health = audit.health(root)
+    report.update(
+        {
+            "pruned_event_committed": pruned_event_committed,
+            "resolution_event_committed": resolution_event_committed,
+            "receipt_completed": receipt_completed,
+            "health_status": current_health["status"],
+            "keyed_append_blocked": current_health["keyed_append_blocked"],
+            "blocked_replay": current_health["blocked_replay"],
+        }
+    )
+    emit(report)
+    return 2 if current_health["status"] == "blocked" else 0
+
+
+def command_audit_preserve_release(args: argparse.Namespace) -> int:
+    root = resolve_root(args.root)
+    try:
+        report = audit.prepare_rotated_preservation_release(
+            root,
+            run_id=args.run_id,
+            segment=args.segment,
+            expected_marker_sha256=args.expected_marker_sha256,
+            expected_segment_sha256=args.expected_segment_sha256,
+            decision=args.decision,
+        )
+    except (OSError, TimeoutError, ValueError) as error:
+        raise SystemExit(f"audit preservation release refused: {error}")
+
+    release_event_committed = audit.record_once(
+        root,
+        "oa",
+        {
+            "event": "audit_preservation_released",
+            "decision": report["decision"],
+            "run_id": report["run_id"],
+            "segment": report["segment"],
+            "preservation": report["preservation"],
+            "marker_sha256": report["marker_sha256"],
+            "preserved_sha256": report["preserved_sha256"],
+            "preserved_bytes": report["preserved_bytes"],
+            "pruned_audit_key": report["pruned_audit_key"],
+            "resolution_audit_key": report["resolution_audit_key"],
+        },
+        report["release_audit_key"],
+    )
+    marker_removed = False
+    if release_event_committed:
+        try:
+            marker_removed = audit.commit_rotated_preservation_release(
+                root, report
+            )
+        except (OSError, TimeoutError, ValueError) as error:
+            raise SystemExit(
+                "audit preservation release event committed, but marker "
+                f"completion failed; retry the exact command: {error}"
+            )
+
+    target = root / "var" / "audit" / report["segment"]
+    try:
+        target_preserved = (
+            not target.is_symlink()
+            and target.is_file()
+            and sha256_file(target) == report["preserved_sha256"]
+            and target.stat().st_size == report["preserved_bytes"]
+        )
+    except OSError:
+        target_preserved = False
+    current_health = audit.health(root)
+    report.update(
+        {
+            "event": "audit_preservation_release",
+            "release_event_committed": release_event_committed,
+            "marker_removed": marker_removed,
+            "release_completed": release_event_committed
+            and (marker_removed or report["already_released"]),
+            "target_preserved": target_preserved,
+            "health_status": current_health["status"],
+            "keyed_append_blocked": current_health["keyed_append_blocked"],
+            "blocked_replay": current_health["blocked_replay"],
         }
     )
     emit(report)
@@ -1342,6 +1501,36 @@ def build_parser() -> argparse.ArgumentParser:
     )
     audit_repair.add_argument("--root", default=None)
     audit_repair.set_defaults(handler=writer_guard(command_audit_repair))
+
+    audit_prune_resolve = subparsers.add_parser("audit-prune-resolve")
+    audit_prune_resolve.add_argument("--run-id", required=True)
+    audit_prune_resolve.add_argument("--expected-receipt-sha256", required=True)
+    audit_prune_resolve.add_argument("--segment", required=True)
+    audit_prune_resolve.add_argument("--expected-segment-sha256", required=True)
+    audit_prune_resolve.add_argument(
+        "--decision",
+        required=True,
+        choices=("preserve-recreated",),
+    )
+    audit_prune_resolve.add_argument("--root", default=None)
+    audit_prune_resolve.set_defaults(
+        handler=writer_guard(command_audit_prune_resolve)
+    )
+
+    audit_preserve_release = subparsers.add_parser("audit-preserve-release")
+    audit_preserve_release.add_argument("--run-id", required=True)
+    audit_preserve_release.add_argument("--segment", required=True)
+    audit_preserve_release.add_argument("--expected-marker-sha256", required=True)
+    audit_preserve_release.add_argument("--expected-segment-sha256", required=True)
+    audit_preserve_release.add_argument(
+        "--decision",
+        required=True,
+        choices=("release-protection",),
+    )
+    audit_preserve_release.add_argument("--root", default=None)
+    audit_preserve_release.set_defaults(
+        handler=writer_guard(command_audit_preserve_release)
+    )
 
     workflow_status = subparsers.add_parser("workflow-status")
     workflow_status.add_argument("--workflow-id", required=True)
