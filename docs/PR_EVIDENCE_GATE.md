@@ -37,6 +37,13 @@ selected by strict branch protection. A missing live merge SHA fails closed.
 Each check records either `success` or actionable validation errors. Failure
 to read, parse, validate, or publish leaves the pull request blocked.
 
+## Required protection
+
+The protected `main` branch binds `PR Evidence` to the GitHub Actions app
+alongside both platform verification jobs. Strict protection evaluates the
+synthetic merge commit, so publishing only to the head commit is insufficient.
+Administrators must not bypass this requirement.
+
 ## Recovery
 
 The workflow runs for opened, synchronized, reopened, and edited pull requests.
