@@ -178,6 +178,23 @@ def pull_request_head_sha(payload: dict[str, Any]) -> str:
     return sha.lower()
 
 
+def pull_request_check_shas(payload: dict[str, Any]) -> tuple[str, ...]:
+    """Return every commit GitHub may use for strict required-check evaluation."""
+    pull_request = payload["pull_request"]
+    head_sha = pull_request_head_sha(payload)
+    merge_sha = pull_request.get("merge_commit_sha")
+    if merge_sha is None:
+        return (head_sha,)
+    if not isinstance(merge_sha, str) or not re.fullmatch(
+        r"[0-9a-fA-F]{40}", merge_sha
+    ):
+        raise ValueError("event payload has no valid pull_request.merge_commit_sha")
+    normalized_merge = merge_sha.lower()
+    if normalized_merge == head_sha:
+        return (head_sha,)
+    return (head_sha, normalized_merge)
+
+
 def build_check_payload(head_sha: str, errors: list[str]) -> dict[str, Any]:
     """Build one completed check run without embedding executable PR content."""
     passed = not errors
@@ -264,16 +281,14 @@ def main(argv: list[str] | None = None) -> int:
         if args.publish_check:
             if event_payload is None:
                 raise ValueError("--publish-check requires --event")
-            check_payload = build_check_payload(
-                pull_request_head_sha(event_payload),
-                errors,
-            )
-            publish_check(
-                check_payload,
-                repository=os.environ.get("GITHUB_REPOSITORY", ""),
-                token=os.environ.get("GITHUB_TOKEN", ""),
-                api_url=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
-            )
+            for sha in pull_request_check_shas(event_payload):
+                check_payload = build_check_payload(sha, errors)
+                publish_check(
+                    check_payload,
+                    repository=os.environ.get("GITHUB_REPOSITORY", ""),
+                    token=os.environ.get("GITHUB_TOKEN", ""),
+                    api_url=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+                )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"PR evidence validation error: {error}", file=sys.stderr)
         return 2

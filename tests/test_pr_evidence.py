@@ -129,6 +129,30 @@ class PREvidenceTests(unittest.TestCase):
                 {"pull_request": {"head": {"sha": "not-a-sha"}}}
             )
 
+    def test_check_shas_include_head_and_synthetic_merge(self):
+        shas = verify_pr_evidence.pull_request_check_shas(
+            {
+                "pull_request": {
+                    "head": {"sha": "a" * 40},
+                    "merge_commit_sha": "b" * 40,
+                }
+            }
+        )
+        self.assertEqual(shas, ("a" * 40, "b" * 40))
+
+    def test_check_shas_reject_invalid_synthetic_merge(self):
+        with self.assertRaisesRegex(
+            ValueError, "no valid pull_request.merge_commit_sha"
+        ):
+            verify_pr_evidence.pull_request_check_shas(
+                {
+                    "pull_request": {
+                        "head": {"sha": "a" * 40},
+                        "merge_commit_sha": "invalid",
+                    }
+                }
+            )
+
     def test_publish_check_uses_checks_api_without_exposing_token(self):
         observed = {}
 
