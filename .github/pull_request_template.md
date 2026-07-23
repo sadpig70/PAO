@@ -10,7 +10,7 @@
 
 <!-- Include exact commands and results. Targeted tests do not replace the full suite. -->
 
-- [ ] `python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests`
+- [ ] `python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests tools`
 - [ ] `python -m unittest discover -s tests -q`
 - [ ] `python tools/sync_bundles.py --check`
 - [ ] `git diff --check`
