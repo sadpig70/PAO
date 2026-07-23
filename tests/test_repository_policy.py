@@ -137,9 +137,10 @@ class RepositoryPolicyTests(unittest.TestCase):
             live_path = Path(directory) / "live.json"
             live_path.write_text(json.dumps(live), encoding="utf-8")
             output = io.StringIO()
-            with mock.patch("sys.stderr", output), mock.patch(
-                "sys.stdout", io.StringIO()
-            ):
+            with mock.patch.dict(
+                verify_repository_policy.os.environ,
+                {"GITHUB_ACTIONS": "false"},
+            ), mock.patch("sys.stderr", output), mock.patch("sys.stdout", io.StringIO()):
                 result = verify_repository_policy.main(
                     [
                         "--policy",
