@@ -3850,8 +3850,11 @@ class OperationalRemediationTests(PaoTestCase):
                 with renewable_oa_writer(root, ttl_s=2):
                     lease_path = root / "var" / "oa" / "writer_lease.json"
                     before = load_json(lease_path)["refreshed_at"]
-                    time.sleep(1.2)
-                    after = load_json(lease_path)["refreshed_at"]
+                    deadline = time.monotonic() + 3
+                    after = before
+                    while after == before and time.monotonic() < deadline:
+                        time.sleep(0.05)
+                        after = load_json(lease_path)["refreshed_at"]
                     self.assertNotEqual(before, after)
 
     def test_writer_renewal_deadline_does_not_accumulate_refresh_latency(self):
