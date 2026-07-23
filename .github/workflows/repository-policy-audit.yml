@@ -38,7 +38,7 @@ jobs:
 
       - name: Audit live branch protection
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.REPOSITORY_POLICY_AUDIT_TOKEN }}
         run: >-
           python tools/verify_repository_policy.py
           --policy .github/repository-policy.json

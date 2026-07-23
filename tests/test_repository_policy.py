@@ -152,6 +152,23 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertEqual(result, 1)
         self.assertIn("administrator enforcement drift", output.getvalue())
 
+    def test_cli_live_audit_requires_token(self):
+        output = io.StringIO()
+        with mock.patch.dict(
+            verify_repository_policy.os.environ,
+            {"GITHUB_ACTIONS": "false", "GITHUB_TOKEN": ""},
+        ), mock.patch("sys.stderr", output):
+            result = verify_repository_policy.main(
+                [
+                    "--policy",
+                    str(REPO / ".github" / "repository-policy.json"),
+                    "--repository",
+                    "owner/repo",
+                ]
+            )
+        self.assertEqual(result, 2)
+        self.assertIn("GITHUB_TOKEN is required", output.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()
