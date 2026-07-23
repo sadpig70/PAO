@@ -161,6 +161,7 @@ two `SKILL.md` files and their bundled references are the sole operating contrac
 
 - [Contribution guide](CONTRIBUTING.md)
 - [PR evidence gate](docs/PR_EVIDENCE_GATE.md)
+- [Repository policy audit](docs/REPOSITORY_POLICY_AUDIT.md)
 - [Technical specification](docs/PAO_TechSpec.md)
 - [ADP operations guide](docs/PAO_ADP_Operations.md)
 - [Skill-only bootstrap note](docs/LWAR_ADP_Bootstrap.md)
@@ -177,6 +178,8 @@ byte-sync gate on both Ubuntu and Windows for pushes to `main` and pull
 requests.
 The PR evidence gate and both matrix jobs are required before a pull request
 can merge into `main`.
+The repository policy audit checks the live branch-protection contract on
+policy changes, a daily schedule, and manual dispatch.
 
 The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair, receipt-driven crash-boundary convergence, committed-only repair-evidence retention, hard-crash retention-tombstone convergence, read-only resumable/blocked topology classification, rotated target/key-carrier retention fencing, pre-delete rotated JSONL validation and outcome accounting, ambiguous-evidence preservation, and exact-once replay dogfooding, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
 

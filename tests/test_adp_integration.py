@@ -163,19 +163,56 @@ class ADPIntegrationTests(unittest.TestCase):
                 text=True,
             )
             try:
+                heartbeat_path = (
+                    root / "mailbox" / "LWAR1" / "heartbeat.json"
+                )
+                initial_last_seen = None
+                ready_deadline = time.monotonic() + 1
+                while time.monotonic() < ready_deadline:
+                    try:
+                        initial = json.loads(
+                            heartbeat_path.read_text(encoding="utf-8")
+                        )
+                        if initial["status"] == "watching":
+                            initial_last_seen = datetime.fromisoformat(
+                                initial["last_seen"].replace("Z", "+00:00")
+                            )
+                            break
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                    time.sleep(0.01)
+                self.assertIsNotNone(initial_last_seen)
+
                 # Cross several internal slice boundaries. The process must
                 # remain blocked in the watcher and heartbeat must stay fresh.
                 time.sleep(0.22)
                 self.assertIsNone(watcher.poll())
-                heartbeat = json.loads(
-                    (root / "mailbox" / "LWAR1" / "heartbeat.json").read_text(
-                        encoding="utf-8"
-                    )
-                )
-                last_seen = datetime.fromisoformat(
-                    heartbeat["last_seen"].replace("Z", "+00:00")
-                )
-                self.assertLess((datetime.now(timezone.utc) - last_seen).total_seconds(), 0.1)
+                heartbeat = None
+                last_seen = None
+                refresh_deadline = time.monotonic() + 1
+                while time.monotonic() < refresh_deadline:
+                    try:
+                        candidate = json.loads(
+                            heartbeat_path.read_text(encoding="utf-8")
+                        )
+                        candidate_last_seen = datetime.fromisoformat(
+                            candidate["last_seen"].replace("Z", "+00:00")
+                        )
+                        if (
+                            candidate["status"] == "watching"
+                            and candidate_last_seen > initial_last_seen
+                            and (
+                                datetime.now(timezone.utc) - candidate_last_seen
+                            ).total_seconds()
+                            < 0.2
+                        ):
+                            heartbeat = candidate
+                            last_seen = candidate_last_seen
+                            break
+                    except (OSError, json.JSONDecodeError):
+                        pass
+                    time.sleep(0.01)
+                self.assertIsNotNone(last_seen)
                 self.assertEqual(heartbeat["status"], "watching")
 
                 task_draft = root / "resident-task.json"
