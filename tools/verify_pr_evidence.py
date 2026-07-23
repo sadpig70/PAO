@@ -178,12 +178,16 @@ def pull_request_head_sha(payload: dict[str, Any]) -> str:
     return sha.lower()
 
 
-def pull_request_check_shas(payload: dict[str, Any]) -> tuple[str, ...]:
+def pull_request_check_shas(
+    payload: dict[str, Any], *, require_merge: bool = False
+) -> tuple[str, ...]:
     """Return every commit GitHub may use for strict required-check evaluation."""
     pull_request = payload["pull_request"]
     head_sha = pull_request_head_sha(payload)
     merge_sha = pull_request.get("merge_commit_sha")
     if merge_sha is None:
+        if require_merge:
+            raise ValueError("live pull request has no merge_commit_sha")
         return (head_sha,)
     if not isinstance(merge_sha, str) or not re.fullmatch(
         r"[0-9a-fA-F]{40}", merge_sha
@@ -193,6 +197,49 @@ def pull_request_check_shas(payload: dict[str, Any]) -> tuple[str, ...]:
     if normalized_merge == head_sha:
         return (head_sha,)
     return (head_sha, normalized_merge)
+
+
+def pull_request_number(payload: dict[str, Any]) -> int:
+    """Return the positive pull-request number from an event payload."""
+    pull_request = payload["pull_request"]
+    number = pull_request.get("number", payload.get("number"))
+    if not isinstance(number, int) or number <= 0:
+        raise ValueError("event payload has no valid pull_request.number")
+    return number
+
+
+def fetch_pull_request(
+    *,
+    repository: str,
+    number: int,
+    token: str,
+    api_url: str,
+    opener=urllib.request.urlopen,
+) -> dict[str, Any]:
+    """Load current PR metadata so strict-check targets are not event-stale."""
+    if not re.fullmatch(r"[^/\s]+/[^/\s]+", repository):
+        raise ValueError("GITHUB_REPOSITORY must be owner/name")
+    if not isinstance(number, int) or number <= 0:
+        raise ValueError("pull request number must be positive")
+    if not token:
+        raise ValueError("GITHUB_TOKEN is required to read the pull request")
+    endpoint = f"{api_url.rstrip('/')}/repos/{repository}/pulls/{number}"
+    request = urllib.request.Request(
+        endpoint,
+        method="GET",
+        headers={
+            "Accept": "application/vnd.github+json",
+            "Authorization": f"Bearer {token}",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+    )
+    with opener(request, timeout=15) as response:
+        if response.status != 200:
+            raise OSError(f"Pulls API returned HTTP {response.status}")
+        payload: Any = json.loads(response.read().decode("utf-8"))
+    if not isinstance(payload, dict):
+        raise ValueError("Pulls API response must be a JSON object")
+    return payload
 
 
 def build_check_payload(head_sha: str, errors: list[str]) -> dict[str, Any]:
@@ -270,24 +317,40 @@ def main(argv: list[str] | None = None) -> int:
     try:
         template_text = args.template.read_text(encoding="utf-8")
         event_payload = load_event(args.event) if args.event is not None else None
+        repository = os.environ.get("GITHUB_REPOSITORY", "")
+        token = os.environ.get("GITHUB_TOKEN", "")
+        api_url = os.environ.get("GITHUB_API_URL", "https://api.github.com")
+        live_pull_request = None
+        if args.publish_check:
+            if event_payload is None:
+                raise ValueError("--publish-check requires --event")
+            live_pull_request = fetch_pull_request(
+                repository=repository,
+                number=pull_request_number(event_payload),
+                token=token,
+                api_url=api_url,
+            )
         body = (
-            event_payload["pull_request"].get("body")
-            if event_payload is not None
-            else args.body_file.read_text(encoding="utf-8")
+            live_pull_request.get("body")
+            if live_pull_request is not None
+            else (
+                event_payload["pull_request"].get("body")
+                if event_payload is not None
+                else args.body_file.read_text(encoding="utf-8")
+            )
         )
         if body is not None and not isinstance(body, str):
             raise ValueError("pull_request.body must be a string or null")
         errors = validate_body(template_text, body)
         if args.publish_check:
-            if event_payload is None:
-                raise ValueError("--publish-check requires --event")
-            for sha in pull_request_check_shas(event_payload):
+            target_payload = {"pull_request": live_pull_request}
+            for sha in pull_request_check_shas(target_payload, require_merge=True):
                 check_payload = build_check_payload(sha, errors)
                 publish_check(
                     check_payload,
-                    repository=os.environ.get("GITHUB_REPOSITORY", ""),
-                    token=os.environ.get("GITHUB_TOKEN", ""),
-                    api_url=os.environ.get("GITHUB_API_URL", "https://api.github.com"),
+                    repository=repository,
+                    token=token,
+                    api_url=api_url,
                 )
     except (OSError, UnicodeError, json.JSONDecodeError, ValueError) as error:
         print(f"PR evidence validation error: {error}", file=sys.stderr)

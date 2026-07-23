@@ -265,10 +265,16 @@ class ADPIntegrationTests(unittest.TestCase):
                 deadline = time.time() + 3
                 while time.time() < deadline:
                     if identity_path.is_file() and heartbeat_path.is_file():
-                        candidate = json.loads(heartbeat_path.read_text(encoding="utf-8"))
-                        if candidate.get("status") == "watching":
-                            heartbeat = candidate
-                            break
+                        try:
+                            candidate = json.loads(
+                                heartbeat_path.read_text(encoding="utf-8")
+                            )
+                        except (OSError, json.JSONDecodeError):
+                            pass
+                        else:
+                            if candidate.get("status") == "watching":
+                                heartbeat = candidate
+                                break
                     time.sleep(0.01)
                 self.assertIsNotNone(heartbeat)
                 self.assertIsNone(watcher.poll())

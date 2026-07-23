@@ -153,6 +153,73 @@ class PREvidenceTests(unittest.TestCase):
                 }
             )
 
+    def test_required_merge_sha_fails_closed_when_api_has_none(self):
+        with self.assertRaisesRegex(ValueError, "no merge_commit_sha"):
+            verify_pr_evidence.pull_request_check_shas(
+                {
+                    "pull_request": {
+                        "head": {"sha": "a" * 40},
+                        "merge_commit_sha": None,
+                    }
+                },
+                require_merge=True,
+            )
+
+    def test_pull_request_number_must_be_positive(self):
+        self.assertEqual(
+            verify_pr_evidence.pull_request_number(
+                {"pull_request": {"number": 6}}
+            ),
+            6,
+        )
+        with self.assertRaisesRegex(ValueError, "no valid pull_request.number"):
+            verify_pr_evidence.pull_request_number(
+                {"pull_request": {"number": 0}}
+            )
+
+    def test_fetch_pull_request_uses_trusted_api_metadata(self):
+        observed = {}
+
+        class Response:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                return False
+
+            def read(self):
+                return json.dumps(
+                    {
+                        "number": 6,
+                        "body": "evidence",
+                        "head": {"sha": "a" * 40},
+                        "merge_commit_sha": "b" * 40,
+                    }
+                ).encode("utf-8")
+
+        def opener(request, timeout):
+            observed["url"] = request.full_url
+            observed["method"] = request.method
+            observed["timeout"] = timeout
+            return Response()
+
+        payload = verify_pr_evidence.fetch_pull_request(
+            repository="owner/repository",
+            number=6,
+            token="secret-token",
+            api_url="https://api.example.test",
+            opener=opener,
+        )
+        self.assertEqual(
+            observed["url"],
+            "https://api.example.test/repos/owner/repository/pulls/6",
+        )
+        self.assertEqual(observed["method"], "GET")
+        self.assertEqual(observed["timeout"], 15)
+        self.assertEqual(payload["merge_commit_sha"], "b" * 40)
+
     def test_publish_check_uses_checks_api_without_exposing_token(self):
         observed = {}
 

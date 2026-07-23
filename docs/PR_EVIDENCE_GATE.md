@@ -30,12 +30,12 @@ The workflow has only:
 - `pull-requests: read`
 - `checks: write`
 
-After validation, the trusted base code publishes completed `PR Evidence`
-checks to `pull_request.head.sha` and, when present, the synthetic
-`pull_request.merge_commit_sha`. Publishing both binds the evidence to the
-commit selected by strict branch protection. Each check records either
-`success` or actionable validation errors. Failure to parse, validate, or
-publish leaves the pull request blocked.
+After validation, the trusted base code reads current PR metadata from the
+Pulls API, then publishes completed `PR Evidence` checks to `head.sha` and the
+synthetic `merge_commit_sha`. Publishing both binds the evidence to the commit
+selected by strict branch protection. A missing live merge SHA fails closed.
+Each check records either `success` or actionable validation errors. Failure
+to read, parse, validate, or publish leaves the pull request blocked.
 
 ## Recovery
 
