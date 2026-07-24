@@ -4,6 +4,7 @@ import json
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest import mock
 
@@ -26,6 +27,14 @@ class RepositoryPolicyTests(unittest.TestCase):
             )
         )
         cls.policy = verify_repository_policy.parse_policy(cls.policy_document)
+        cls.credential_document = json.loads(
+            (REPO / ".github" / "repository-policy-credential.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        cls.credential_policy = verify_repository_policy.parse_credential_policy(
+            cls.credential_document
+        )
 
     def live_policy(self):
         return {
@@ -44,6 +53,71 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertEqual(len(self.policy.checks), 3)
         self.assertTrue(self.policy.strict)
         self.assertTrue(self.policy.enforce_admins)
+
+    def test_checked_in_credential_policy_is_valid(self):
+        self.assertEqual(
+            self.credential_policy.secret_name,
+            "REPOSITORY_POLICY_AUDIT_TOKEN",
+        )
+        self.assertEqual(self.credential_policy.preferred_kind, "fine_grained_pat")
+        self.assertEqual(len(self.credential_policy.accepted_credentials), 2)
+
+    def test_preferred_credential_passes_without_warning(self):
+        result = verify_repository_policy.validate_credential(
+            self.credential_policy,
+            "github_pat_redacted",
+            now=datetime(2026, 7, 24, tzinfo=timezone.utc),
+        )
+        self.assertEqual(result.kind, "fine_grained_pat")
+        self.assertEqual(result.errors, ())
+        self.assertEqual(result.warnings, ())
+
+    def test_bootstrap_credential_warns_before_ceiling(self):
+        result = verify_repository_policy.validate_credential(
+            self.credential_policy,
+            "gho_redacted",
+            now=datetime(2026, 7, 24, tzinfo=timezone.utc),
+        )
+        self.assertEqual(result.kind, "bootstrap_oauth")
+        self.assertEqual(result.errors, ())
+        self.assertEqual(len(result.warnings), 2)
+        self.assertTrue(
+            any("rotate to fine_grained_pat" in item for item in result.warnings)
+        )
+
+    def test_bootstrap_credential_fails_after_ceiling(self):
+        result = verify_repository_policy.validate_credential(
+            self.credential_policy,
+            "gho_redacted",
+            now=datetime(2026, 7, 31, tzinfo=timezone.utc),
+        )
+        self.assertEqual(result.kind, "bootstrap_oauth")
+        self.assertTrue(any("exceeded not_after" in item for item in result.errors))
+
+    def test_unknown_credential_type_fails_without_secret_echo(self):
+        token = "secret_unknown_value"
+        result = verify_repository_policy.validate_credential(
+            self.credential_policy,
+            token,
+            now=datetime(2026, 7, 24, tzinfo=timezone.utc),
+        )
+        self.assertIsNone(result.kind)
+        self.assertTrue(result.errors)
+        self.assertNotIn(token, " ".join(result.errors + result.warnings))
+
+    def test_duplicate_credential_prefix_fails_closed(self):
+        document = json.loads(json.dumps(self.credential_document))
+        document["accepted_credentials"][1]["prefix"] = document[
+            "accepted_credentials"
+        ][0]["prefix"]
+        with self.assertRaisesRegex(ValueError, "duplicate credential prefix"):
+            verify_repository_policy.parse_credential_policy(document)
+
+    def test_overlapping_credential_prefix_fails_closed(self):
+        document = json.loads(json.dumps(self.credential_document))
+        document["accepted_credentials"][1]["prefix"] = "github_"
+        with self.assertRaisesRegex(ValueError, "overlapping credential prefix"):
+            verify_repository_policy.parse_credential_policy(document)
 
     def test_matching_live_policy_passes(self):
         self.assertEqual(

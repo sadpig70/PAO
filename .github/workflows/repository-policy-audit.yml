@@ -6,6 +6,7 @@ on:
       - main
     paths:
       - ".github/repository-policy.json"
+      - ".github/repository-policy-credential.json"
       - ".github/workflows/repository-policy-audit.yml"
       - "tools/verify_repository_policy.py"
   schedule:
@@ -42,4 +43,5 @@ jobs:
         run: >-
           python tools/verify_repository_policy.py
           --policy .github/repository-policy.json
+          --credential-policy .github/repository-policy-credential.json
           --repository "$GITHUB_REPOSITORY"
