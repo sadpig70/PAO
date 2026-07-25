@@ -18,6 +18,7 @@ from tools.run_heterogeneous_lwar_ab import (
     build_opencode_command,
     build_assignment,
     build_report,
+    combine_provider_results,
     grade,
     load_task_suite,
     read_kimi_usage,
@@ -25,10 +26,52 @@ from tools.run_heterogeneous_lwar_ab import (
     routing_upper_bound,
     run_provider_command,
     run_provider_with_retry,
+    verify_finite_json_answer,
 )
 
 
 class HeterogeneousABHarnessTests(unittest.TestCase):
+    def test_finite_answer_verifier_uses_prompt_not_answer_key(self):
+        prompt = build_suite()["tasks"]["BO04"]["prompt"]
+        self.assertEqual(
+            verify_finite_json_answer(
+                prompt,
+                '{"selection":["B","C","E"],"value":29,"cost":8,"risk":6}',
+            ),
+            [],
+        )
+        self.assertEqual(
+            verify_finite_json_answer(
+                prompt,
+                '{"selection":["B","C","E"],"value":21,"cost":8,"risk":3}',
+            ),
+            ["aggregate_mismatch", "selection_not_global_optimum"],
+        )
+        ordering = build_suite()["tasks"]["CO08"]["prompt"]
+        self.assertEqual(
+            verify_finite_json_answer(ordering, '{"answer":"CDEAB"}'),
+            ["ordering_constraint_violation"],
+        )
+
+    def test_internal_verification_attempts_preserve_total_tokens(self):
+        first = {
+            "adapter": "opencode",
+            "ok": True,
+            "duration_s": 2.0,
+            "error": None,
+            "answer": "{}",
+            "metrics": {"usage": {"total": 10}, "telemetry_complete": True},
+        }
+        second = {
+            **first,
+            "duration_s": 3.0,
+            "metrics": {"usage": {"total": 20}, "telemetry_complete": True},
+        }
+        combined = combine_provider_results(first, second)
+        self.assertEqual(combined["duration_s"], 5.0)
+        self.assertEqual(reported_tokens(combined["metrics"]), 30)
+        self.assertTrue(combined["metrics"]["telemetry_complete"])
+
     def test_remediation_suite_is_unique_nonoverlapping_and_preregistered(self):
         prior = build_suite()
         suite = build_remediation_suite()

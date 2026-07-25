@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import itertools
 import json
 import os
 import re
@@ -110,6 +111,7 @@ OPENCODE_VERIFICATION_PREAMBLE = (
     "when the problem has a finite search space. Revise the answer if any check "
     "fails. Preserve the requested JSON schema and output no prose.\n\n"
 )
+OPENCODE_FINITE_VERIFIER_VERSION = "finite-json-v1"
 
 
 def parse_stdout_json(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
@@ -358,6 +360,131 @@ def build_opencode_command(
     ]
 
 
+def verify_finite_json_answer(prompt: str, answer: str) -> list[str]:
+    """Return answer-key-free deterministic verification failures."""
+    try:
+        parsed = extract_json_object(answer)
+    except Exception:
+        return ["invalid_json"]
+    optimization = re.search(
+        r"total cost <=(\d+) and risk <=(\d+)", prompt
+    )
+    item_matches = re.findall(
+        r"([A-Z])\(cost(\d+),risk(\d+),value(\d+)\)", prompt
+    )
+    if optimization and item_matches:
+        cost_limit, risk_limit = map(int, optimization.groups())
+        items = [
+            {
+                "name": name,
+                "cost": int(cost),
+                "risk": int(risk),
+                "value": int(value),
+            }
+            for name, cost, risk, value in item_matches
+        ]
+        by_name = {item["name"]: item for item in items}
+        selection = parsed.get("selection")
+        failures = []
+        if (
+            not isinstance(selection, list)
+            or any(name not in by_name for name in selection)
+            or selection != sorted(set(selection))
+        ):
+            return ["invalid_selection"]
+        selected = [by_name[name] for name in selection]
+        totals = {
+            "cost": sum(item["cost"] for item in selected),
+            "risk": sum(item["risk"] for item in selected),
+            "value": sum(item["value"] for item in selected),
+        }
+        if any(parsed.get(key) != value for key, value in totals.items()):
+            failures.append("aggregate_mismatch")
+        if totals["cost"] > cost_limit or totals["risk"] > risk_limit:
+            failures.append("constraint_violation")
+        feasible = []
+        for count in range(1, len(items) + 1):
+            for subset in itertools.combinations(items, count):
+                cost = sum(item["cost"] for item in subset)
+                risk = sum(item["risk"] for item in subset)
+                if cost <= cost_limit and risk <= risk_limit:
+                    feasible.append(
+                        {
+                            "selection": [item["name"] for item in subset],
+                            "value": sum(item["value"] for item in subset),
+                            "cost": cost,
+                            "risk": risk,
+                        }
+                    )
+        optimum = min(
+            feasible,
+            key=lambda item: (
+                -item["value"],
+                item["cost"],
+                item["risk"],
+                item["selection"],
+            ),
+        )
+        if any(parsed.get(key) != value for key, value in optimum.items()):
+            failures.append("selection_not_global_optimum")
+        return sorted(set(failures))
+    ordering = re.search(r"Arrange A-([A-Z])", prompt)
+    constraints = re.findall(
+        r"([A-Z]) is immediately before ([A-Z])", prompt
+    )
+    if ordering and constraints:
+        last = ord(ordering.group(1))
+        expected_letters = [
+            chr(code) for code in range(ord("A"), last + 1)
+        ]
+        answer_value = parsed.get("answer")
+        if (
+            not isinstance(answer_value, str)
+            or sorted(answer_value) != expected_letters
+        ):
+            return ["invalid_ordering_alphabet"]
+        return sorted(
+            {
+                "ordering_constraint_violation"
+                for left, right in constraints
+                if answer_value.find(right) != answer_value.find(left) + 1
+            }
+        )
+    return []
+
+
+def combine_provider_results(
+    first: dict[str, Any], second: dict[str, Any]
+) -> dict[str, Any]:
+    """Preserve all call telemetry while returning the final answer."""
+    return {
+        **second,
+        "duration_s": round(first["duration_s"] + second["duration_s"], 3),
+        "metrics": {
+            **second["metrics"],
+            "verification_attempt_count": 2,
+            "attempts": [
+                {
+                    "ok": first["ok"],
+                    "duration_s": first["duration_s"],
+                    "error": first["error"],
+                    "metrics": first["metrics"],
+                },
+                {
+                    "ok": second["ok"],
+                    "duration_s": second["duration_s"],
+                    "error": second["error"],
+                    "metrics": second["metrics"],
+                },
+            ],
+            "telemetry_complete": bool(
+                first["metrics"].get("telemetry_complete")
+                and second["metrics"].get("telemetry_complete")
+            ),
+        },
+    }
+
+
 def run_opencode(prompt: str, work_dir: Path) -> dict[str, Any]:
     provider_dir = work_dir / "opencode"
     provider_dir.mkdir(parents=True, exist_ok=True)
@@ -366,7 +493,35 @@ def run_opencode(prompt: str, work_dir: Path) -> dict[str, Any]:
     if not entrypoint.is_file():
         raise RuntimeError(f"OpenCode entrypoint not found beside shim: {entrypoint}")
     command = build_opencode_command(entrypoint, provider_dir, prompt)
-    return run_provider_command("opencode", command, parse_opencode, provider_dir)
+    first = run_provider_command(
+        "opencode", command, parse_opencode, provider_dir
+    )
+    if not first["ok"]:
+        return first
+    failures = verify_finite_json_answer(prompt, first["answer"])
+    if not failures:
+        return first
+    feedback = (
+        "\n\nThe previous JSON failed these deterministic checks: "
+        + ", ".join(failures)
+        + ". Re-solve the original problem without assuming the prior answer "
+        "is correct, then return only the corrected requested JSON."
+    )
+    second = run_provider_command(
+        "opencode",
+        build_opencode_command(entrypoint, provider_dir, prompt + feedback),
+        parse_opencode,
+        provider_dir,
+    )
+    combined = combine_provider_results(first, second)
+    if second["ok"]:
+        remaining = verify_finite_json_answer(prompt, second["answer"])
+        if remaining:
+            combined["ok"] = False
+            combined["error"] = (
+                "deterministic_verification_failed:" + ",".join(remaining)
+            )
+    return combined
 
 
 def parse_opencode(stdout: str, stderr: str = "") -> tuple[str, dict[str, Any]]:

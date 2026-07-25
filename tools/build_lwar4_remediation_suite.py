@@ -14,7 +14,10 @@ REPO = Path(__file__).resolve().parents[1]
 if str(REPO) not in sys.path:
     sys.path.insert(0, str(REPO))
 
-from tools.run_heterogeneous_lwar_ab import OPENCODE_VERIFICATION_PREAMBLE
+from tools.run_heterogeneous_lwar_ab import (
+    OPENCODE_FINITE_VERIFIER_VERSION,
+    OPENCODE_VERIFICATION_PREAMBLE,
+)
 
 
 PRIOR_SUITE = REPO / "benchmarks" / "canary-online-suite-v1.json"
@@ -167,6 +170,8 @@ def build_registration(suite: dict[str, Any]) -> dict[str, Any]:
         ).hexdigest(),
         "timeout_s": 180,
         "max_attempts": 2,
+        "finite_verifier_version": OPENCODE_FINITE_VERIFIER_VERSION,
+        "max_internal_verification_attempts": 2,
         "timeout_telemetry_policy": "exclude_not_estimate",
     }
     answer_key = {

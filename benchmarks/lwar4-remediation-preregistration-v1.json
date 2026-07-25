@@ -1,14 +1,16 @@
 {
   "adapter_contract": {
     "adapter_id": "opencode_zai",
+    "finite_verifier_version": "finite-json-v1",
     "max_attempts": 2,
+    "max_internal_verification_attempts": 2,
     "model": "zai-coding-plan/glm-4.7",
     "timeout_s": 180,
     "timeout_telemetry_policy": "exclude_not_estimate",
     "variant": "high",
     "verification_preamble_sha256": "c2276fab8b79f6d247d1e4dbd9471c26300f204a60dd7a7f875f6e4d949eaf04"
   },
-  "adapter_contract_sha256": "df02419c07b68411ceae1c011a5a30f233a24157bd9ac1ac5b4b689774269022",
+  "adapter_contract_sha256": "1c788666dd70081aefcceaa3c83d868c692449cdb6ce2369ed1ec31ecd05bf41",
   "answer_key_sha256": "ab003729818d06ef632de92b1c848e19c371710df6482ca8da355d53b9312e8e",
   "created_at": "2026-07-25T16:15:00Z",
   "execution_rule": "four_alias_current_generation_explicit_shadow",
