@@ -26,11 +26,22 @@ policy, unreadable live state, or an API error.
 - every day at 03:17 UTC
 - on manual dispatch
 
-A failed scheduled run is the drift alert. The job uses only `contents: read`;
+A failed scheduled run is the immediate drift alert. A separate lifecycle job
+also opens or updates one durable `pao-credential-lifecycle` issue when the
+audit fails or the checked-in credential deadline enters its warning window.
+Repeated runs converge on the same managed issue, and a later healthy audit
+closes it.
+
+The audit job uses only `contents: read`;
 the default workflow token is used only for checkout and is not persisted.
 GitHub does not grant that token access to repository-administration endpoints,
 so the audit reads protection with the encrypted
 `REPOSITORY_POLICY_AUDIT_TOKEN` Actions secret.
+
+The lifecycle job has `issues: write` and uses only its short-lived
+`GITHUB_TOKEN`. The audit PAT is never exposed to that job. This authority
+separation prevents notification automation from expanding the long-lived
+credential's permissions.
 
 Provision that secret with a fine-grained token limited to this repository and
 these read-only permissions:
@@ -55,6 +66,11 @@ ceiling without exceeding the provider-side expiration.
 GitHub does not expose a token's personal expiration metadata to this workflow.
 The checked-in ceiling is therefore an additional local upper bound, not a
 replacement for GitHub's own expiration and revocation.
+
+At or inside `warn_before_days`, the lifecycle job creates the managed issue.
+At `not_after`, the audit fails closed and the same issue remains open. Rotate
+the secret, update the reviewed ceiling through a protected pull request, and
+manually dispatch the workflow; a healthy result closes the issue.
 
 For a local authenticated audit:
 

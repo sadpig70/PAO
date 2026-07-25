@@ -57,7 +57,7 @@ python "<PAO_SKILL>/scripts/lwar.py" complete \
 `complete` derives the bus root from the adopted identity when `--root` and
 `PAO_ROOT` are omitted; any supplied root must match the identity binding.
 
-Artifacts: declare them as path strings (relative paths resolve against the task `cwd`). The tool enforces that each declared artifact exists as a regular file inside the task `cwd` or a `permissions.write` root (and under `permissions.max_artifact_bytes` when set), then snapshots it into the content-addressed store `var/artifacts/<sha256>` and rewrites the entry as `{path, sha256, size_bytes, snapshot}` — never fabricate these fields yourself. OA verification checks the immutable snapshot, so changing the workspace file after submission is harmless. Tasks published by pre-0.6 OAs (no declared write roots) get a warning passthrough instead of a bounds failure.
+Artifacts: declare them as path strings (relative paths resolve against the task `cwd`). The tool enforces that each declared artifact exists as a regular file inside the task `cwd` or a `permissions.write` root (and under `permissions.max_artifact_bytes` when set), then snapshots it into the content-addressed store `var/artifacts/<sha256>` and rewrites the entry as `{path, sha256, size_bytes, snapshot}` — never fabricate these fields yourself. OA verification checks the immutable snapshot, so changing the workspace file after submission is harmless. An artifact outside the declared bounds always fails; v1 has no legacy string-artifact passthrough.
 
 Before snapshotting, `complete` deterministically scans result summary/evidence and
 artifact path/content for the registered runtime/model/vendor identifiers. A leak

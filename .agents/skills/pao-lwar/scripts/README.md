@@ -6,7 +6,10 @@ bundle it lives in (`Path(__file__).resolve().parents[1]`), so no pip install,
 no `PYTHONPATH`, and no plugin are required — the wrapper works from any working
 directory.
 
-Runtime v0.7.32 validates bundled JSON contracts at all trust boundaries. OA
+Runtime v1.0.0 validates bundled JSON contracts at all trust boundaries. v1
+requires a fresh or intentionally retired pre-v1 bus: registration stamps,
+attempt fences, claim provenance, explicit permissions, and snapshot artifacts
+are mandatory. `pao doctor` rejects detected pre-v1 protocol records. OA
 mutations require `PAO_OA_ID` and refresh a short-TTL presence signal independently
 of the writer lease on a fixed-rate 25-second target with a 30-second hard-latest
 contract. A separate command mutex serializes complete OA mutations even when

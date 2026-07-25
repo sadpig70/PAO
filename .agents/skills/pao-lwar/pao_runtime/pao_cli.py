@@ -8,7 +8,14 @@ import time
 from pathlib import Path
 
 from . import __version__
-from .common import atomic_write_json, emit, load_json, local_filesystem_status, resolve_root
+from .common import (
+    atomic_write_json,
+    emit,
+    load_json,
+    local_filesystem_status,
+    resolve_root,
+    safe_load_json,
+)
 
 
 SKILL_NAMES = ("pao-oa", "pao-lwar")
@@ -78,6 +85,74 @@ def _check(name: str, ok: bool, detail: object = None) -> dict:
     if detail is not None:
         entry["detail"] = detail
     return entry
+
+
+def _legacy_bus_records(root: Path) -> list[str]:
+    """Return pre-v1 protocol records that require an intentional fresh bus."""
+    legacy = []
+
+    registration_paths = [
+        *root.glob("control/registration/requests/*.json"),
+        *root.glob("control/registration/archive/*.json"),
+    ]
+    for path in sorted(registration_paths):
+        payload = safe_load_json(path)
+        if payload is not None and "runtime_version" not in payload:
+            legacy.append(f"{path.relative_to(root).as_posix()}:missing_runtime_version")
+
+    task_patterns = (
+        "mailbox/*/incoming/*.json",
+        "mailbox/*/claimed/*.json",
+        "mailbox/*/dead/*.json",
+        "mailbox/*/archive/tasks/*.json",
+    )
+    for pattern in task_patterns:
+        for path in sorted(root.glob(pattern)):
+            if path.name.endswith(".error.json"):
+                continue
+            payload = safe_load_json(path)
+            if payload is None or payload.get("schema_version") != "pao.task.v1":
+                continue
+            missing = [
+                key
+                for key in ("registry_version", "attempt", "permissions")
+                if key not in payload
+            ]
+            if path.parent.name in {"claimed", "tasks"} and "claim_token" not in payload:
+                missing.append("claim_token")
+            permissions = payload.get("permissions")
+            if isinstance(permissions, dict):
+                missing.extend(
+                    f"permissions.{key}"
+                    for key in ("read", "write", "network")
+                    if key not in permissions
+                )
+            if missing:
+                legacy.append(
+                    f"{path.relative_to(root).as_posix()}:missing_{','.join(sorted(set(missing)))}"
+                )
+
+    result_patterns = (
+        "mailbox/*/outgoing/*.json",
+        "mailbox/*/archive/results/*.json",
+    )
+    for pattern in result_patterns:
+        for path in sorted(root.glob(pattern)):
+            payload = safe_load_json(path)
+            if payload is None or payload.get("schema_version") != "pao.result.v1":
+                continue
+            missing = [
+                key
+                for key in ("workflow_id", "registry_version", "attempt", "claim_token")
+                if not payload.get(key)
+            ]
+            if any(not isinstance(item, dict) for item in payload.get("artifacts", [])):
+                missing.append("snapshot_artifact")
+            if missing:
+                legacy.append(
+                    f"{path.relative_to(root).as_posix()}:missing_{','.join(sorted(set(missing)))}"
+                )
+    return legacy
 
 
 def command_doctor(args: argparse.Namespace) -> int:
@@ -154,6 +229,15 @@ def command_doctor(args: argparse.Namespace) -> int:
             checks.append(_check("registry_parses", False, str(error)))
     else:
         checks.append(_check("registry_parses", True, "absent (fresh bus)"))
+
+    legacy_records = _legacy_bus_records(root)
+    checks.append(
+        _check(
+            "v1_bus_contract",
+            not legacy_records,
+            legacy_records or "no pre-v1 protocol records",
+        )
+    )
 
     # Only aged temp files count: an in-flight atomic write briefly creates
     # a .pao-*.tmp on a perfectly healthy bus.

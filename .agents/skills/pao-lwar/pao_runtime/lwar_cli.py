@@ -351,15 +351,12 @@ def command_retire(args: argparse.Namespace) -> int:
 
 def normalize_artifacts(
     root: Path, task: dict[str, Any], artifacts: list[Any], profile: dict[str, Any] | None = None
-) -> tuple[list[Any], list[str]]:
+) -> list[dict[str, Any]]:
     """Resolve, bound-check, and snapshot declared artifacts.
 
-    Every declared artifact must exist as a regular file. Bounds (cwd +
-    permissions.write roots) are enforced when the task declares write roots;
-    tasks published by pre-0.6 OAs (write=[]) get a string passthrough with a
-    warning instead — the optional-first rollout pattern. Snapshots are
-    content-addressed under var/artifacts/, so later verification never
-    depends on the live workspace file.
+    Every declared artifact must exist as a regular file and remain inside the
+    task cwd or an explicit permissions.write root. v1 has no string-artifact
+    compatibility path: every result carries a content-addressed snapshot.
     """
     cwd = Path(task.get("cwd", ".")).resolve()
     permissions = task.get("permissions") or {}
@@ -368,8 +365,7 @@ def normalize_artifacts(
     if not isinstance(max_bytes, int) or max_bytes <= 0:
         max_bytes = None
     store = root / "var" / "artifacts"
-    entries: list[Any] = []
-    warnings: list[str] = []
+    entries: list[dict[str, Any]] = []
     terms = identity_terms(profile)
     for item in artifacts:
         raw = item.get("path") if isinstance(item, dict) else item
@@ -388,10 +384,6 @@ def normalize_artifacts(
             path_within(resolved, write_root) for write_root in write_roots
         )
         if not in_bounds:
-            if not write_roots:
-                warnings.append(f"outside_declared_roots:{resolved}")
-                entries.append(str(resolved))
-                continue
             raise SystemExit(f"artifact outside allowed write roots: {resolved}")
         try:
             digest, size, snapshot = snapshot_artifact(resolved, store, max_bytes)
@@ -405,7 +397,7 @@ def normalize_artifacts(
                 "snapshot": snapshot.relative_to(root).as_posix(),
             }
         )
-    return entries, warnings
+    return entries
 
 
 def command_complete(args: argparse.Namespace) -> int:
@@ -460,13 +452,13 @@ def command_complete(args: argparse.Namespace) -> int:
     )
     if metadata_leaks:
         raise SystemExit(f"result metadata exposes runtime identity terms: {metadata_leaks}")
-    artifacts, artifact_warnings = normalize_artifacts(
+    artifacts = normalize_artifacts(
         root, task, result.get("artifacts", []), profile
     )
     normalized = {
         "schema_version": "pao.result.v1",
         "task_id": task_id,
-        "workflow_id": task.get("workflow_id"),
+        "workflow_id": task["workflow_id"],
         "lwar_id": lwar_id,
         "instance_id": identity["instance_id"],
         "generation": identity["generation"],
@@ -480,12 +472,10 @@ def command_complete(args: argparse.Namespace) -> int:
         "error": result.get("error"),
         # Fencing echo: both come from the claimed task file the bus wrote,
         # never from the caller's result draft.
-        "attempt": int(task.get("attempt", 1)),
-        "claim_token": task.get("claim_token"),
+        "attempt": int(task["attempt"]),
+        "claim_token": task["claim_token"],
         "submitted_at": utc_now(),
     }
-    if artifact_warnings:
-        normalized["artifact_warnings"] = artifact_warnings
     try:
         outgoing = transport.submit_result(identity, claimed_path, normalized)
     except RuntimeError as error:

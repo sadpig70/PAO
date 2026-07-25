@@ -12,6 +12,53 @@ from pao_helpers import PaoTestCase, RUNTIME_HOME
 from pao_runtime.common import FileLock
 
 
+class WriterRenewalSoakTests(PaoTestCase):
+    def test_writer_renews_across_multiple_shortened_lease_boundaries(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            script = (
+                "import json,time,sys\n"
+                "from datetime import datetime,timezone\n"
+                "from pathlib import Path\n"
+                "from pao_runtime.oa_cli import renewable_oa_writer\n"
+                "root=Path(sys.argv[1])\n"
+                "started=datetime.now(timezone.utc).isoformat()\n"
+                "with renewable_oa_writer(root, ttl_s=3):\n"
+                " time.sleep(7)\n"
+                " lease=json.loads((root/'var/oa/writer_lease.json').read_text())\n"
+                " print(json.dumps({'started':started,'lease':lease}))\n"
+            )
+            completed = subprocess.run(
+                [sys.executable, "-c", script, str(root)],
+                check=False,
+                capture_output=True,
+                text=True,
+                env={
+                    **os.environ,
+                    "PAO_OA_ID": "oa-renewal-soak",
+                    "PYTHONPATH": str(RUNTIME_HOME),
+                },
+            )
+            self.assertEqual(
+                completed.returncode,
+                0,
+                completed.stderr + completed.stdout,
+            )
+            evidence = json.loads(completed.stdout)
+            lease = evidence["lease"]
+            started = datetime.fromisoformat(
+                evidence["started"].replace("Z", "+00:00")
+            )
+            refreshed = datetime.fromisoformat(
+                lease["refreshed_at"].replace("Z", "+00:00")
+            )
+            expires = datetime.fromisoformat(
+                lease["expires_at"].replace("Z", "+00:00")
+            )
+            self.assertGreater((refreshed - started).total_seconds(), 5)
+            self.assertGreater((expires - refreshed).total_seconds(), 2.5)
+
+
 class OACommandMutexTests(PaoTestCase):
     def subprocess_env(self, oa_id="oa-test"):
         return {**os.environ, "PAO_OA_ID": oa_id, "PYTHONPATH": str(RUNTIME_HOME)}

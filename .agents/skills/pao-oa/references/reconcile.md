@@ -22,7 +22,10 @@ python "<PAO_SKILL>/scripts/oa.py" status --startup-deadline 30
   `live`, `stale`, `missing`, or `invalid`. Never use the 900-second writer
   lease as proof that an OA process is alive.
 - `reconcile` processes registration and lifecycle requests against schema and identity rules, then atomically assigns the lowest available `LWARn`. Slots in `on`, `draining`, or `off` remain occupied.
-- A registration stamped with a `runtime_version` different from this bundle's version is rejected fail-closed (`runtime_version_mismatch`). A request without the stamp is a pre-0.5 legacy request and is accepted during the current freeze window.
+- Every registration must carry this bundle's `runtime_version`. A different
+  version is rejected fail-closed (`runtime_version_mismatch`); a missing stamp
+  fails schema validation and is quarantined without registry mutation. PAO v1
+  requires a fresh or intentionally retired pre-v1 bus.
 - After approval, the LWAR itself fetches the response and adopts the identity; OA never writes identity files on the LWAR's behalf.
 - Lifecycle transitions follow `on → draining → off → deregistered`; approve `deregistered` only from `off`.
 - When a numeric slot is reused, the registry bumps `generation`; messages carrying an old `generation` or `instance_id` are stale and must never be treated as current.

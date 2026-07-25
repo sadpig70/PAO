@@ -72,15 +72,20 @@ class ClaimGuardTests(PaoTestCase):
                 "schema_version": "pao.task.v1",
                 "task_id": "task-planted-1",
                 "workflow_id": "workflow-planted",
+                "depends_on": [],
                 "lwar_id": "LWAR1",
                 "instance_id": adopted["instance_id"],
                 "generation": adopted["generation"],
+                "registry_version": adopted["registry_version"],
                 "goal": "hand-planted escape",
                 "instructions": "attempt forbidden bus access",
                 "completion_criteria": ["must be rejected"],
                 "cwd": str(root / "var"),
                 "timeout_s": 60,
                 "permissions": {"read": [str(root)], "write": [str(root)], "network": False},
+                "max_retries": 0,
+                "priority": 5,
+                "attempt": 1,
                 "created_at": "2026-01-01T00:00:00Z",
             }
             incoming = root / "mailbox" / "LWAR1" / "incoming" / "005_task-planted-1.json"
@@ -174,22 +179,21 @@ class ArtifactProvenanceTests(PaoTestCase):
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("outside allowed write roots", completed.stderr)
 
-    def test_legacy_task_without_write_roots_gets_warning_passthrough(self):
+    def test_empty_write_roots_do_not_bypass_artifact_bounds(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             _, adopted = self.register_lwar(root)
             outside = root / "elsewhere"
             outside.mkdir()
             (outside / "legacy.bin").write_bytes(b"legacy")
-            task_id, _ = self._run_task_with_artifact(
+            _, completed = self._run_task_with_artifact(
                 root, adopted,
                 declare=[str(outside / "legacy.bin")],
                 draft_extra={"permissions": {"read": [], "write": [], "network": False}},
+                expected_complete=None,
             )
-            _, collected = self.run_module("pao_runtime.oa_cli", "collect", "--root", str(root), expected=0)
-            result = collected["results"][0]["result"]
-            self.assertIsInstance(result["artifacts"][0], str)
-            self.assertTrue(result["artifact_warnings"][0].startswith("outside_declared_roots:"))
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("outside allowed write roots", completed.stderr)
 
     def test_max_artifact_bytes_enforced(self):
         with tempfile.TemporaryDirectory() as directory:
