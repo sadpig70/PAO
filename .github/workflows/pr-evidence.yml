@@ -10,8 +10,6 @@ on:
 
 permissions:
   contents: read
-  pull-requests: read
-  checks: write
 
 concurrency:
   group: pr-evidence-${{ github.event.pull_request.number }}
@@ -35,7 +33,5 @@ jobs:
         with:
           python-version: "3.13"
 
-      - name: Validate and publish trusted check
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: python tools/verify_pr_evidence.py --event "$GITHUB_EVENT_PATH" --publish-check
+      - name: Validate trusted evidence
+        run: python tools/verify_pr_evidence.py --event "$GITHUB_EVENT_PATH"

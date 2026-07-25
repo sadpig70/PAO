@@ -119,7 +119,7 @@ If one runtime fails or no longer matches cost, speed, or quality needs, the sam
 - verification and cross-review
 - timeout handling, retries, and alternate-runtime reassignment
 - artifact tracking for files, patches, and reports
-- future routing extensions based on cost, latency, and success rate
+- empirical routing extensions based on observed quality and reported tokens
 
 ### Initially out of scope
 
@@ -644,13 +644,34 @@ records and fails `v1_bus_contract`; operators preserve evidence outside the
 active bus when necessary, then create a new bus. Runtime code never silently
 upgrades or edits historical mailbox payloads.
 
+### 15.2 Empirical predictive routing
+
+PAO v1.2.0 adds an optional empirical routing plane without exposing provider
+identity in TaskContract or ResultContract. OA loads a strict calibration-only
+profile, filters it through the existing live capability/heartbeat eligibility
+gate, and chooses the lowest mean reported-token alias only among the
+class-level empirical quality leaders. Missing classes and insufficient class
+support fail closed to the eligible global quality leader; a profile with no
+eligible evidence falls back to ordinary live load ranking.
+The profile compiler defaults to five observations per alias and class.
+Reducing that threshold is an explicit experiment and must not be treated as a
+production quality guarantee.
+
+Before a predictively routed task becomes claimable, OA atomically persists a
+strict receipt under `var/routing/receipts/` and appends a deterministic
+`routing_decided` event. The receipt binds the task ID and class, selected and
+eligible aliases, policy, class/global statistics, and canonical profile
+SHA-256. Conflicting receipt replay is rejected. Calibration task IDs cannot be
+used as held-out receipt targets.
+
 ## 16. Evolution Path
 
 Planned future steps include:
 
 - alternative transports such as MCP or SQLite-backed queues
 - richer runtime capability models
-- routing informed by empirical success rate and cost
+- statistically stronger online routing evidence with drift detection and
+  provider-normalized monetary cost
 - stronger validation pipelines
 - higher-level delegation policies across multiple LWAR classes
 

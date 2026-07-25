@@ -4,7 +4,7 @@
 
 **Persistent Agent Orchestration** is a local orchestration system that coordinates heterogeneous long-running AI runtimes behind a single external identity model, `LWARn`, over a file-based message bus.
 
-The current release contract is **PAO v1.1.0**. It deliberately requires a
+The current release contract is **PAO v1.2.0**. It deliberately requires a
 fresh or intentionally retired pre-v1 bus so identity, attempt, provenance,
 permission, and artifact fences cannot be bypassed by legacy payloads.
 
@@ -74,6 +74,12 @@ OA (Orchestration Agent)
 - claim leases aligned with each task's `timeout_s`
 - durable OA task ledger (`var/tasks/`) with `validate` and `workflow-status` commands
 - capability- and load-based automatic routing (`send --auto --require-capability`)
+- optional empirical predictive routing that binds a strict calibration profile
+  and task class before publication, chooses the lowest-token LWAR only among
+  class-level quality leaders, and falls back to the global quality leader when
+  evidence is missing or below the minimum support threshold
+- atomic routing receipts plus a `routing_decided` audit event written before
+  the task becomes claimable
 - `depends_on` task gating for simple workflow DAGs
 - append-only audit log (`var/audit/events.jsonl`) and fail-closed archive and
   committed-repair-evidence pruning (`prune`)
@@ -175,6 +181,7 @@ two `SKILL.md` files and their bundled references are the sole operating contrac
 - [Contribution guide](CONTRIBUTING.md)
 - [PR evidence gate](docs/PR_EVIDENCE_GATE.md)
 - [Repository policy audit](docs/REPOSITORY_POLICY_AUDIT.md)
+- [Predictive routing evidence](docs/PREDICTIVE_ROUTING_EVIDENCE.md)
 - [Technical specification](docs/PAO_TechSpec.md)
 - [ADP operations guide](docs/PAO_ADP_Operations.md)
 - [Skill-only bootstrap note](docs/LWAR_ADP_Bootstrap.md)
@@ -206,7 +213,7 @@ can merge into `main`.
 The repository policy audit checks the live branch-protection contract on
 policy changes, a daily schedule, and manual dispatch.
 
-The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair, receipt-driven crash-boundary convergence, committed-only repair-evidence retention, hard-crash retention-tombstone convergence, read-only resumable/blocked topology classification, rotated target/key-carrier retention fencing, pre-delete rotated JSONL validation and outcome accounting, ambiguous-evidence preservation, exact-once replay dogfooding, invocation-epoch orphan suppression, single-token execution begin, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair, receipt-driven crash-boundary convergence, committed-only repair-evidence retention, hard-crash retention-tombstone convergence, read-only resumable/blocked topology classification, rotated target/key-carrier retention fencing, pre-delete rotated JSONL validation and outcome accounting, ambiguous-evidence preservation, exact-once replay dogfooding, invocation-epoch orphan suppression, single-token execution begin, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, predictive quality/token routing, pre-execution routing receipts, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
 
 Preservation-release verification includes real subprocess `os._exit` crashes
 at both event-append-to-marker-unlink and marker-unlink-to-CLI-response

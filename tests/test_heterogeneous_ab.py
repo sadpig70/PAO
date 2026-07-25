@@ -6,8 +6,10 @@ from pathlib import Path
 
 from tools.run_heterogeneous_lwar_ab import (
     TASKS,
+    build_assignment,
     build_report,
     grade,
+    load_task_suite,
     read_kimi_usage,
     reported_tokens,
     routing_upper_bound,
@@ -180,6 +182,31 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
             analysis["claim_scope"],
             "posthoc_upper_bound_not_heldout_routing_proof",
         )
+
+    def test_custom_task_suite_is_validated_and_assigned_deterministically(self):
+        suite = {
+            "schema_version": "pao.benchmark-suite.v1",
+            "tasks": {
+                "C1": {
+                    "task_class": "logic",
+                    "prompt": "Return JSON.",
+                    "expected": {"answer": "A"},
+                },
+                "C2": {
+                    "task_class": "code_review",
+                    "prompt": "Return JSON.",
+                    "expected": {"answer": "B"},
+                },
+            },
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "suite.json"
+            path.write_text(json.dumps(suite), encoding="utf-8")
+            loaded = load_task_suite(path)
+        assignment = build_assignment(list(loaded))
+        self.assertEqual(assignment["LWAR1"], ["C1", "C2"])
+        self.assertEqual(assignment["LWAR2"], ["C2", "C1"])
+        self.assertEqual(set(assignment["LWAR4"]), {"C1", "C2"})
 
 
 if __name__ == "__main__":

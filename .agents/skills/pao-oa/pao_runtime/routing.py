@@ -111,6 +111,20 @@ def auto_route(
     no eligible candidate exists — callers must not fall back to an arbitrary
     LWAR.
     """
+    candidates = eligible_lwars(registry, transport, require, now, stale_after_s)
+    if not candidates:
+        return None
+    return min(candidates)[2]
+
+
+def eligible_lwars(
+    registry: dict[str, Any],
+    transport: Transport,
+    require: set[str],
+    now: datetime,
+    stale_after_s: float = STALE_AFTER_S_DEFAULT,
+) -> list[tuple[int, int, str]]:
+    """Return live capability-compatible candidates as load-ranked tuples."""
     candidates = []
     for lwar_id, slot in registry.get("slots", {}).items():
         # Skip any hand-corrupted / foreign slot key: lwar_number would raise on
@@ -131,6 +145,4 @@ def auto_route(
             continue
         score = load_score(transport, lwar_id, now, stale_after_s)
         candidates.append((score, lwar_number(lwar_id), lwar_id))
-    if not candidates:
-        return None
-    return min(candidates)[2]
+    return sorted(candidates)

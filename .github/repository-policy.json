@@ -4,7 +4,7 @@
     "strict": true,
     "checks": [
       {
-        "context": "PR Evidence",
+        "context": "PR Evidence Evaluator",
         "app_id": 15368
       },
       {

@@ -1,0 +1,36 @@
+{
+  "schema_version": "pao.benchmark-suite.v1",
+  "tasks": {
+    "C1": {
+      "task_class": "constraint_ordering",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Six stages A-F obey: C is immediately before E; A is before C; F is after E; B is immediately after F; D is before A. Return {\"answer\":\"<six letters in order>\",\"reason\":\"<short proof>\"}.",
+      "expected": {
+        "answer": "DACEFB"
+      }
+    },
+    "C2": {
+      "task_class": "code_review",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def add_user(name, users=[]): if name in users: return True; users.append(name); return len(users). Choose every real defect ID from: C1 mutable default leaks state; C2 return type differs between duplicate and new user; C3 empty names are not rejected; C4 append is non-deterministic; C5 membership always raises KeyError. Return {\"defects\":[\"sorted IDs\"],\"fix\":\"<short fix>\"}.",
+      "expected": {
+        "defects": [
+          "C1",
+          "C2",
+          "C3"
+        ]
+      }
+    },
+    "C3": {
+      "task_class": "bounded_optimization",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographic sorted letters. Items: A(cost7,risk3,value11), B(5,4,9), C(4,2,7), D(3,2,5), E(2,1,3). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "expected": {
+        "selection": [
+          "A",
+          "B"
+        ],
+        "value": 20,
+        "cost": 12,
+        "risk": 7
+      }
+    }
+  }
+}

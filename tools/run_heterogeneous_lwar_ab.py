@@ -15,6 +15,7 @@ import tempfile
 import time
 import zipfile
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -69,6 +70,7 @@ TASKS = {
         },
     },
 }
+DEFAULT_TASK_NAMES = tuple(TASKS)
 
 ADAPTERS = {
     "LWAR1": {
@@ -443,6 +445,7 @@ def run_provider_with_retry(
     work_dir: Path,
     max_attempts: int = 2,
 ) -> dict[str, Any]:
+    started_at = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
     attempts = []
     final = None
     for _ in range(max_attempts):
@@ -460,6 +463,7 @@ def run_provider_with_retry(
             break
     assert final is not None
     final["duration_s"] = round(sum(attempt["duration_s"] for attempt in attempts), 3)
+    final["started_at"] = started_at
     final["metrics"] = {
         **final["metrics"],
         "attempt_count": len(attempts),
@@ -592,6 +596,44 @@ def write_json(path: Path, value: Any) -> None:
     os.replace(temporary, path)
 
 
+def load_task_suite(path: Path) -> dict[str, dict[str, Any]]:
+    value = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(value, dict) or value.get("schema_version") != "pao.benchmark-suite.v1":
+        raise ValueError("task suite requires schema_version pao.benchmark-suite.v1")
+    tasks = value.get("tasks")
+    if not isinstance(tasks, dict) or not tasks:
+        raise ValueError("task suite requires a non-empty tasks object")
+    normalized = {}
+    for name, task in tasks.items():
+        if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
+            raise ValueError(f"invalid task name: {name}")
+        if not isinstance(task, dict):
+            raise ValueError(f"task must be an object: {name}")
+        if not isinstance(task.get("prompt"), str) or not task["prompt"]:
+            raise ValueError(f"task requires a prompt: {name}")
+        if not isinstance(task.get("expected"), dict) or not task["expected"]:
+            raise ValueError(f"task requires an expected object: {name}")
+        task_class = task.get("task_class")
+        if not isinstance(task_class, str) or re.fullmatch(r"[a-z][a-z0-9_-]*", task_class) is None:
+            raise ValueError(f"task requires a valid task_class: {name}")
+        normalized[name] = {
+            "prompt": task["prompt"],
+            "expected": task["expected"],
+            "task_class": task_class,
+        }
+    return normalized
+
+
+def build_assignment(task_names: list[str]) -> dict[str, list[str]]:
+    if tuple(task_names) == DEFAULT_TASK_NAMES:
+        return {alias: list(adapter["sequence"]) for alias, adapter in ADAPTERS.items()}
+    assignment = {}
+    for index, alias in enumerate(ADAPTERS):
+        shift = index % len(task_names)
+        assignment[alias] = task_names[shift:] + task_names[:shift]
+    return assignment
+
+
 def task_id(alias: str, task_name: str) -> str:
     return f"task-ab-{alias.lower()}-{task_name.lower()}"
 
@@ -676,8 +718,14 @@ def build_report(root: Path, records: list[dict[str, Any]], audit: dict[str, Any
 
 
 def main() -> int:
+    global TASKS
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
+    parser.add_argument(
+        "--task-suite",
+        type=Path,
+        help="objective task catalog using schema pao.benchmark-suite.v1",
+    )
     parser.add_argument(
         "--summarize-existing",
         action="store_true",
@@ -685,6 +733,9 @@ def main() -> int:
     )
     args = parser.parse_args()
     root = args.root.resolve()
+    if args.task_suite:
+        TASKS = load_task_suite(args.task_suite.resolve())
+    assignment = build_assignment(list(TASKS))
     if args.summarize_existing:
         experiment_path = root / "experiment.json"
         if not experiment_path.is_file():
@@ -746,7 +797,7 @@ def main() -> int:
 
     published: dict[tuple[str, str], dict[str, Any]] = {}
     for alias, adapter in ADAPTERS.items():
-        for priority, task_name in enumerate(adapter["sequence"], start=1):
+        for priority, task_name in enumerate(assignment[alias], start=1):
             draft = {
                 "task_id": task_id(alias, task_name),
                 "workflow_id": workflow_id(alias),
@@ -781,11 +832,11 @@ def main() -> int:
 
     identities: dict[str, dict[str, Any]] = {}
     records: list[dict[str, Any]] = []
-    for round_index in range(3):
+    for round_index in range(len(TASKS)):
         deliveries: dict[str, dict[str, Any]] = {}
         grants: dict[str, dict[str, Any]] = {}
         for alias, adapter in ADAPTERS.items():
-            task_name = adapter["sequence"][round_index]
+            task_name = assignment[alias][round_index]
             if round_index == 0:
                 delivery = run_pao(
                     LWAR_SCRIPT,
@@ -844,7 +895,7 @@ def main() -> int:
         with ThreadPoolExecutor(max_workers=4) as executor:
             futures = {}
             for alias, adapter in ADAPTERS.items():
-                task_name = adapter["sequence"][round_index]
+                task_name = assignment[alias][round_index]
                 futures[
                     executor.submit(
                         run_provider_with_retry,
@@ -861,6 +912,9 @@ def main() -> int:
                     provider_results[alias] = {
                         "adapter": ADAPTERS[alias]["adapter_id"],
                         "ok": False,
+                        "started_at": datetime.now(timezone.utc).isoformat().replace(
+                            "+00:00", "Z"
+                        ),
                         "duration_s": 0,
                         "error": str(error),
                         "answer": "",
@@ -868,7 +922,7 @@ def main() -> int:
                     }
 
         for alias, adapter in ADAPTERS.items():
-            task_name = adapter["sequence"][round_index]
+            task_name = assignment[alias][round_index]
             provider = provider_results[alias]
             outcome = grade(task_name, provider["answer"]) if provider["ok"] else {
                 "score": 0,
@@ -950,6 +1004,7 @@ def main() -> int:
                 {
                     "alias": alias,
                     "task": task_name,
+                    "task_class": TASKS[task_name].get("task_class"),
                     "provider": provider_evidence,
                     "grade": outcome,
                     "validation": {
@@ -993,8 +1048,10 @@ def main() -> int:
     audit = run_pao(OA_SCRIPT, "audit-health", "--root", str(root))
     payload = {
         "schema_version": "pao.heterogeneous-ab.v1",
-        "assignment": {
-            alias: adapter["sequence"] for alias, adapter in ADAPTERS.items()
+        "assignment": assignment,
+        "tasks": {
+            name: {"task_class": task.get("task_class")}
+            for name, task in TASKS.items()
         },
         "profiles": {
             alias: {

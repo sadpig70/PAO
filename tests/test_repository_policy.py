@@ -159,7 +159,10 @@ class RepositoryPolicyTests(unittest.TestCase):
         live["required_status_checks"]["checks"][0]["app_id"] = 1
         errors = verify_repository_policy.compare_policy(self.policy, live)
         self.assertIn(
-            "required check app_id drift: PR Evidence; expected 15368, observed 1",
+            (
+                "required check app_id drift: PR Evidence Evaluator; "
+                "expected 15368, observed 1"
+            ),
             errors,
         )
 
