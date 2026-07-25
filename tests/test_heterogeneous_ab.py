@@ -124,6 +124,56 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
             "constraint_ordering_promoted_bounded_optimization_blocked",
         )
 
+    def test_production_canary_records_rejection_and_sticky_fallback(self):
+        repo = Path(__file__).parents[1]
+        registration = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-production-canary-preregistration-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        evidence = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-production-canary-evidence-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            evidence["contract"]["prompt_sha256"],
+            registration["task"]["prompt_sha256"],
+        )
+        self.assertEqual(
+            evidence["contract"]["expected_answer_sha256"],
+            registration["task"]["expected_answer_sha256"],
+        )
+        self.assertEqual(
+            evidence["contract"]["profile_sha256"],
+            registration["routing_contract"]["profile_sha256"],
+        )
+        self.assertEqual(
+            evidence["contract"]["policy_sha256"],
+            registration["routing_contract"]["policy_sha256"],
+        )
+        live = evidence["production_canary"]
+        self.assertEqual(live["selected_lwar_id"], "LWAR4")
+        self.assertEqual(live["route_mode"], "live")
+        self.assertEqual(live["semantic_verdict"], "rejected")
+        self.assertEqual(evidence["circuit"]["status"], "open")
+        self.assertEqual(evidence["circuit"]["reset_count"], 0)
+        fallback = evidence["fallback_probe"]
+        self.assertEqual(fallback["selected_lwar_id"], "LWAR1")
+        self.assertEqual(fallback["route_mode"], "circuit_open")
+        self.assertEqual(fallback["semantic_verdict"], "accepted")
+        self.assertEqual(
+            evidence["final_routing_state"]["promoted_classes"], []
+        )
+        self.assertEqual(
+            evidence["verdict"],
+            "production_canary_rejected_sticky_fallback_verified",
+        )
+
     def test_opencode_adapter_adds_generic_private_verification(self):
         command = build_opencode_command(
             Path("opencode.exe"),

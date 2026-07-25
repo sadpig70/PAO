@@ -81,3 +81,8 @@ replay evidence. Neither mode infers missing telemetry.
 The subsequent non-overlapping LWAR4 remediation trial is documented in
 `docs/LWAR4_REMEDIATION_EVIDENCE.md`. It qualifies LWAR4 for live
 constraint-ordering routes while retaining LWAR1 for bounded optimization.
+
+That qualification was exercised by the production canary documented in
+`docs/LWAR4_PRODUCTION_CANARY_EVIDENCE.md`. The live result was rejected,
+opened the LWAR4 constraint-ordering circuit, and successfully forced the next
+same-class route to LWAR1. The current state has no promoted class.
