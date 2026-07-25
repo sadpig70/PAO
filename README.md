@@ -85,6 +85,8 @@ OA (Orchestration Agent)
   explicit read-only shadow execution, and sticky drift circuit breakers
 - OA-validation-bound online routing observations and reason-bound circuit
   reset audit evidence
+- preregistered non-overlapping LWAR4 remediation evidence that qualifies
+  constraint-ordering traffic while keeping bounded optimization on the leader
 - `depends_on` task gating for simple workflow DAGs
 - append-only audit log (`var/audit/events.jsonl`) and fail-closed archive and
   committed-repair-evidence pruning (`prune`)

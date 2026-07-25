@@ -1,0 +1,254 @@
+{
+  "claim_scope": "preregistered_nonoverlapping_blind_shadow_evidence",
+  "schema_version": "pao.benchmark-suite.v1",
+  "suite_id": "lwar4-remediation-suite-v1",
+  "tasks": {
+    "RBO01": {
+      "expected": {
+        "cost": 13,
+        "risk": 8,
+        "selection": [
+          "B",
+          "D",
+          "F"
+        ],
+        "value": 35
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=8 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost8,risk4,value11), B(cost3,risk1,value12), C(cost3,risk4,value8), D(cost4,risk5,value9), E(cost3,risk4,value6), F(cost6,risk2,value14). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO02": {
+      "expected": {
+        "cost": 14,
+        "risk": 8,
+        "selection": [
+          "C",
+          "E",
+          "F"
+        ],
+        "value": 35
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=14 and risk <=9 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost8,risk5,value9), B(cost4,risk5,value7), C(cost2,risk3,value7), D(cost8,risk2,value5), E(cost8,risk1,value15), F(cost4,risk4,value13). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO03": {
+      "expected": {
+        "cost": 8,
+        "risk": 7,
+        "selection": [
+          "A",
+          "C"
+        ],
+        "value": 26
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=15 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost5,risk3,value11), B(cost6,risk1,value7), C(cost3,risk4,value15), D(cost6,risk4,value7), E(cost8,risk3,value7), F(cost6,risk3,value9). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO04": {
+      "expected": {
+        "cost": 15,
+        "risk": 6,
+        "selection": [
+          "A",
+          "C",
+          "F"
+        ],
+        "value": 35
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=16 and risk <=8 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost6,risk1,value9), B(cost3,risk5,value5), C(cost6,risk1,value13), D(cost6,risk1,value8), E(cost8,risk4,value13), F(cost3,risk4,value13). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO05": {
+      "expected": {
+        "cost": 8,
+        "risk": 9,
+        "selection": [
+          "A",
+          "D",
+          "F"
+        ],
+        "value": 30
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=9 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost2,risk3,value12), B(cost8,risk3,value9), C(cost3,risk5,value9), D(cost3,risk4,value6), E(cost3,risk5,value5), F(cost3,risk2,value12). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO06": {
+      "expected": {
+        "cost": 9,
+        "risk": 7,
+        "selection": [
+          "C",
+          "D"
+        ],
+        "value": 27
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost8,risk5,value10), B(cost5,risk5,value14), C(cost4,risk2,value12), D(cost5,risk5,value15), E(cost5,risk2,value7), F(cost8,risk1,value8). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO07": {
+      "expected": {
+        "cost": 11,
+        "risk": 7,
+        "selection": [
+          "B",
+          "D"
+        ],
+        "value": 22
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=14 and risk <=8 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost6,risk2,value6), B(cost7,risk4,value14), C(cost5,risk2,value4), D(cost4,risk3,value8), E(cost8,risk5,value6), F(cost2,risk3,value4). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO08": {
+      "expected": {
+        "cost": 13,
+        "risk": 7,
+        "selection": [
+          "C",
+          "D",
+          "E"
+        ],
+        "value": 36
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=15 and risk <=9 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost8,risk5,value9), B(cost8,risk2,value10), C(cost7,risk2,value13), D(cost3,risk4,value14), E(cost3,risk1,value9), F(cost8,risk5,value11). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO09": {
+      "expected": {
+        "cost": 13,
+        "risk": 7,
+        "selection": [
+          "C",
+          "D",
+          "E"
+        ],
+        "value": 37
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=16 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost7,risk3,value7), B(cost8,risk3,value15), C(cost4,risk1,value9), D(cost6,risk1,value15), E(cost3,risk5,value13), F(cost7,risk2,value15). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO10": {
+      "expected": {
+        "cost": 10,
+        "risk": 5,
+        "selection": [
+          "B",
+          "E"
+        ],
+        "value": 24
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=8 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost4,risk3,value9), B(cost3,risk4,value13), C(cost7,risk5,value7), D(cost2,risk5,value4), E(cost7,risk1,value11), F(cost7,risk1,value6). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO11": {
+      "expected": {
+        "cost": 12,
+        "risk": 7,
+        "selection": [
+          "D",
+          "F"
+        ],
+        "value": 22
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=9 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost6,risk1,value4), B(cost3,risk4,value9), C(cost6,risk1,value6), D(cost7,risk2,value12), E(cost5,risk5,value5), F(cost5,risk5,value10). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RBO12": {
+      "expected": {
+        "cost": 11,
+        "risk": 6,
+        "selection": [
+          "A",
+          "D",
+          "F"
+        ],
+        "value": 41
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=14 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost4,risk1,value15), B(cost4,risk1,value5), C(cost4,risk5,value13), D(cost2,risk1,value12), E(cost5,risk5,value8), F(cost5,risk4,value14). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "RCO01": {
+      "expected": {
+        "answer": "FABCDE"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: B is immediately before C; C is immediately before D; D is immediately before E; F is immediately before A; A is immediately before B. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO02": {
+      "expected": {
+        "answer": "BDFACE"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: C is immediately before E; B is immediately before D; D is immediately before F; F is immediately before A; A is immediately before C. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO03": {
+      "expected": {
+        "answer": "CEAFDB"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: E is immediately before A; A is immediately before F; F is immediately before D; D is immediately before B; C is immediately before E. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO04": {
+      "expected": {
+        "answer": "DAFCEB"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: C is immediately before E; E is immediately before B; D is immediately before A; A is immediately before F; F is immediately before C. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO05": {
+      "expected": {
+        "answer": "EBCFAD"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: E is immediately before B; B is immediately before C; C is immediately before F; F is immediately before A; A is immediately before D. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO06": {
+      "expected": {
+        "answer": "ACFDEB"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: F is immediately before D; D is immediately before E; E is immediately before B; A is immediately before C; C is immediately before F. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO07": {
+      "expected": {
+        "answer": "FEDCBA"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: B is immediately before A; F is immediately before E; E is immediately before D; D is immediately before C; C is immediately before B. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO08": {
+      "expected": {
+        "answer": "CBAFDE"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: B is immediately before A; A is immediately before F; F is immediately before D; D is immediately before E; C is immediately before B. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO09": {
+      "expected": {
+        "answer": "DEABFC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: B is immediately before F; F is immediately before C; D is immediately before E; E is immediately before A; A is immediately before B. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO10": {
+      "expected": {
+        "answer": "AFBDCE"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: A is immediately before F; F is immediately before B; B is immediately before D; D is immediately before C; C is immediately before E. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO11": {
+      "expected": {
+        "answer": "BECADF"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: C is immediately before A; A is immediately before D; D is immediately before F; B is immediately before E; E is immediately before C. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RCO12": {
+      "expected": {
+        "answer": "CDFBEA"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using all constraints: E is immediately before A; C is immediately before D; D is immediately before F; F is immediately before B; B is immediately before E. Return {\"answer\":\"<six letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    }
+  }
+}

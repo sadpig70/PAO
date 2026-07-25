@@ -1,25 +1,155 @@
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.build_canary_online_suite import build_suite
+from tools.build_lwar4_remediation_suite import (
+    build_registration as build_remediation_registration,
+    build_suite as build_remediation_suite,
+    canonical_sha256,
+)
 from tools.run_heterogeneous_lwar_ab import (
     TASKS,
+    build_opencode_command,
     build_assignment,
     build_report,
+    combine_provider_results,
     grade,
     load_task_suite,
     read_kimi_usage,
     reported_tokens,
     routing_upper_bound,
+    run_provider_command,
     run_provider_with_retry,
+    verify_finite_json_answer,
 )
 
 
 class HeterogeneousABHarnessTests(unittest.TestCase):
+    def test_finite_answer_verifier_uses_prompt_not_answer_key(self):
+        prompt = build_suite()["tasks"]["BO04"]["prompt"]
+        self.assertEqual(
+            verify_finite_json_answer(
+                prompt,
+                '{"selection":["B","C","E"],"value":29,"cost":8,"risk":6}',
+            ),
+            [],
+        )
+        self.assertEqual(
+            verify_finite_json_answer(
+                prompt,
+                '{"selection":["B","C","E"],"value":21,"cost":8,"risk":3}',
+            ),
+            ["aggregate_mismatch", "selection_not_global_optimum"],
+        )
+        ordering = build_suite()["tasks"]["CO08"]["prompt"]
+        self.assertEqual(
+            verify_finite_json_answer(ordering, '{"answer":"CDEAB"}'),
+            ["ordering_constraint_violation"],
+        )
+
+    def test_internal_verification_attempts_preserve_total_tokens(self):
+        first = {
+            "adapter": "opencode",
+            "ok": True,
+            "duration_s": 2.0,
+            "error": None,
+            "answer": "{}",
+            "metrics": {"usage": {"total": 10}, "telemetry_complete": True},
+        }
+        second = {
+            **first,
+            "duration_s": 3.0,
+            "metrics": {"usage": {"total": 20}, "telemetry_complete": True},
+        }
+        combined = combine_provider_results(first, second)
+        self.assertEqual(combined["duration_s"], 5.0)
+        self.assertEqual(reported_tokens(combined["metrics"]), 30)
+        self.assertTrue(combined["metrics"]["telemetry_complete"])
+
+    def test_remediation_suite_is_unique_nonoverlapping_and_preregistered(self):
+        prior = build_suite()
+        suite = build_remediation_suite()
+        registration = build_remediation_registration(suite)
+        prompts = [task["prompt"] for task in suite["tasks"].values()]
+        prior_prompts = {
+            task["prompt"] for task in prior["tasks"].values()
+        }
+        counts = {}
+        for task in suite["tasks"].values():
+            counts[task["task_class"]] = (
+                counts.get(task["task_class"], 0) + 1
+            )
+        self.assertEqual(len(prompts), len(set(prompts)))
+        self.assertFalse(prior_prompts & set(prompts))
+        self.assertEqual(
+            counts,
+            {"bounded_optimization": 12, "constraint_ordering": 12},
+        )
+        self.assertEqual(registration["suite_sha256"], canonical_sha256(suite))
+        self.assertTrue(registration["sealed_before_provider_execution"])
+
+    def test_remediation_evidence_binds_preregistered_contract(self):
+        repo = Path(__file__).parents[1]
+        registration = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-remediation-preregistration-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        evidence = json.loads(
+            (
+                repo / "benchmarks" / "lwar4-remediation-evidence-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        for field in (
+            "suite_sha256",
+            "answer_key_sha256",
+            "adapter_contract_sha256",
+        ):
+            self.assertEqual(evidence[field], registration[field])
+        self.assertEqual(evidence["blind_run"]["provider_calls"]["total"], 96)
+        self.assertEqual(evidence["blind_run"]["online_observations"], 94)
+        self.assertEqual(
+            evidence["promoted_classes"], ["constraint_ordering"]
+        )
+        self.assertEqual(
+            evidence["verdict"],
+            "constraint_ordering_promoted_bounded_optimization_blocked",
+        )
+
+    def test_opencode_adapter_adds_generic_private_verification(self):
+        command = build_opencode_command(
+            Path("opencode.exe"),
+            Path("work"),
+            'Return {"answer":"<value>"}.',
+        )
+        self.assertEqual(command[command.index("--variant") + 1], "high")
+        self.assertIn("verify every stated constraint", command[-1])
+        self.assertTrue(command[-1].endswith('Return {"answer":"<value>"}.'))
+        self.assertNotIn("DBAEC", command[-1])
+
+    def test_provider_timeout_becomes_retryable_result(self):
+        with patch(
+            "tools.run_heterogeneous_lwar_ab.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["provider"], 180),
+        ):
+            result = run_provider_command(
+                "test",
+                ["provider"],
+                lambda stdout, stderr: (stdout, {}),
+                Path("."),
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "timeout_180s")
+        self.assertFalse(result["metrics"]["telemetry_complete"])
+
     def test_online_canary_suite_is_balanced_and_objective(self):
         suite = build_suite()
         tasks = suite["tasks"]

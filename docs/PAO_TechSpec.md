@@ -697,6 +697,13 @@ margin. Circuit state is persisted before subsequent publication and never
 auto-closes. `routing-circuit-reset` requires an identified OA and a nonempty
 reason, persists a reset watermark, and appends deterministic audit evidence.
 
+Provider-adapter evidence may use an answer-key-free deterministic verifier
+for finite tasks and one verifier-guided correction attempt. The
+preregistration must bind the verifier-bearing adapter contract, every attempt
+must contribute its tokens to the reported total, and missing token telemetry
+remains excluded rather than estimated. This verifier changes provider-stack
+evidence quality; it does not alter PAO routing or semantic acceptance policy.
+
 ## 16. Evolution Path
 
 Planned future steps include:
