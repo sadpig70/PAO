@@ -1,0 +1,31 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.canary-policy.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "policy_id",
+    "created_at",
+    "min_accepted_observations",
+    "confidence_z",
+    "max_quality_drop",
+    "drift_window",
+    "max_drift_drop",
+    "trip_on_rejection"
+  ],
+  "properties": {
+    "schema_version": {"const": "pao.canary-policy.v1"},
+    "policy_id": {
+      "type": "string",
+      "pattern": "^canary-policy-[A-Za-z0-9][A-Za-z0-9._-]*$"
+    },
+    "created_at": {"type": "string", "format": "date-time"},
+    "min_accepted_observations": {"type": "integer", "minimum": 10},
+    "confidence_z": {"const": 1.96},
+    "max_quality_drop": {"type": "number", "minimum": 0, "maximum": 1},
+    "drift_window": {"type": "integer", "minimum": 2},
+    "max_drift_drop": {"type": "number", "minimum": 0, "maximum": 1},
+    "trip_on_rejection": {"const": true}
+  }
+}

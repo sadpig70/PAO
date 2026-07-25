@@ -2,10 +2,10 @@
 name: pao-oa
 description: "PAO Orchestration Agent (standalone, self-contained) — autonomously bootstrap and act as OA: approve LWAR registrations, publish mailbox tasks, collect and semantically validate results, recover failures. Bundles the PAO runtime; installs by folder copy alone — no pip or plugin. Load on /pao-oa or whenever a session is told to act as the PAO OA."
 user-invocable: true
-argument-hint: "start | info | doctor | presence | status | audit-health | audit-repair | audit-prune-resolve | audit-preserve-release | reconcile | send | collect | validate | workflow-status | recover | dead | control | prune"
+argument-hint: "start | info | doctor | presence | status | audit-health | audit-repair | audit-prune-resolve | audit-preserve-release | reconcile | send | collect | validate | routing-circuit-reset | workflow-status | recover | dead | control | prune"
 ---
 
-# PAO-OA Skill v1.34 (standalone)
+# PAO-OA Skill v1.35 (standalone)
 
 ## Definitions
 
@@ -31,7 +31,7 @@ Before the first orchestration action of a session, run the pre-flight check and
 python "<PAO_SKILL>/scripts/pao.py" doctor --role oa
 ```
 
-Runtime protocol v1.2.0 intentionally rejects optional-first pre-v1 records
+Runtime protocol v1.3.0 intentionally rejects optional-first pre-v1 records
 and pre-execution-fence bundles.
 Use a fresh bus for the major-version cutover, or intentionally retire the old
 bus after preserving required evidence. Never bypass a failed
@@ -97,7 +97,7 @@ export PAO_OA_ID="oa-$(python -c 'import uuid; print(uuid.uuid4().hex)')"
 $env:PAO_OA_ID = "oa-$([guid]::NewGuid().ToString('N'))"
 ```
 
-Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `prune`, `audit-repair`, `audit-prune-resolve`, `audit-preserve-release`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. A separate process-wide command mutex at `var/oa/.command.lock` serializes the complete mutation, including two processes that reuse the same `PAO_OA_ID`; contention waits up to 30 seconds and then fails closed. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**, and is not the command mutex. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, `audit-health`, plain `validate`, `workflow-status`, `dead` listing, `info`) never acquire either OA mutation guard.
+Every mutating command (`presence`, `reconcile`, `send`, `control`, `collect`, `recover`, `dead --requeue`, `validate --record`, `routing-circuit-reset`, `prune`, `audit-repair`, `audit-prune-resolve`, `audit-preserve-release`) requires `PAO_OA_ID`, holds the writer lease at `var/oa/writer_lease.json`, and renews it while the command runs. A separate process-wide command mutex at `var/oa/.command.lock` serializes the complete mutation, including two processes that reuse the same `PAO_OA_ID`; contention waits up to 30 seconds and then fails closed. It also publishes `var/oa/presence.json`; long commands use monotonic fixed-rate deadlines with a 25-second target and a 30-second hard latest. Presence expires after 90 seconds and is the only OA-liveness signal LWARs use. The 900-second writer lease is fencing, **not liveness**, and is not the command mutex. A missing id fails closed; a session holding a different id is rejected as a read-only observer until the lease expires. Read commands (`status`, `audit-health`, plain `validate`, `workflow-status`, `dead` listing, `info`) never acquire either OA mutation guard.
 
 For the agent-level supervision loop, maintain `next_presence_deadline` from the
 monotonic time of each successful presence-publishing command. Set it to
@@ -249,8 +249,8 @@ Before performing an action for the first time this session, read its reference 
 |---|---|
 | `start` / no explicit action | all four references below; `reconcile.md` before bootstrap mutations |
 | `presence`, `reconcile`, registration and lifecycle approval, `status`, state transitions | [references/reconcile.md](references/reconcile.md) |
-| `send`, task drafting, `--auto` routing, `depends_on` | [references/publish.md](references/publish.md) |
-| `collect`, `validate`, `workflow-status`, result acceptance | [references/collect-validate.md](references/collect-validate.md) |
+| `send`, task drafting, `--auto` routing, canary/shadow routing, `depends_on` | [references/publish.md](references/publish.md) |
+| `collect`, `validate`, `routing-circuit-reset`, `workflow-status`, result acceptance | [references/collect-validate.md](references/collect-validate.md) |
 | `recover`, `dead`, `control`, `prune`, `audit-health`, `audit-repair`, `audit-prune-resolve`, `audit-preserve-release`, audit | [references/recover-maintain.md](references/recover-maintain.md) |
 
 JSON Schemas for every bus message live in [schemas/](schemas/).

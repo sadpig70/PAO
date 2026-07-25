@@ -23,6 +23,7 @@ SKILL_NAMES = ("pao-oa", "pao-lwar")
 RUNTIME_MODULES = (
     "adp_watch.py",
     "audit.py",
+    "canary_routing.py",
     "common.py",
     "contracts.py",
     "ledger.py",

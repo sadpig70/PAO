@@ -664,14 +664,46 @@ eligible aliases, policy, class/global statistics, and canonical profile
 SHA-256. Conflicting receipt replay is rejected. Calibration task IDs cannot be
 used as held-out receipt targets.
 
+### 15.3 Confidence-bounded online canary routing
+
+PAO v1.3.0 adds an optional canary layer above the v1 calibration profile.
+Its strict policy cannot set `min_accepted_observations` below ten. Before any
+non-incumbent alias receives production traffic, every profile-known eligible
+alias must have at least ten accepted current-instance/current-generation
+online observations in that task class and the candidate's 95 percent Wilson
+lower confidence bound must be non-inferior to the incumbent within the
+configured quality margin. Calibration observations select the incumbent and
+candidate but never count toward this promotion floor.
+
+Until both gates pass, ordinary production tasks execute on the immutable
+calibration incumbent while the receipt records the candidate. Explicit
+`--routing-shadow` executes the candidate only when the final TaskContract has
+an empty write allowlist and `network=false`; shadow execution never implies
+production promotion. `--routing-shadow-lwar-id` applies the same fence to any
+explicitly eligible alias so a balanced full panel can collect the mandatory
+per-alias evidence without changing the production candidate.
+
+`validate --record --decision accepted|rejected
+--routing-reported-tokens N` converts the recorded OA semantic decision into
+one strict online observation. The observation binds the canary receipt,
+actual alias and route mode, reported tokens, and canonical validation
+SHA-256. Loading observations re-verifies the receipt and task-ledger
+validation bindings. Exact replay is idempotent and conflicting replay fails.
+
+Any rejected live candidate result opens a sticky alias/class circuit. A
+statistically significant shadow/live window decline also opens it when the
+recent Wilson upper bound is below the prior lower bound beyond the configured
+margin. Circuit state is persisted before subsequent publication and never
+auto-closes. `routing-circuit-reset` requires an identified OA and a nonempty
+reason, persists a reset watermark, and appends deterministic audit evidence.
+
 ## 16. Evolution Path
 
 Planned future steps include:
 
 - alternative transports such as MCP or SQLite-backed queues
 - richer runtime capability models
-- statistically stronger online routing evidence with drift detection and
-  provider-normalized monetary cost
+- provider-normalized monetary cost evidence
 - stronger validation pipelines
 - higher-level delegation policies across multiple LWAR classes
 

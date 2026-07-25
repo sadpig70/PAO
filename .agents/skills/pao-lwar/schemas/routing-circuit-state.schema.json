@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.routing-circuit-state.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "updated_at", "circuits", "resets"],
+  "properties": {
+    "schema_version": {"const": "pao.routing-circuit-state.v1"},
+    "updated_at": {"type": "string", "format": "date-time"},
+    "circuits": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*::LWAR[1-9][0-9]*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "task_class",
+            "lwar_id",
+            "status",
+            "opened_at",
+            "reason",
+            "trigger_observation_id",
+            "policy_sha256"
+          ],
+          "properties": {
+            "task_class": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+            "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
+            "status": {"const": "open"},
+            "opened_at": {"type": "string", "format": "date-time"},
+            "reason": {"enum": ["candidate_rejected", "confidence_drift"]},
+            "trigger_observation_id": {
+              "type": "string",
+              "pattern": "^routing-observation-[a-f0-9]{32}$"
+            },
+            "policy_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}
+          }
+        }
+      },
+      "additionalProperties": false
+    },
+    "resets": {
+      "type": "object",
+      "patternProperties": {
+        "^[a-z][a-z0-9_-]*::LWAR[1-9][0-9]*$": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "task_class",
+            "lwar_id",
+            "reset_at",
+            "reason",
+            "decided_by"
+          ],
+          "properties": {
+            "task_class": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+            "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
+            "reset_at": {"type": "string", "format": "date-time"},
+            "reason": {"type": "string", "minLength": 1},
+            "decided_by": {"type": "string", "minLength": 1}
+          }
+        }
+      },
+      "additionalProperties": false
+    }
+  }
+}

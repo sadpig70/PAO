@@ -1,9 +1,11 @@
-import unittest
+import hashlib
 import json
 import tempfile
+import unittest
 import zipfile
 from pathlib import Path
 
+from tools.build_canary_online_suite import build_suite
 from tools.run_heterogeneous_lwar_ab import (
     TASKS,
     build_assignment,
@@ -18,6 +20,48 @@ from tools.run_heterogeneous_lwar_ab import (
 
 
 class HeterogeneousABHarnessTests(unittest.TestCase):
+    def test_online_canary_suite_is_balanced_and_objective(self):
+        suite = build_suite()
+        tasks = suite["tasks"]
+        counts = {}
+        for task in tasks.values():
+            counts[task["task_class"]] = counts.get(task["task_class"], 0) + 1
+            self.assertTrue(task["expected"])
+            self.assertIn("Return one JSON object", task["prompt"])
+        self.assertEqual(
+            counts,
+            {
+                "bounded_optimization": 10,
+                "code_review": 10,
+                "constraint_ordering": 10,
+            },
+        )
+
+    def test_online_canary_evidence_binds_the_published_suite(self):
+        repo = Path(__file__).parents[1]
+        suite_path = repo / "benchmarks" / "canary-online-suite-v1.json"
+        evidence = json.loads(
+            (
+                repo / "benchmarks" / "canary-online-evidence-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            evidence["suite_sha256"],
+            hashlib.sha256(
+                json.dumps(
+                    json.loads(suite_path.read_text(encoding="utf-8")),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
+        )
+        self.assertEqual(evidence["provider_calls"]["total"], 120)
+        self.assertEqual(evidence["online_observations"], 117)
+        self.assertEqual(
+            evidence["verdict"], "current_evidence_remains_shadow_only"
+        )
+
     def test_objective_graders_accept_only_exact_answers(self):
         answers = {
             "T1": '{"answer":"DBAEC","reason":"unique"}',
