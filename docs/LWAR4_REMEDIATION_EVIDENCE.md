@@ -76,6 +76,17 @@ Verdict:
 
 `constraint_ordering_promoted_bounded_optimization_blocked`
 
+## Superseding production status
+
+The blind qualification above is historical evidence, not the current live
+state. A subsequent preregistered production canary routed live to LWAR4 and
+was objectively rejected. The rejection opened the sticky
+`constraint_ordering::LWAR4` circuit, and a same-class probe routed to LWAR1
+with `route_mode=circuit_open`.
+
+The current analyzer verdict is `current_evidence_remains_shadow_only`; no
+class remains promoted. See `docs/LWAR4_PRODUCTION_CANARY_EVIDENCE.md`.
+
 Portable aggregate evidence is stored in
 `benchmarks/lwar4-remediation-evidence-v1.json`.
 
