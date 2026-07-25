@@ -9,6 +9,8 @@ python "<PAO_SKILL>/scripts/oa.py" collect
 python "<PAO_SKILL>/scripts/oa.py" collect --archive
 python "<PAO_SKILL>/scripts/oa.py" validate --task-id TASK_ID
 python "<PAO_SKILL>/scripts/oa.py" validate --task-id TASK_ID --record --decision accepted --reason "verified"
+python "<PAO_SKILL>/scripts/oa.py" validate --task-id SHADOW_TASK_ID --record --decision accepted --reason "objective grader passed" --routing-reported-tokens 123
+python "<PAO_SKILL>/scripts/oa.py" routing-circuit-reset --lwar-id LWAR2 --routing-class code_review --reason "root cause fixed and reviewed"
 python "<PAO_SKILL>/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 ```
 
@@ -21,6 +23,15 @@ python "<PAO_SKILL>/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 - `collect` commits the ledger before optional result archival, then reconciles archived results on later passes. A crash on either side of the move is therefore repairable.
 - If a clean retirement removes the LWAR registry slot before an accepted result leaves `outgoing/`, `collect` verifies the exact ledger payload, accepted semantic decision, claim provenance, and artifact snapshots, then moves it to `archive/results/` once and reports it under `archived_reconciled`. Changed, unaccepted, or uncommitted results remain fenced as stale.
 - `validate` reports mechanical checks; **semantic verification remains OA's judgment**. Record it explicitly with `--decision accepted|rejected|undecidable --reason ...`. `accepted` is refused when mechanical checks fail. `validate --record` is mutating and requires the writer lease; plain `validate` stays observer-safe.
+- For a canary-routed task only, `--routing-reported-tokens` binds the recorded
+  accepted/rejected semantic decision into one replay-safe online observation.
+  `undecidable`, missing receipts, changed validation, negative token counts,
+  and conflicting observations fail closed. The loader re-verifies both the
+  canary receipt and the persisted task-ledger validation before counting it.
+- A rejected live candidate opens its alias/class circuit immediately.
+  Confidence-detected window drift also opens it. Circuits never auto-close;
+  `routing-circuit-reset` requires a nonempty operator reason and `PAO_OA_ID`,
+  writes a reset watermark, and records an exact audit event.
 - Never approve success from `exit_code=0` alone. Validate `completion_criteria`, `evidence` (commands run, tests passed/failed), `artifacts`, and actual test results.
 - Do not rewrite failed validation as success. A failed or unverifiable result goes back through recovery ([recover-maintain.md](recover-maintain.md)) or is reported honestly.
 - `workflow-status` aggregates ledger state per workflow; use it before publishing `depends_on` successors.

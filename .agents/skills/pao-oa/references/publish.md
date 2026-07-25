@@ -34,6 +34,9 @@ Write a task draft file first:
 python "<PAO_SKILL>/scripts/oa.py" send --lwar-id LWAR1 --task-file TASK_DRAFT.json
 python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --task-file TASK_DRAFT.json
 python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --routing-profile ROUTING_PROFILE.json --routing-class code_review --task-file TASK_DRAFT.json
+python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --task-file TASK_DRAFT.json
+python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --routing-shadow --task-file READ_ONLY_TASK_DRAFT.json
+python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --routing-shadow-lwar-id LWAR3 --task-file READ_ONLY_TASK_DRAFT.json
 ```
 
 ## Rules
@@ -61,6 +64,23 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --rou
   receipt binds the task class, eligible aliases, selected alias, decision
   statistics, and canonical profile SHA-256. Conflicting replay fails closed;
   an equivalent replay reuses the existing receipt.
+- `--canary-policy` adds the confidence-bounded online gate. The policy schema
+  refuses fewer than ten accepted current-instance/current-generation online
+  observations per profile-known eligible alias/class. Calibration selects the
+  incumbent/candidate but does not count toward promotion. Production remains
+  on the incumbent until balanced accepted support and Wilson-bound
+  non-inferiority both pass.
+- `--routing-shadow` is explicit experimental execution of the recorded
+  candidate. The final TaskContract must have `permissions.write=[]` and
+  `permissions.network=false`; otherwise publication fails. An open circuit
+  suppresses even explicit shadow execution and routes to the incumbent.
+- `--routing-shadow-lwar-id` applies the same safety fence to one explicitly
+  eligible alias, allowing balanced full-panel evidence collection even when
+  that alias is not the current token candidate. It is mutually exclusive with
+  `--routing-shadow` and never changes the production candidate.
+- Canary receipts bind the exact profile, policy, verified online-observation
+  set, circuit state, incumbent, candidate, actual route, and route mode before
+  publication. Circuit-open audit events precede the routing decision.
 - Every publication uses a durable outbox sequence: ledger `publishing` → atomic mailbox publish → ledger `published`. `recover` repairs an interruption between these steps from the stored TaskContract.
 - `workflow_id` and `task_id` are schema-validated safe identifiers; values that could escape `var/tasks/` are rejected.
 - The claim lease is aligned with the task budget: `effective_lease_s = max(lease_seconds, timeout_s + 30)`.

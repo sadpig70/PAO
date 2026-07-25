@@ -1,0 +1,302 @@
+{
+  "claim_scope": "objective_side_effect_free_online_shadow_evidence",
+  "schema_version": "pao.benchmark-suite.v1",
+  "suite_id": "canary-online-suite-v1",
+  "tasks": {
+    "BO01": {
+      "expected": {
+        "cost": 10,
+        "risk": 7,
+        "selection": [
+          "B",
+          "E"
+        ],
+        "value": 21
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost3,risk3,value7), B(cost5,risk4,value12), C(cost7,risk1,value8), D(cost3,risk2,value4), E(cost5,risk3,value9). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO02": {
+      "expected": {
+        "cost": 12,
+        "risk": 5,
+        "selection": [
+          "A",
+          "C",
+          "E"
+        ],
+        "value": 33
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=6 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost4,risk1,value10), B(cost6,risk2,value6), C(cost2,risk3,value11), D(cost4,risk4,value7), E(cost6,risk1,value12). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO03": {
+      "expected": {
+        "cost": 8,
+        "risk": 3,
+        "selection": [
+          "C",
+          "D"
+        ],
+        "value": 15
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=11 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost5,risk3,value4), B(cost7,risk4,value9), C(cost3,risk1,value5), D(cost5,risk2,value10), E(cost7,risk3,value6). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO04": {
+      "expected": {
+        "cost": 8,
+        "risk": 6,
+        "selection": [
+          "B",
+          "C",
+          "E"
+        ],
+        "value": 29
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=6 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost6,risk1,value7), B(cost2,risk2,value12), C(cost4,risk3,value8), D(cost6,risk4,value4), E(cost2,risk1,value9). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO05": {
+      "expected": {
+        "cost": 8,
+        "risk": 4,
+        "selection": [
+          "C",
+          "E"
+        ],
+        "value": 23
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost7,risk3,value10), B(cost3,risk4,value6), C(cost5,risk1,value11), D(cost7,risk2,value7), E(cost3,risk3,value12). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO06": {
+      "expected": {
+        "cost": 8,
+        "risk": 6,
+        "selection": [
+          "A",
+          "D",
+          "E"
+        ],
+        "value": 20
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=11 and risk <=6 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost2,risk1,value4), B(cost4,risk2,value9), C(cost6,risk3,value5), D(cost2,risk4,value10), E(cost4,risk1,value6). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO07": {
+      "expected": {
+        "cost": 10,
+        "risk": 7,
+        "selection": [
+          "B",
+          "E"
+        ],
+        "value": 21
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost3,risk3,value7), B(cost5,risk4,value12), C(cost7,risk1,value8), D(cost3,risk2,value4), E(cost5,risk3,value9). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO08": {
+      "expected": {
+        "cost": 12,
+        "risk": 5,
+        "selection": [
+          "A",
+          "C",
+          "E"
+        ],
+        "value": 33
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=6 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost4,risk1,value10), B(cost6,risk2,value6), C(cost2,risk3,value11), D(cost4,risk4,value7), E(cost6,risk1,value12). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO09": {
+      "expected": {
+        "cost": 8,
+        "risk": 3,
+        "selection": [
+          "C",
+          "D"
+        ],
+        "value": 15
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=11 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost5,risk3,value4), B(cost7,risk4,value9), C(cost3,risk1,value5), D(cost5,risk2,value10), E(cost7,risk3,value6). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "BO10": {
+      "expected": {
+        "cost": 8,
+        "risk": 6,
+        "selection": [
+          "B",
+          "C",
+          "E"
+        ],
+        "value": 29
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=12 and risk <=6 that maximizes value; tie-break by lower cost, then lower risk, then lexicographically sorted selection. Items: A(cost6,risk1,value7), B(cost2,risk2,value12), C(cost4,risk3,value8), D(cost6,risk4,value4), E(cost2,risk1,value9). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "task_class": "bounded_optimization"
+    },
+    "CO01": {
+      "expected": {
+        "answer": "DBAEC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: A is immediately before E; E is immediately before C; D is immediately before B; B is immediately before A. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO02": {
+      "expected": {
+        "answer": "CEBAD"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: B is immediately before A; A is immediately before D; C is immediately before E; E is immediately before B. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO03": {
+      "expected": {
+        "answer": "BADEC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: D is immediately before E; E is immediately before C; B is immediately before A; A is immediately before D. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO04": {
+      "expected": {
+        "answer": "EDCBA"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: C is immediately before B; B is immediately before A; E is immediately before D; D is immediately before C. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO05": {
+      "expected": {
+        "answer": "ACEDB"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: E is immediately before D; D is immediately before B; A is immediately before C; C is immediately before E. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO06": {
+      "expected": {
+        "answer": "BDECA"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: E is immediately before C; C is immediately before A; B is immediately before D; D is immediately before E. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO07": {
+      "expected": {
+        "answer": "EABDC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: B is immediately before D; D is immediately before C; E is immediately before A; A is immediately before B. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO08": {
+      "expected": {
+        "answer": "CDAEB"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: A is immediately before E; E is immediately before B; C is immediately before D; D is immediately before A. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO09": {
+      "expected": {
+        "answer": "DEBAC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: B is immediately before A; A is immediately before C; D is immediately before E; E is immediately before B. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CO10": {
+      "expected": {
+        "answer": "ABECD"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-E using all constraints: E is immediately before C; C is immediately before D; A is immediately before B; B is immediately before E. Return {\"answer\":\"<five letters in order>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "CR01": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def append_log(item, log=[]): log.append(item); return len(log). Choose every real defect ID from: B1 mutable default shares history; B2 return type changes nondeterministically; B3 append always raises. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR02": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def ratio(total, count): return total / count. Choose every real defect ID from: B1 count zero is not handled; B2 division always truncates; B3 total must be a string. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR03": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def lookup(rows, key): return [r for r in rows if r['id'] == key][0]. Choose every real defect ID from: B1 a missing key raises IndexError; B2 the comparison mutates rows; B3 list comprehension is unordered. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR04": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def enabled(value): return bool(value). Choose every real defect ID from: B1 the string 'false' is treated as true; B2 bool cannot accept strings; B3 true booleans become false. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR05": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def debit(balance, amount): return balance - amount. Choose every real defect ID from: B1 negative amount increases the balance; B2 subtraction is nondeterministic; B3 integer balance always overflows. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR06": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def first_even(values): return next(v for v in values if v % 2 == 0). Choose every real defect ID from: B1 no even value raises StopIteration; B2 modulo mutates values; B3 even integers cannot be yielded. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR07": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def normalized(name): return name.strip().lower(). Choose every real defect ID from: B1 None input raises AttributeError; B2 lower changes the source string; B3 strip removes internal spaces. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR08": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def page(items, size): return [items[i:i+size] for i in range(0, len(items), size)]. Choose every real defect ID from: B1 nonpositive size is not rejected; B2 slicing mutates items; B3 range cannot use integers. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR09": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def merge(base, update): base.update(update); return base. Choose every real defect ID from: B1 the caller's base mapping is mutated; B2 update discards all keys; B3 return is always None. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    },
+    "CR10": {
+      "expected": {
+        "defects": [
+          "B1"
+        ]
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Review: def parse_port(text): return int(text). Choose every real defect ID from: B1 range 1..65535 is not validated; B2 int accepts no strings; B3 valid ports always become floats. Return {\"defects\":[\"sorted IDs\"]}.",
+      "task_class": "code_review"
+    }
+  }
+}

@@ -10,6 +10,21 @@ from pathlib import Path
 from typing import Any
 
 from . import audit
+from .canary_routing import (
+    current_generation_observations,
+    load_canary_policy,
+    load_canary_receipt,
+    load_circuit_state,
+    load_routing_observations,
+    make_canary_routing_receipt,
+    make_routing_observation,
+    refresh_circuits,
+    reset_circuit,
+    select_confidence_canary,
+    write_canary_routing_receipt,
+    write_circuit_state,
+    write_routing_observation,
+)
 from .common import (
     FileLock,
     atomic_write_json,
@@ -72,6 +87,32 @@ def _require_int(value: Any, field: str) -> int:
         return int(value)
     except (TypeError, ValueError):
         raise SystemExit(f"{field} must be an integer")
+
+
+def _refresh_routing_circuits(
+    root: Path,
+    policy: dict[str, Any],
+    observations: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> tuple[dict[str, Any], list[dict[str, Any]]]:
+    refreshed, events = refresh_circuits(policy, observations, state)
+    if refreshed != state:
+        write_circuit_state(root, refreshed)
+    for event in events:
+        audit.record_once(
+            root,
+            "oa",
+            {
+                "event": "routing_circuit_opened",
+                "task_class": event["task_class"],
+                "lwar_id": event["lwar_id"],
+                "reason": event["reason"],
+                "trigger_observation_id": event["trigger_observation_id"],
+                "policy_sha256": event["policy_sha256"],
+            },
+            f"routing-circuit-open:{event['trigger_observation_id']}",
+        )
+    return refreshed, events
 
 
 def ensure_oa_writer(root: Path, ttl_s: int = OA_WRITER_TTL_S) -> dict[str, Any]:
@@ -256,14 +297,30 @@ def command_send(args: argparse.Namespace) -> int:
         raise SystemExit(f"task file is missing or not valid JSON: {args.task_file}")
     task_id = validate_task_id(source.get("task_id") or new_id("task"))
     predictive_requested = bool(args.routing_profile or args.routing_class)
+    canary_requested = bool(
+        args.canary_policy or args.routing_shadow or args.routing_shadow_lwar_id
+    )
     if predictive_requested and (
         not args.auto or not args.routing_profile or not args.routing_class
     ):
         raise SystemExit(
             "--routing-profile and --routing-class must be used together with --auto"
         )
+    if canary_requested and (
+        not predictive_requested or not args.canary_policy
+    ):
+        raise SystemExit(
+            "--canary-policy and shadow options require predictive auto routing"
+        )
+    if args.routing_shadow and args.routing_shadow_lwar_id:
+        raise SystemExit(
+            "--routing-shadow and --routing-shadow-lwar-id are mutually exclusive"
+        )
     routing_profile = None
     routing_decision = None
+    canary_policy = None
+    routing_observations: list[dict[str, Any]] = []
+    routing_circuit_state = None
 
     if args.auto:
         registry_path = root / "var" / "registry" / "lwar_registry.json"
@@ -282,13 +339,56 @@ def command_send(args: argparse.Namespace) -> int:
                 lwar_id = None
             else:
                 routing_profile = load_routing_profile(Path(args.routing_profile).resolve())
-                routing_decision = select_predictive_lwar(
-                    routing_profile,
-                    args.routing_class,
-                    [item[2] for item in candidates],
-                )
+                if canary_requested:
+                    canary_policy = load_canary_policy(
+                        Path(args.canary_policy).resolve()
+                    )
+                    routing_observations = load_routing_observations(root)
+                    routing_circuit_state = load_circuit_state(root)
+                    eligible_identities = {
+                        item[2]: {
+                            "instance_id": registry["slots"][item[2]][
+                                "instance_id"
+                            ],
+                            "generation": registry["slots"][item[2]][
+                                "generation"
+                            ],
+                            "registry_version": registry["registry_version"],
+                        }
+                        for item in candidates
+                    }
+                    routing_observations = current_generation_observations(
+                        routing_observations, eligible_identities
+                    )
+                    routing_circuit_state, _ = _refresh_routing_circuits(
+                        root,
+                        canary_policy,
+                        routing_observations,
+                        routing_circuit_state,
+                    )
+                    routing_decision = select_confidence_canary(
+                        routing_profile,
+                        canary_policy,
+                        routing_observations,
+                        routing_circuit_state,
+                        args.routing_class,
+                        [item[2] for item in candidates],
+                        eligible_identities,
+                        shadow_execution=args.routing_shadow,
+                        shadow_lwar_id=args.routing_shadow_lwar_id,
+                    )
+                else:
+                    routing_decision = select_predictive_lwar(
+                        routing_profile,
+                        args.routing_class,
+                        [item[2] for item in candidates],
+                    )
                 lwar_id = routing_decision["selected_lwar_id"]
                 if lwar_id is None:
+                    if canary_requested:
+                        raise SystemExit(
+                            "canary routing requires an eligible calibration incumbent"
+                        )
                     lwar_id = candidates[0][2]
                     routing_decision["selected_lwar_id"] = lwar_id
                     routing_decision["reason"] = "fallback_live_load_no_calibration_evidence"
@@ -368,6 +468,18 @@ def command_send(args: argparse.Namespace) -> int:
         "write": [task["cwd"]],
         "network": False,
     }
+    if (
+        canary_policy is not None
+        and routing_decision is not None
+        and routing_decision["route_mode"] == "shadow"
+        and (
+            task["permissions"].get("write")
+            or task["permissions"].get("network") is not False
+        )
+    ):
+        raise SystemExit(
+            "routing shadow tasks require permissions.write=[] and permissions.network=false"
+        )
     if task["max_retries"] < 0:
         raise SystemExit("max_retries must be non-negative")
     if task["attempt"] < 1:
@@ -393,13 +505,32 @@ def command_send(args: argparse.Namespace) -> int:
     routing_receipt_path = None
     routing_receipt_sha256 = None
     if routing_profile is not None and routing_decision is not None:
-        receipt = make_routing_receipt(
-            task_id=task_id,
-            task_class=args.routing_class,
-            profile=routing_profile,
-            decision=routing_decision,
-        )
-        routing_receipt_path, receipt = write_routing_receipt(root, receipt)
+        if canary_policy is not None and routing_circuit_state is not None:
+            receipt = make_canary_routing_receipt(
+                task_id=task_id,
+                task_class=args.routing_class,
+                profile=routing_profile,
+                policy=canary_policy,
+                observations=routing_observations,
+                state=routing_circuit_state,
+                decision=routing_decision,
+                selected_identity={
+                    "instance_id": task["instance_id"],
+                    "generation": task["generation"],
+                    "registry_version": task["registry_version"],
+                },
+            )
+            routing_receipt_path, receipt = write_canary_routing_receipt(
+                root, receipt
+            )
+        else:
+            receipt = make_routing_receipt(
+                task_id=task_id,
+                task_class=args.routing_class,
+                profile=routing_profile,
+                decision=routing_decision,
+            )
+            routing_receipt_path, receipt = write_routing_receipt(root, receipt)
         routing_receipt_sha256 = sha256_file(routing_receipt_path)
         audit.record_once(
             root,
@@ -412,6 +543,8 @@ def command_send(args: argparse.Namespace) -> int:
                 "profile_sha256": receipt["profile_sha256"],
                 "routing_receipt_sha256": routing_receipt_sha256,
                 "reason": receipt["reason"],
+                "route_mode": receipt.get("route_mode"),
+                "candidate_lwar_id": receipt.get("candidate_lwar_id"),
             },
             f"routing:{receipt['receipt_id']}",
         )
@@ -444,6 +577,10 @@ def command_send(args: argparse.Namespace) -> int:
                 "routing_reason": routing_decision["reason"],
                 "routing_receipt": str(routing_receipt_path),
                 "routing_receipt_sha256": routing_receipt_sha256,
+                "routing_mode": routing_decision.get("route_mode"),
+                "routing_candidate_lwar_id": routing_decision.get(
+                    "candidate_lwar_id"
+                ),
             }
         )
     emit(output)
@@ -1088,6 +1225,13 @@ def command_dead(args: argparse.Namespace) -> int:
 
 def command_validate(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
+    if args.routing_reported_tokens is not None and not args.record:
+        raise SystemExit("--routing-reported-tokens requires --record")
+    if (
+        args.routing_reported_tokens is not None
+        and args.routing_reported_tokens < 0
+    ):
+        raise SystemExit("--routing-reported-tokens must be nonnegative")
     ledger = TaskLedger(root)
     entry = ledger.get(validate_task_id(args.task_id), args.workflow_id)
     if entry is None:
@@ -1103,6 +1247,11 @@ def command_validate(args: argparse.Namespace) -> int:
             }
         )
         return 2
+    routing_receipt = (
+        load_canary_receipt(root, args.task_id)
+        if args.routing_reported_tokens is not None
+        else None
+    )
     exit_code = result.get("exit_code")
     checks = {
         "result_status": result.get("status"),
@@ -1127,6 +1276,9 @@ def command_validate(args: argparse.Namespace) -> int:
         and verification["verified"]
     )
     verdict = "ready_for_oa_review" if mechanical_pass else "attention_required"
+    routing_observation_path = None
+    routing_observation_sha256 = None
+    routing_circuit_events: list[dict[str, Any]] = []
     if args.record:
         if semantic_verdict == "accepted" and not mechanical_pass:
             raise SystemExit("cannot record accepted: mechanical validation requires attention")
@@ -1135,19 +1287,65 @@ def command_validate(args: argparse.Namespace) -> int:
             raise SystemExit(
                 "PAO_OA_ID is required for validate --record; set one unique id per OA session"
             )
-        decision = {
-            "schema_version": "pao.validation-decision.v1",
-            "verdict": verdict,
-            "semantic_verdict": semantic_verdict,
-            "reason": args.reason,
-            "checks": checks,
-            "criteria": criteria,
-            "artifact_verification": verification,
-            "decided_by": decided_by,
-            "decided_at": utc_now(),
-        }
-        validate_contract(decision, "validation-decision.schema.json")
-        ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
+        existing_validation = entry.get("validation")
+        if args.routing_reported_tokens is not None and existing_validation:
+            if (
+                existing_validation.get("semantic_verdict") != semantic_verdict
+                or existing_validation.get("reason") != args.reason
+            ):
+                raise SystemExit(
+                    "routing observation conflicts with the recorded validation"
+                )
+            decision = existing_validation
+        else:
+            decision = {
+                "schema_version": "pao.validation-decision.v1",
+                "verdict": verdict,
+                "semantic_verdict": semantic_verdict,
+                "reason": args.reason,
+                "checks": checks,
+                "criteria": criteria,
+                "artifact_verification": verification,
+                "decided_by": decided_by,
+                "decided_at": utc_now(),
+            }
+            validate_contract(decision, "validation-decision.schema.json")
+            ledger.record_validation(args.task_id, entry.get("workflow_id"), decision)
+        if args.routing_reported_tokens is not None:
+            if semantic_verdict not in {"accepted", "rejected"}:
+                raise SystemExit(
+                    "routing observation requires accepted or rejected semantic validation"
+                )
+            observation = make_routing_observation(
+                routing_receipt, decision, args.routing_reported_tokens
+            )
+            routing_observation_path, observation = write_routing_observation(
+                root, observation
+            )
+            routing_observation_sha256 = sha256_file(routing_observation_path)
+            audit.record_once(
+                root,
+                "oa",
+                {
+                    "event": "routing_observation_recorded",
+                    "task_id": observation["task_id"],
+                    "task_class": observation["task_class"],
+                    "lwar_id": observation["lwar_id"],
+                    "accepted": observation["accepted"],
+                    "route_mode": observation["route_mode"],
+                    "observation_id": observation["observation_id"],
+                    "routing_observation_sha256": routing_observation_sha256,
+                },
+                f"routing-observation:{observation['observation_id']}",
+            )
+            observations = load_routing_observations(root)
+            state = load_circuit_state(root)
+            state, routing_circuit_events = _refresh_routing_circuits(
+                root,
+                routing_receipt["decision"]["policy"],
+                observations,
+                state,
+            )
     audit.record(root, "oa", {"event": "validation_report", "task_id": args.task_id, "verdict": verdict})
     emit(
         {
@@ -1161,6 +1359,13 @@ def command_validate(args: argparse.Namespace) -> int:
             "semantic_verdict": semantic_verdict,
             "recorded": bool(args.record),
             "verdict": verdict,
+            "routing_observation": (
+                str(routing_observation_path)
+                if routing_observation_path is not None
+                else None
+            ),
+            "routing_observation_sha256": routing_observation_sha256,
+            "routing_circuits_opened": routing_circuit_events,
         }
     )
     return 0
@@ -1457,6 +1662,48 @@ def command_workflow_status(args: argparse.Namespace) -> int:
     return 0
 
 
+def command_routing_circuit_reset(args: argparse.Namespace) -> int:
+    root = resolve_root(args.root)
+    ensure_oa_writer(root)
+    decided_by = os.environ.get("PAO_OA_ID", "").strip()
+    state = load_circuit_state(root)
+    updated = reset_circuit(
+        state,
+        task_class=args.routing_class,
+        lwar_id=validate_lwar_id(args.lwar_id),
+        reason=args.reason,
+        decided_by=decided_by,
+    )
+    path = write_circuit_state(root, updated)
+    reset = updated["resets"][f"{args.routing_class}::{args.lwar_id}"]
+    audit.record_once(
+        root,
+        "oa",
+        {
+            "event": "routing_circuit_reset",
+            "task_class": args.routing_class,
+            "lwar_id": args.lwar_id,
+            "reason": reset["reason"],
+            "decided_by": reset["decided_by"],
+            "reset_at": reset["reset_at"],
+        },
+        (
+            f"routing-circuit-reset:{args.routing_class}:"
+            f"{args.lwar_id}:{reset['reset_at']}"
+        ),
+    )
+    emit(
+        {
+            "event": "routing_circuit_reset",
+            "task_class": args.routing_class,
+            "lwar_id": args.lwar_id,
+            "reason": reset["reason"],
+            "state_file": str(path),
+        }
+    )
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="oa", description="OA control tool for PAO ADP file bus")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -1483,6 +1730,16 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument("--stale-after", type=float, default=STALE_AFTER_S_DEFAULT)
     send.add_argument("--routing-profile")
     send.add_argument("--routing-class")
+    send.add_argument("--canary-policy")
+    send.add_argument(
+        "--routing-shadow",
+        action="store_true",
+        help="execute the canary candidate as an explicit read-only shadow task",
+    )
+    send.add_argument(
+        "--routing-shadow-lwar-id",
+        help="execute one eligible LWAR as an explicit read-only shadow task",
+    )
     send.add_argument("--task-file", required=True)
     send.add_argument("--root", default=None)
     send.set_defaults(handler=writer_guard(command_send))
@@ -1548,10 +1805,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="OA semantic decision to persist with --record (default: undecidable)",
     )
     validate.add_argument("--reason", help="reason for the semantic decision")
+    validate.add_argument(
+        "--routing-reported-tokens",
+        type=int,
+        help="persist this recorded semantic decision as canary routing evidence",
+    )
     validate.add_argument("--root", default=None)
     validate.set_defaults(
         handler=conditional_writer_guard(command_validate, lambda args: bool(args.record))
     )
+
+    circuit_reset = subparsers.add_parser("routing-circuit-reset")
+    circuit_reset.add_argument("--lwar-id", required=True)
+    circuit_reset.add_argument("--routing-class", required=True)
+    circuit_reset.add_argument("--reason", required=True)
+    circuit_reset.add_argument("--root", default=None)
+    circuit_reset.set_defaults(handler=writer_guard(command_routing_circuit_reset))
 
     prune = subparsers.add_parser("prune")
     prune.add_argument("--older-than-days", type=float, required=True)

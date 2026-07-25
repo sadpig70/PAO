@@ -6,7 +6,7 @@ bundle it lives in (`Path(__file__).resolve().parents[1]`), so no pip install,
 no `PYTHONPATH`, and no plugin are required — the wrapper works from any working
 directory.
 
-Runtime v1.2.0 validates bundled JSON contracts at all trust boundaries. v1
+Runtime v1.3.0 validates bundled JSON contracts at all trust boundaries. v1
 requires a fresh or intentionally retired pre-v1 bus: registration stamps,
 attempt fences, claim provenance, explicit permissions, and snapshot artifacts
 are mandatory. `pao doctor` rejects detected pre-v1 protocol records. OA

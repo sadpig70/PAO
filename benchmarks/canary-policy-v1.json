@@ -1,0 +1,11 @@
+{
+  "schema_version": "pao.canary-policy.v1",
+  "policy_id": "canary-policy-production-v1",
+  "created_at": "2026-07-25T14:30:00Z",
+  "min_accepted_observations": 10,
+  "confidence_z": 1.96,
+  "max_quality_drop": 0.0,
+  "drift_window": 10,
+  "max_drift_drop": 0.0,
+  "trip_on_rejection": true
+}

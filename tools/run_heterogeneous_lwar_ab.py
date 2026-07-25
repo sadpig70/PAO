@@ -731,10 +731,27 @@ def main() -> int:
         action="store_true",
         help="refresh normalized token fields and report from an existing experiment.json",
     )
+    parser.add_argument(
+        "--canary-profile",
+        type=Path,
+        help="routing profile used to publish side-effect-free online shadow tasks",
+    )
+    parser.add_argument(
+        "--canary-policy",
+        type=Path,
+        help="confidence canary policy paired with --canary-profile",
+    )
     args = parser.parse_args()
     root = args.root.resolve()
+    if bool(args.canary_profile) != bool(args.canary_policy):
+        raise SystemExit("--canary-profile and --canary-policy must be used together")
+    canary_mode = args.canary_profile is not None
+    canary_profile = args.canary_profile.resolve() if args.canary_profile else None
+    canary_policy = args.canary_policy.resolve() if args.canary_policy else None
     if args.task_suite:
         TASKS = load_task_suite(args.task_suite.resolve())
+    if canary_mode and any(not task.get("task_class") for task in TASKS.values()):
+        raise SystemExit("canary evidence requires task_class on every task")
     assignment = build_assignment(list(TASKS))
     if args.summarize_existing:
         experiment_path = root / "experiment.json"
@@ -795,8 +812,37 @@ def main() -> int:
         if reconciled.get("registrations") != 1:
             raise RuntimeError(f"expected one registration for {alias}: {reconciled}")
 
+    identities: dict[str, dict[str, Any]] = {}
+    if canary_mode:
+        for alias in ADAPTERS:
+            adopted = run_pao(
+                LWAR_SCRIPT,
+                "response",
+                requests[alias]["request_id"],
+                "--root",
+                str(root),
+            )
+            identities[alias] = {
+                "identity_file": adopted["identity_file"],
+                "lwar_id": alias,
+            }
+            idle = run_pao(
+                ADP_SCRIPT,
+                "--identity-file",
+                identities[alias]["identity_file"],
+                "--interval",
+                "0.01",
+                "--timeout",
+                "0.05",
+                "--root",
+                str(root),
+                expected=10,
+            )
+            if idle.get("event") != "idle_timeout":
+                raise RuntimeError(f"expected idle activation for {alias}: {idle}")
+
     published: dict[tuple[str, str], dict[str, Any]] = {}
-    for alias, adapter in ADAPTERS.items():
+    for alias in ADAPTERS:
         for priority, task_name in enumerate(assignment[alias], start=1):
             draft = {
                 "task_id": task_id(alias, task_name),
@@ -811,33 +857,52 @@ def main() -> int:
                 "timeout_s": 180,
                 "permissions": {
                     "read": [str(work_dir)],
-                    "write": [str(work_dir)],
-                    "network": True,
+                    "write": [] if canary_mode else [str(work_dir)],
+                    "network": False if canary_mode else True,
                 },
                 "max_retries": 0,
                 "priority": priority,
             }
             draft_path = root / "drafts" / f"{alias}-{task_name}.json"
             write_json(draft_path, draft)
-            published[(alias, task_name)] = run_pao(
-                OA_SCRIPT,
+            send_args = [
                 "send",
-                "--lwar-id",
-                alias,
                 "--task-file",
                 str(draft_path),
                 "--root",
                 str(root),
-            )
+            ]
+            if canary_mode:
+                send_args += [
+                    "--auto",
+                    "--require-capability",
+                    "blind-evaluation",
+                    "--routing-profile",
+                    str(canary_profile),
+                    "--routing-class",
+                    TASKS[task_name]["task_class"],
+                    "--canary-policy",
+                    str(canary_policy),
+                    "--routing-shadow-lwar-id",
+                    alias,
+                ]
+            else:
+                send_args += ["--lwar-id", alias]
+            published[(alias, task_name)] = run_pao(OA_SCRIPT, *send_args)
+            if canary_mode:
+                routing = published[(alias, task_name)]
+                if routing.get("lwar_id") != alias or routing.get("routing_mode") != "shadow":
+                    raise RuntimeError(
+                        f"canary shadow routing invariant failed for {alias}: {routing}"
+                    )
 
-    identities: dict[str, dict[str, Any]] = {}
     records: list[dict[str, Any]] = []
     for round_index in range(len(TASKS)):
         deliveries: dict[str, dict[str, Any]] = {}
         grants: dict[str, dict[str, Any]] = {}
         for alias, adapter in ADAPTERS.items():
             task_name = assignment[alias][round_index]
-            if round_index == 0:
+            if round_index == 0 and not canary_mode:
                 delivery = run_pao(
                     LWAR_SCRIPT,
                     "response",
@@ -981,8 +1046,7 @@ def main() -> int:
             if collected.get("count") != 1 or collected.get("quarantined"):
                 raise RuntimeError(f"collection invariant failed for {alias}: {collected}")
             decision = "accepted" if outcome["score"] == 1 else "rejected"
-            validation = run_pao(
-                OA_SCRIPT,
+            validation_args = [
                 "validate",
                 "--task-id",
                 deliveries[alias]["task_id"],
@@ -995,7 +1059,14 @@ def main() -> int:
                 f"blind_objective_{outcome['reason']}",
                 "--root",
                 str(root),
-            )
+            ]
+            observed_tokens = reported_tokens(provider["metrics"])
+            if canary_mode and observed_tokens is not None:
+                validation_args += [
+                    "--routing-reported-tokens",
+                    str(observed_tokens),
+                ]
+            validation = run_pao(OA_SCRIPT, *validation_args)
             provider_evidence = {
                 key: value for key, value in provider.items() if key != "answer"
             }
@@ -1010,6 +1081,10 @@ def main() -> int:
                     "validation": {
                         "decision": decision,
                         "mechanical_passed": validation.get("mechanical_passed"),
+                        "routing_observation": validation.get("routing_observation"),
+                        "routing_observation_sha256": validation.get(
+                            "routing_observation_sha256"
+                        ),
                     },
                     "claim_token_sha256": hashlib.sha256(
                         deliveries[alias]["task"]["claim_token"].encode("utf-8")
@@ -1065,6 +1140,15 @@ def main() -> int:
         "shutdowns": shutdowns,
         "audit_health": audit,
         "analysis": {"routing_upper_bound": routing_upper_bound(records)},
+        "canary_evidence": {
+            "enabled": canary_mode,
+            "profile": str(canary_profile) if canary_profile else None,
+            "policy": str(canary_policy) if canary_policy else None,
+            "routing_observations": sum(
+                bool(record["validation"].get("routing_observation"))
+                for record in records
+            ),
+        },
     }
     write_json(root / "experiment.json", payload)
     report = build_report(root, records, audit)
@@ -1079,6 +1163,9 @@ def main() -> int:
                 "accepted": sum(record["grade"]["score"] for record in records),
                 "accepted_total": len(records),
                 "audit_status": audit.get("status"),
+                "routing_observations": payload["canary_evidence"][
+                    "routing_observations"
+                ],
                 "report": str(root / "report.md"),
             },
             sort_keys=True,

@@ -4,7 +4,7 @@
 
 **Persistent Agent Orchestration** is a local orchestration system that coordinates heterogeneous long-running AI runtimes behind a single external identity model, `LWARn`, over a file-based message bus.
 
-The current release contract is **PAO v1.2.0**. It deliberately requires a
+The current release contract is **PAO v1.3.0**. It deliberately requires a
 fresh or intentionally retired pre-v1 bus so identity, attempt, provenance,
 permission, and artifact fences cannot be bypassed by legacy payloads.
 
@@ -80,6 +80,11 @@ OA (Orchestration Agent)
   evidence is missing or below the minimum support threshold
 - atomic routing receipts plus a `routing_decided` audit event written before
   the task becomes claimable
+- confidence-bounded canary routing with a mandatory ten-accepted-observation
+  floor per eligible alias/class, incumbent-only production before promotion,
+  explicit read-only shadow execution, and sticky drift circuit breakers
+- OA-validation-bound online routing observations and reason-bound circuit
+  reset audit evidence
 - `depends_on` task gating for simple workflow DAGs
 - append-only audit log (`var/audit/events.jsonl`) and fail-closed archive and
   committed-repair-evidence pruning (`prune`)
@@ -182,6 +187,7 @@ two `SKILL.md` files and their bundled references are the sole operating contrac
 - [PR evidence gate](docs/PR_EVIDENCE_GATE.md)
 - [Repository policy audit](docs/REPOSITORY_POLICY_AUDIT.md)
 - [Predictive routing evidence](docs/PREDICTIVE_ROUTING_EVIDENCE.md)
+- [Canary routing evidence](docs/CANARY_ROUTING_EVIDENCE.md)
 - [Technical specification](docs/PAO_TechSpec.md)
 - [ADP operations guide](docs/PAO_ADP_Operations.md)
 - [Skill-only bootstrap note](docs/LWAR_ADP_Bootstrap.md)
