@@ -60,7 +60,7 @@ class RepositoryPolicyTests(unittest.TestCase):
             "REPOSITORY_POLICY_AUDIT_TOKEN",
         )
         self.assertEqual(self.credential_policy.preferred_kind, "fine_grained_pat")
-        self.assertEqual(len(self.credential_policy.accepted_credentials), 2)
+        self.assertEqual(len(self.credential_policy.accepted_credentials), 1)
 
     def test_preferred_credential_passes_without_warning(self):
         result = verify_repository_policy.validate_credential(
@@ -72,26 +72,26 @@ class RepositoryPolicyTests(unittest.TestCase):
         self.assertEqual(result.errors, ())
         self.assertEqual(result.warnings, ())
 
-    def test_bootstrap_credential_warns_before_ceiling(self):
+    def test_legacy_oauth_credential_is_rejected(self):
         result = verify_repository_policy.validate_credential(
             self.credential_policy,
             "gho_redacted",
             now=datetime(2026, 7, 24, tzinfo=timezone.utc),
         )
-        self.assertEqual(result.kind, "bootstrap_oauth")
-        self.assertEqual(result.errors, ())
-        self.assertEqual(len(result.warnings), 2)
-        self.assertTrue(
-            any("rotate to fine_grained_pat" in item for item in result.warnings)
+        self.assertIsNone(result.kind)
+        self.assertEqual(
+            result.errors,
+            ("credential type is not accepted by repository policy",),
         )
+        self.assertEqual(result.warnings, ())
 
-    def test_bootstrap_credential_fails_after_ceiling(self):
+    def test_fine_grained_credential_fails_after_ceiling(self):
         result = verify_repository_policy.validate_credential(
             self.credential_policy,
-            "gho_redacted",
-            now=datetime(2026, 7, 31, tzinfo=timezone.utc),
+            "github_pat_redacted",
+            now=datetime(2026, 10, 22, tzinfo=timezone.utc),
         )
-        self.assertEqual(result.kind, "bootstrap_oauth")
+        self.assertEqual(result.kind, "fine_grained_pat")
         self.assertTrue(any("exceeded not_after" in item for item in result.errors))
 
     def test_unknown_credential_type_fails_without_secret_echo(self):
@@ -107,15 +107,25 @@ class RepositoryPolicyTests(unittest.TestCase):
 
     def test_duplicate_credential_prefix_fails_closed(self):
         document = json.loads(json.dumps(self.credential_document))
-        document["accepted_credentials"][1]["prefix"] = document[
-            "accepted_credentials"
-        ][0]["prefix"]
+        document["accepted_credentials"].append(
+            {
+                "kind": "duplicate_kind",
+                "prefix": document["accepted_credentials"][0]["prefix"],
+                "not_after": "2026-10-22T00:00:00Z",
+            }
+        )
         with self.assertRaisesRegex(ValueError, "duplicate credential prefix"):
             verify_repository_policy.parse_credential_policy(document)
 
     def test_overlapping_credential_prefix_fails_closed(self):
         document = json.loads(json.dumps(self.credential_document))
-        document["accepted_credentials"][1]["prefix"] = "github_"
+        document["accepted_credentials"].append(
+            {
+                "kind": "overlap_kind",
+                "prefix": "github_",
+                "not_after": "2026-10-22T00:00:00Z",
+            }
+        )
         with self.assertRaisesRegex(ValueError, "overlapping credential prefix"):
             verify_repository_policy.parse_credential_policy(document)
 
