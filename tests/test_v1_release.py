@@ -11,7 +11,7 @@ from pao_runtime import __version__
 
 class V1ProtocolTests(PaoTestCase):
     def test_runtime_reports_v1(self):
-        self.assertEqual(__version__, "1.0.0")
+        self.assertEqual(__version__, "1.1.0")
 
     def test_unknown_permission_key_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -154,7 +154,7 @@ class CleanCopyDogfoodTests(unittest.TestCase):
             completed.stderr + completed.stdout,
         )
         evidence = json.loads(completed.stdout)
-        self.assertEqual(evidence["runtime_version"], "1.0.0")
+        self.assertEqual(evidence["runtime_version"], "1.1.0")
         self.assertEqual(evidence["lwar_ids"], ["LWAR1", "LWAR2"])
         self.assertTrue(evidence["oa_doctor"])
         self.assertTrue(evidence["lwar_doctor"])

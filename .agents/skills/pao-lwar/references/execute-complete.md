@@ -4,6 +4,10 @@ Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0).
 
 ## Execution rules
 
+- Run `lwar.py begin` with the exact `claim_token`, `execution_id`, and
+  `invocation_id` from `task_received` before any task side effect. Continue
+  only on `event=execution_began`; `execution_fenced` means another delivery
+  owns execution and this context must not execute.
 - Inspect `cwd`, `permissions`, and `completion_criteria` first.
 - When a criterion says content must be "exactly" some value, produce it byte-exact with no trailing newline unless the task states otherwise, and record the exact bytes written in `evidence`.
 - Do not use paths, commands, or network access that the task does not allow.
@@ -46,12 +50,25 @@ The submission tool echoes `attempt` and `claim_token` into the result from the 
 ## Submission
 
 ```bash
+python "<PAO_SKILL>/scripts/lwar.py" begin \
+  --identity-file IDENTITY_FILE \
+  --task-id TASK_ID \
+  --claim-token CLAIM_TOKEN_FROM_TASK_RECEIVED \
+  --execution-id EXECUTION_ID_FROM_TASK_RECEIVED \
+  --invocation-id INVOCATION_ID_FROM_TASK_RECEIVED
+
 python "<PAO_SKILL>/scripts/lwar.py" complete \
   --identity-file IDENTITY_FILE \
   --task-id TASK_ID \
   --claim-token CLAIM_TOKEN_FROM_TASK_RECEIVED \
+  --execution-token EXECUTION_TOKEN_FROM_BEGIN \
   --result-file "<BUS_ROOT>/mailbox/LWARn/work/TASK_ID/result.json"
 ```
+
+`begin` is idempotent only for the same invocation and returns the same token.
+A different invocation receives `execution_fenced`, including a replay that
+arrives after another context already began. Tokenless `complete` exists only
+for pre-fence adapter compatibility and is forbidden for newly delivered work.
 
 `--result-file` and `--identity-file` resolve against the **process working directory**, not the bus root — pass absolute paths unless your working directory is the bus root.
 `complete` derives the bus root from the adopted identity when `--root` and

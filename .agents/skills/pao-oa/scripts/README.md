@@ -6,7 +6,7 @@ bundle it lives in (`Path(__file__).resolve().parents[1]`), so no pip install,
 no `PYTHONPATH`, and no plugin are required — the wrapper works from any working
 directory.
 
-Runtime v1.0.0 validates bundled JSON contracts at all trust boundaries. v1
+Runtime v1.1.0 validates bundled JSON contracts at all trust boundaries. v1
 requires a fresh or intentionally retired pre-v1 bus: registration stamps,
 attempt fences, claim provenance, explicit permissions, and snapshot artifacts
 are mandatory. `pao doctor` rejects detected pre-v1 protocol records. OA
@@ -15,14 +15,21 @@ of the writer lease on a fixed-rate 25-second target with a 30-second hard-lates
 contract. A separate command mutex serializes complete OA mutations even when
 multiple processes reuse the same OA id. POSIX and Windows PID checks prevent
 live-lock theft and reclaim a dead holder after the stale threshold. LWARs inspect presence with `oa-status`; clean one-time workers
-return their slots through `retire`. `complete` requires the exact claim token
-emitted in `task_received`. The default LWAR ADP uses a resident watcher that
+return their slots through `retire`. Each watcher entry has a monotonic
+invocation epoch. Newly claimed tasks carry a stable `execution_id`; `begin`
+atomically grants one invocation an `execution_token`, and `complete` requires
+that token for the fenced path in addition to the exact claim token emitted in
+`task_received`. The default LWAR ADP uses a resident watcher that
 crosses idle slice boundaries internally, keeping heartbeat fresh without
 depending on agent turn scheduling.
 `lwar.py response REQUEST_ID --resident` performs identity adoption and resident
 watcher entry in one Python process. Adoption publishes a `starting` heartbeat;
 OA distinguishes that bounded startup phase from a watcher that was active and
-later became stale. OA can explicitly reclaim an overdue orphaned startup slot
+later became stale. The registration request id is also a replay-safe
+pre-identity handle: if a host blocking-call timeout discards stdout, replaying
+the same resident response reconstructs the exact identity and redelivers its
+one still-leased claim with the unchanged claim token before accepting new
+work. OA can explicitly reclaim an overdue orphaned startup slot
 only through identity-fenced `recover --reap-startup`; active mailbox work
 blocks the reclaim. Accepted startup-reap audit events use deterministic keys,
 so crash replay restores missing audit steps without duplicating committed ones.

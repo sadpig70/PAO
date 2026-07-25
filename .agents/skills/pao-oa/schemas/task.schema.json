@@ -43,6 +43,7 @@
     "adapter_options": {"type": "object"},
     "attempt": {"type": "integer", "minimum": 1},
     "claim_token": {"type": "string", "pattern": "^claim-[a-f0-9]{32}$"},
+    "execution_id": {"type": "string", "pattern": "^execution-[a-f0-9]{32}$"},
     "created_at": {"type": "string", "format": "date-time"}
   }
 }

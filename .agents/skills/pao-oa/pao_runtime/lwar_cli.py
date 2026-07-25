@@ -36,6 +36,9 @@ from .transport import FileTransport
 SLUG_RE = re.compile(r"^[a-z][a-z0-9_-]*$")
 REGISTRATION_REQUEST_ID_RE = re.compile(r"^lwar-reg-[a-f0-9]{32}$")
 CLAIM_TOKEN_RE = re.compile(r"^claim-[a-f0-9]{32}$")
+EXECUTION_ID_RE = re.compile(r"^execution-[a-f0-9]{32}$")
+INVOCATION_ID_RE = re.compile(r"^invocation-[a-f0-9]{32}$")
+EXECUTION_TOKEN_RE = re.compile(r"^exec-[a-f0-9]{32}$")
 
 
 def _load_or_exit(path: Path, label: str) -> dict[str, Any]:
@@ -400,6 +403,72 @@ def normalize_artifacts(
     return entries
 
 
+def command_begin(args: argparse.Namespace) -> int:
+    root, _identity_path, identity = _identity_context(args)
+    task_id = validate_task_id(args.task_id)
+    if not CLAIM_TOKEN_RE.fullmatch(args.claim_token):
+        raise SystemExit("claim_token must match claim-<32 lowercase hex>")
+    if not EXECUTION_ID_RE.fullmatch(args.execution_id):
+        raise SystemExit("execution_id must match execution-<32 lowercase hex>")
+    if not INVOCATION_ID_RE.fullmatch(args.invocation_id):
+        raise SystemExit("invocation_id must match invocation-<32 lowercase hex>")
+    transport = FileTransport(root)
+    try:
+        grant = transport.begin_execution(
+            identity,
+            task_id,
+            args.claim_token,
+            args.execution_id,
+            args.invocation_id,
+        )
+    except (FileNotFoundError, RuntimeError) as error:
+        audit.record(
+            root,
+            "lwar",
+            {
+                "event": "execution_fenced",
+                "lwar_id": identity["lwar_id"],
+                "task_id": task_id,
+                "invocation_id": args.invocation_id,
+                "error": str(error),
+            },
+        )
+        emit(
+            {
+                "event": "execution_fenced",
+                "task_id": task_id,
+                "invocation_id": args.invocation_id,
+                "error": str(error),
+                "action": "do_not_execute_watch_again",
+            }
+        )
+        return 4
+    audit.record(
+        root,
+        "lwar",
+        {
+            "event": "execution_began",
+            "lwar_id": identity["lwar_id"],
+            "task_id": task_id,
+            "invocation_id": args.invocation_id,
+            "execution_id": args.execution_id,
+            "recovered": bool(grant.get("recovered")),
+        },
+    )
+    emit(
+        {
+            "event": "execution_began",
+            "task_id": task_id,
+            "execution_id": args.execution_id,
+            "invocation_id": args.invocation_id,
+            "execution_token": grant["execution_token"],
+            "recovered": bool(grant.get("recovered")),
+            "action": "execute_then_submit_result",
+        }
+    )
+    return 0
+
+
 def command_complete(args: argparse.Namespace) -> int:
     root, _identity_path, identity = _identity_context(args)
     transport = FileTransport(root)
@@ -423,6 +492,23 @@ def command_complete(args: argparse.Namespace) -> int:
         raise SystemExit("claim_token must match claim-<32 lowercase hex>")
     if task.get("claim_token") != args.claim_token:
         raise SystemExit("claim superseded: claim_token does not match the active claim")
+    if args.execution_token is not None and not EXECUTION_TOKEN_RE.fullmatch(args.execution_token):
+        raise SystemExit("execution_token must match exec-<32 lowercase hex>")
+    try:
+        transport.verify_execution(identity, task, args.execution_token)
+    except RuntimeError as error:
+        raise SystemExit(str(error))
+    if task.get("execution_id") and args.execution_token is None:
+        audit.record(
+            root,
+            "lwar",
+            {
+                "event": "legacy_unfenced_complete",
+                "lwar_id": lwar_id,
+                "task_id": task_id,
+                "execution_id": task["execution_id"],
+            },
+        )
     result = _load_or_exit(Path(args.result_file).resolve(), "result file")
     for required in ("status", "summary", "evidence"):
         if required not in result:
@@ -542,10 +628,20 @@ def build_parser() -> argparse.ArgumentParser:
     retire.add_argument("--root", default=None)
     retire.set_defaults(handler=command_retire)
 
+    begin = subparsers.add_parser("begin")
+    begin.add_argument("--identity-file", required=True)
+    begin.add_argument("--task-id", required=True)
+    begin.add_argument("--claim-token", required=True)
+    begin.add_argument("--execution-id", required=True)
+    begin.add_argument("--invocation-id", required=True)
+    begin.add_argument("--root", default=None)
+    begin.set_defaults(handler=command_begin)
+
     complete = subparsers.add_parser("complete")
     complete.add_argument("--identity-file", required=True)
     complete.add_argument("--task-id", required=True)
     complete.add_argument("--claim-token", required=True)
+    complete.add_argument("--execution-token")
     complete.add_argument("--result-file", required=True)
     complete.add_argument("--root", default=None)
     complete.set_defaults(handler=command_complete)

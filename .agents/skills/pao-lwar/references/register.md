@@ -86,6 +86,12 @@ adopts the identity and enters resident ADP without an agent turn in between:
   heartbeat follows adoption inside the same process. Every watcher event
   includes the adopted absolute `identity_file` for later `complete`, lifecycle,
   and resumed watcher calls.
+- Preserve the exact `request_id` before entering the blocking resident call.
+  It is the trusted pre-identity recovery handle. If the host tool times out
+  and discards stdout, re-run the same `response REQUEST_ID --resident` command
+  against the same bus root. Response replay reconstructs the same identity and
+  redelivers a still-leased claim with the same `claim_token`; it never creates
+  a new registration or generation.
 - Plain `response REQUEST_ID` remains a diagnostic compatibility command. It
   emits `identity_adopted` and returns, so it MUST NOT be used for normal
   cold-start because it reintroduces agent scheduling latency before ADP.

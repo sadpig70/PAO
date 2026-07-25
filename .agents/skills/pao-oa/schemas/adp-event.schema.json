@@ -4,10 +4,14 @@
   "type": "object",
   "required": ["event"],
   "properties": {
-    "event": {"enum": ["task_received", "idle_timeout", "state_wait", "control", "adp_error"]},
+    "event": {"enum": ["task_received", "idle_timeout", "state_wait", "control", "adp_error", "invocation_superseded"]},
     "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
     "task_id": {"type": "string"},
     "task": {"type": "object"},
+    "recovered_claim": {"type": "boolean"},
+    "invocation_id": {"type": "string", "pattern": "^invocation-[a-f0-9]{32}$"},
+    "invocation_epoch": {"type": "integer", "minimum": 1},
+    "execution_id": {"type": "string", "pattern": "^execution-[a-f0-9]{32}$"},
     "command": {"type": ["string", "null"]},
     "action": {"type": "string"},
     "error": {"type": "string"}

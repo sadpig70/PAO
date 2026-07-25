@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import os
+from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any, Iterator, Protocol
 
 from .common import (
+    FileLock,
     atomic_write_json,
     authority_denied_reason,
     claim_file,
@@ -73,6 +75,32 @@ class Transport(Protocol):
     def claim_task(
         self, identity: dict[str, Any], default_lease_s: int
     ) -> tuple[dict[str, Any], Path] | None: ...
+
+    def resumable_claim(
+        self, identity: dict[str, Any], now: datetime | None = None
+    ) -> tuple[dict[str, Any], Path] | None: ...
+
+    def start_invocation(self, identity: dict[str, Any]) -> dict[str, Any]: ...
+
+    def invocation_delivery_guard(
+        self, identity: dict[str, Any], invocation: dict[str, Any]
+    ) -> Iterator[bool]: ...
+
+    def begin_execution(
+        self,
+        identity: dict[str, Any],
+        task_id: str,
+        claim_token: str,
+        execution_id: str,
+        invocation_id: str,
+    ) -> dict[str, Any]: ...
+
+    def verify_execution(
+        self,
+        identity: dict[str, Any],
+        task: dict[str, Any],
+        execution_token: str | None,
+    ) -> None: ...
 
     def write_heartbeat(self, identity: dict[str, Any], status: str, task_id: str | None) -> None: ...
 
@@ -336,6 +364,10 @@ class FileTransport:
             # (recover only acts on expired leases), so stamping the claim
             # token here is race-free.
             task["claim_token"] = new_id("claim")
+            # Execution authority is separate from message delivery. This
+            # stable id survives redelivery of this claim, while a later OA
+            # recovery creates a new claim and therefore a new execution id.
+            task["execution_id"] = new_id("execution")
             validate_contract(task, "task.schema.json")
             atomic_write_json(destination, task)
             # A tombstoned task is auto-cancelled deterministically and never
@@ -362,6 +394,245 @@ class FileTransport:
             atomic_write_json(mailbox / "leases" / f"{task['task_id']}.json", lease)
             return task, destination
         return None
+
+    def resumable_claim(
+        self, identity: dict[str, Any], now: datetime | None = None
+    ) -> tuple[dict[str, Any], Path] | None:
+        """Return this exact identity's one still-leased claim, if any.
+
+        A host may terminate a blocking resident tool call after the watcher
+        has claimed a task but before stdout reaches the agent. Re-entering the
+        watcher must redeliver that durable claim before it can claim new work.
+        The existing claim token and lease are preserved; expired or ambiguous
+        claims are left for OA recovery instead of being adopted speculatively.
+        """
+        mailbox = ensure_mailbox(self.root, identity["lwar_id"])
+        observed_at = now or datetime.now(timezone.utc)
+        candidates: list[tuple[dict[str, Any], Path]] = []
+        for lease_path in sorted((mailbox / "leases").glob("*.json")):
+            lease = safe_load_json(lease_path)
+            if lease is None:
+                continue
+            try:
+                validate_contract(lease, "lease.schema.json")
+                expires_at = parse_utc(lease["expires_at"])
+            except (TypeError, ValueError):
+                continue
+            if expires_at <= observed_at:
+                continue
+            if (
+                lease.get("lwar_id") != identity["lwar_id"]
+                or lease.get("instance_id") != identity["instance_id"]
+                or lease.get("generation") != identity["generation"]
+            ):
+                continue
+            claimed = self.claimed_task_for_lease(identity["lwar_id"], lease)
+            if claimed is None:
+                continue
+            claimed_path, task = claimed
+            try:
+                validate_contract(task, "task.schema.json")
+            except ValueError:
+                continue
+            if (
+                task.get("lwar_id") != identity["lwar_id"]
+                or task.get("instance_id") != identity["instance_id"]
+                or task.get("generation") != identity["generation"]
+                or not task.get("claim_token")
+                or task.get("claim_token") != lease.get("claim_token")
+                or self.result_exists(identity["lwar_id"], task["task_id"])
+            ):
+                continue
+            candidates.append((task, claimed_path))
+        if len(candidates) > 1:
+            raise RuntimeError(
+                f"multiple active claims for {identity['lwar_id']}; "
+                "refusing ambiguous host-timeout recovery"
+            )
+        return candidates[0] if candidates else None
+
+    # -- invocation and execution fencing ---------------------------------
+
+    def _invocation_path(self, lwar_id: str) -> Path:
+        return self._mailbox(lwar_id) / "invocation.json"
+
+    def _invocation_lock(self, lwar_id: str) -> Path:
+        return self._mailbox(lwar_id) / ".invocation.lock"
+
+    def _execution_path(self, lwar_id: str, task_id: str) -> Path:
+        return self._mailbox(lwar_id) / "executions" / f"{validate_task_id(task_id)}.json"
+
+    def _execution_lock(self, lwar_id: str) -> Path:
+        return self._mailbox(lwar_id) / ".execution.lock"
+
+    @staticmethod
+    def _same_invocation(
+        current: dict[str, Any] | None,
+        identity: dict[str, Any],
+        invocation: dict[str, Any],
+    ) -> bool:
+        return bool(
+            current
+            and current.get("lwar_id") == identity["lwar_id"]
+            and current.get("instance_id") == identity["instance_id"]
+            and current.get("generation") == identity["generation"]
+            and current.get("invocation_id") == invocation.get("invocation_id")
+            and current.get("epoch") == invocation.get("epoch")
+        )
+
+    def start_invocation(self, identity: dict[str, Any]) -> dict[str, Any]:
+        """Supersede the prior watcher invocation for this exact identity."""
+        mailbox = ensure_mailbox(self.root, identity["lwar_id"])
+        path = self._invocation_path(identity["lwar_id"])
+        with FileLock(self._invocation_lock(identity["lwar_id"])):
+            previous = safe_load_json(path) if path.is_file() else None
+            if path.is_file() and previous is None:
+                raise RuntimeError("cannot start invocation: current invocation record is unreadable")
+            if previous is not None:
+                try:
+                    validate_contract(previous, "invocation.schema.json")
+                except ValueError as error:
+                    raise RuntimeError(
+                        f"cannot start invocation: current invocation record is invalid: {error}"
+                    ) from error
+            previous_epoch = 0
+            if (
+                previous
+                and previous.get("instance_id") == identity["instance_id"]
+                and previous.get("generation") == identity["generation"]
+            ):
+                try:
+                    previous_epoch = max(0, int(previous.get("epoch", 0)))
+                except (TypeError, ValueError):
+                    previous_epoch = 0
+            invocation = {
+                "schema_version": "pao.invocation.v1",
+                "lwar_id": identity["lwar_id"],
+                "instance_id": identity["instance_id"],
+                "generation": identity["generation"],
+                "invocation_id": new_id("invocation"),
+                "epoch": previous_epoch + 1,
+                "pid": os.getpid(),
+                "started_at": utc_now(),
+            }
+            validate_contract(invocation, "invocation.schema.json")
+            atomic_write_json(path, invocation)
+        # Keep mailbox creation explicit even if a future transport changes
+        # where the current invocation record is stored.
+        _ = mailbox
+        return invocation
+
+    @contextmanager
+    def invocation_delivery_guard(
+        self, identity: dict[str, Any], invocation: dict[str, Any]
+    ) -> Iterator[bool]:
+        """Hold supersession off while one stdout event is published."""
+        with FileLock(self._invocation_lock(identity["lwar_id"])):
+            current = safe_load_json(self._invocation_path(identity["lwar_id"]))
+            yield self._same_invocation(current, identity, invocation)
+
+    def begin_execution(
+        self,
+        identity: dict[str, Any],
+        task_id: str,
+        claim_token: str,
+        execution_id: str,
+        invocation_id: str,
+    ) -> dict[str, Any]:
+        """Atomically grant side-effect authority to one current invocation."""
+        lwar_id = identity["lwar_id"]
+        invocation_path = self._invocation_path(lwar_id)
+        with FileLock(self._invocation_lock(lwar_id)):
+            current = safe_load_json(invocation_path)
+            if not (
+                current
+                and current.get("lwar_id") == lwar_id
+                and current.get("instance_id") == identity["instance_id"]
+                and current.get("generation") == identity["generation"]
+                and current.get("invocation_id") == invocation_id
+            ):
+                raise RuntimeError("execution fenced: invocation is no longer current")
+            with FileLock(self._execution_lock(lwar_id)):
+                claimed_path, task = self.find_claimed_task(lwar_id, task_id)
+                _ = claimed_path
+                if (
+                    task.get("instance_id") != identity["instance_id"]
+                    or task.get("generation") != identity["generation"]
+                    or task.get("claim_token") != claim_token
+                    or task.get("execution_id") != execution_id
+                ):
+                    raise RuntimeError("execution fenced: claim or execution identity was superseded")
+                path = self._execution_path(lwar_id, task_id)
+                existing = safe_load_json(path) if path.is_file() else None
+                if existing is not None:
+                    try:
+                        validate_contract(existing, "execution.schema.json")
+                    except ValueError as error:
+                        raise RuntimeError(f"execution fenced: invalid execution record: {error}") from error
+                    if (
+                        existing.get("instance_id") == identity["instance_id"]
+                        and existing.get("generation") == identity["generation"]
+                        and existing.get("claim_token") == claim_token
+                        and existing.get("execution_id") == execution_id
+                        and existing.get("invocation_id") == invocation_id
+                    ):
+                        return {**existing, "recovered": True}
+                    raise RuntimeError("execution fenced: another invocation owns this claim")
+                grant = {
+                    "schema_version": "pao.execution.v1",
+                    "task_id": task_id,
+                    "lwar_id": lwar_id,
+                    "instance_id": identity["instance_id"],
+                    "generation": identity["generation"],
+                    "claim_token": claim_token,
+                    "execution_id": execution_id,
+                    "invocation_id": invocation_id,
+                    "execution_token": new_id("exec"),
+                    "began_at": utc_now(),
+                }
+                validate_contract(grant, "execution.schema.json")
+                atomic_write_json(path, grant)
+                return grant
+
+    def verify_execution(
+        self,
+        identity: dict[str, Any],
+        task: dict[str, Any],
+        execution_token: str | None,
+    ) -> None:
+        """Require the winning begin grant for newly claimed tasks."""
+        execution_id = task.get("execution_id")
+        if execution_id is None:
+            # Additive compatibility for claims created by pre-fence runtimes.
+            return
+        lwar_id = identity["lwar_id"]
+        with FileLock(self._execution_lock(lwar_id)):
+            path = self._execution_path(lwar_id, task["task_id"])
+            execution = safe_load_json(path) if path.is_file() else None
+            if not execution_token:
+                # Migration compatibility: legacy adapters that never called
+                # begin may still complete only while no invocation has acquired
+                # the execution fence. New adapters MUST begin before side
+                # effects; once a grant exists, tokenless completion is fenced.
+                if execution is None:
+                    return
+                raise RuntimeError(
+                    "execution fenced: an active begin grant requires its execution_token"
+                )
+            if execution is None:
+                raise RuntimeError("execution fenced: no active begin grant")
+            try:
+                validate_contract(execution, "execution.schema.json")
+            except ValueError as error:
+                raise RuntimeError(f"execution fenced: invalid execution record: {error}") from error
+            if (
+                execution.get("instance_id") != identity["instance_id"]
+                or execution.get("generation") != identity["generation"]
+                or execution.get("claim_token") != task.get("claim_token")
+                or execution.get("execution_id") != execution_id
+                or execution.get("execution_token") != execution_token
+            ):
+                raise RuntimeError("execution fenced: execution_token does not own the active claim")
 
     # -- heartbeat ---------------------------------------------------------
 
@@ -416,6 +687,7 @@ class FileTransport:
         # archive cannot resurrect it). Writing the result last would instead
         # leave a lease-less claim visible to orphaned_claims mid-submit.
         atomic_write_json(outgoing, result)
+        (mailbox / "executions" / f"{result['task_id']}.json").unlink(missing_ok=True)
         (mailbox / "leases" / f"{result['task_id']}.json").unlink(missing_ok=True)
         archive = mailbox / "archive" / "tasks" / claimed_path.name
         archive.parent.mkdir(parents=True, exist_ok=True)
@@ -593,6 +865,9 @@ class FileTransport:
             os.replace(claimed_path, incoming)
         except FileNotFoundError:
             return None
+        (self._mailbox(lwar_id) / "executions" / f"{task['task_id']}.json").unlink(
+            missing_ok=True
+        )
         atomic_write_json(incoming, task)
         return incoming
 
@@ -606,6 +881,9 @@ class FileTransport:
         # would resurrect a completed task as a spurious dead-letter.
         if not claim_file(claimed_path, destination):
             return None
+        (self._mailbox(lwar_id) / "executions" / f"{task['task_id']}.json").unlink(
+            missing_ok=True
+        )
         atomic_write_json(destination, task)
         atomic_write_json(
             destination.with_suffix(".error.json"),

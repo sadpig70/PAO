@@ -40,9 +40,24 @@ def ADP(identity_file: Path) -> None:
             handle_control(event)
             continue
         if event.event == "task_received":
+            grant = run_lwar_begin(
+                identity_file,
+                event.task_id,
+                event.task.claim_token,
+                event.execution_id,
+                event.invocation_id,
+            )
+            if grant.event == "execution_fenced":
+                continue                            # another invocation owns it
             result = AI_execute_task(event.task)   # see execute-complete.md
             write_result_draft(result)
-            run_lwar_complete(identity_file, event.task_id, result.file)
+            run_lwar_complete(
+                identity_file,
+                event.task_id,
+                event.task.claim_token,
+                grant.execution_token,
+                result.file,
+            )
             continue
         # Any other / unknown event: fail closed on the SLICE, not the daemon.
         if holding_a_claim():
@@ -89,7 +104,7 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 
 | Code | `event` | Immediate action |
 |---:|---|---|
-| `0` | `task_received` | Save `identity_file`, execute the task, then submit the result |
+| `0` | `task_received` | Save all fence handles, run `begin`, and execute only after `execution_began` |
 | `10` | `idle_timeout`, `state_wait` | Compatibility single-slice mode only (`--resident` omitted); re-run immediately |
 | `20` | `control:ping` | Re-run the watcher |
 | `20` | `control:drain` | Finish current work, then request lifecycle `draining` (read [lifecycle.md](lifecycle.md) first) and **keep watching** until `shutdown` |
@@ -97,6 +112,7 @@ The agent must inspect both the exit code and the stdout JSON `event`.
 | `20` | `control:retire` | Submit any held task's terminal result, then repeatedly run `lwar.py retire --identity-file IDENTITY_FILE`. Exit `2` means a lifecycle step is pending: inspect `oa-status` and keep waiting for OA `reconcile`. Stop ADP only on exit `0` / `lwar_retired`; exit `4` means an active claim must be completed first |
 | `20` | `control:shutdown` | If you currently hold a claimed task, submit its terminal result first — `interrupted` (no verdict reached), or the `failed`/`blocked` verdict if you already have one; never invent `blocked` just because shutdown arrived. Then stop ADP |
 | `30` | `adp_error` | Report the error, then stop ADP (this is the fatal terminator) |
+| `40` | `invocation_superseded` | This watcher lost to a newer replay; stop this invocation without executing |
 | any other | any unknown event | **Fail closed on the SLICE, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the **next** watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP — only the four terminators in SKILL Rule 3 do that |
 
 Every watcher event includes the absolute `identity_file`. Heartbeats are written
@@ -133,6 +149,19 @@ When a task is claimed, the watcher extends the lease to cover the task's own ex
 ## Failure recovery
 
 - The resident watcher does not exit on idle; if it exits after delivering a task or non-terminal control, re-invoke the same resident command immediately.
+- If a host-enforced blocking-call timeout discards the watcher event, retry
+  the exact `response REQUEST_ID --resident` startup command (or the trusted
+  `adp_watch.py --identity-file ... --resident` resume command). Before claiming
+  new work, the watcher redelivers this identity's one unexpired leased claim as
+  `task_received` with `recovered_claim: true`, preserving the original
+  `claim_token`. Expired or multiple claims are not guessed; OA recovery or a
+  fatal ambiguity decision remains authoritative.
+- Every watcher entry creates a monotonic identity-bound invocation epoch.
+  Delivery is serialized with epoch supersession, so a delayed orphan emits
+  `invocation_superseded` instead of task/control data after a newer replay.
+  Because stdout may already have reached more than one host context, the agent
+  must still call `begin`: only the current invocation can atomically acquire
+  the claim's stable `execution_id`, and all losing contexts must not execute.
 - A `starting` heartbeat older than 30 seconds means the atomic in-process
   watcher entry failed or stalled; report `adp_error` evidence rather than
   treating agent latency as an acceptable cause.
