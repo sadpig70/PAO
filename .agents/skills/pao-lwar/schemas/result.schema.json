@@ -2,29 +2,33 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "pao.result.v1",
   "type": "object",
+  "additionalProperties": false,
   "required": [
     "schema_version",
     "task_id",
+    "workflow_id",
     "lwar_id",
     "instance_id",
     "generation",
+    "registry_version",
     "status",
     "summary",
     "evidence",
     "artifacts",
+    "next_action",
     "exit_code",
+    "attempt",
+    "claim_token",
     "submitted_at"
   ],
   "properties": {
-    "schema_version": {
-      "const": "pao.result.v1"
-    },
+    "schema_version": {"const": "pao.result.v1"},
     "task_id": {
       "type": "string",
       "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
     "workflow_id": {
-      "type": ["string", "null"],
+      "type": "string",
       "pattern": "^workflow-[A-Za-z0-9][A-Za-z0-9._-]*$"
     },
     "lwar_id": {
@@ -35,10 +39,8 @@
       "type": "string",
       "pattern": "^lwar-instance-[a-f0-9]{32}$"
     },
-    "generation": {
-      "type": "integer",
-      "minimum": 1
-    },
+    "generation": {"type": "integer", "minimum": 1},
+    "registry_version": {"type": "integer", "minimum": 1},
     "status": {
       "enum": [
         "succeeded",
@@ -50,76 +52,35 @@
         "protocol_error"
       ]
     },
-    "summary": {
-      "type": "string"
-    },
-    "evidence": {
-      "type": "object"
-    },
+    "summary": {"type": "string"},
+    "evidence": {"type": "object"},
     "artifacts": {
       "type": "array",
       "items": {
-        "oneOf": [
-          {
-            "type": "string",
-            "description": "legacy pre-0.6 artifact path"
-          },
-          {
-            "type": "object",
-            "required": [
-              "path",
-              "sha256",
-              "size_bytes",
-              "snapshot"
-            ],
-            "properties": {
-              "path": {
-                "type": "string"
-              },
-              "sha256": {
-                "type": "string",
-                "pattern": "^[a-f0-9]{64}$"
-              },
-              "size_bytes": {
-                "type": "integer",
-                "minimum": 0
-              },
-              "snapshot": {
-                "type": "string",
-                "description": "root-relative content-addressed copy under var/artifacts/"
-              }
-            }
-          }
-        ]
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["path", "sha256", "size_bytes", "snapshot"],
+        "properties": {
+          "path": {"type": "string", "minLength": 1},
+          "sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+          "size_bytes": {"type": "integer", "minimum": 0},
+          "snapshot": {"type": "string", "minLength": 1}
+        }
       }
     },
-    "exit_code": {
-      "type": "integer"
-    },
-    "attempt": {
-      "type": "integer",
-      "minimum": 1
-    },
-    "claim_token": {
+    "next_action": {"type": "string", "minLength": 1},
+    "exit_code": {"type": "integer"},
+    "error": {
       "oneOf": [
-        {
-          "type": "null"
-        },
-        {
-          "type": "string",
-          "pattern": "^claim-[a-f0-9]{32}$"
-        }
+        {"type": "null"},
+        {"type": "string"}
       ]
     },
-    "submitted_at": {
+    "attempt": {"type": "integer", "minimum": 1},
+    "claim_token": {
       "type": "string",
-      "format": "date-time"
+      "pattern": "^claim-[a-f0-9]{32}$"
     },
-    "artifact_warnings": {
-      "type": "array",
-      "items": {
-        "type": "string"
-      }
-    }
+    "submitted_at": {"type": "string", "format": "date-time"}
   }
 }

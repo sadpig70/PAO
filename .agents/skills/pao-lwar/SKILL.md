@@ -31,6 +31,11 @@ Before registering or starting ADP, run the pre-flight check and stop on failure
 python "<PAO_SKILL>/scripts/pao.py" doctor --role lwar
 ```
 
+Runtime protocol v1.0.0 intentionally rejects optional-first pre-v1 records.
+Use a fresh bus for the major-version cutover, or intentionally retire the old
+bus after preserving required evidence. Never bypass a failed
+`v1_bus_contract` doctor check by editing mailbox JSON.
+
 ### Default autonomous invocation
 
 If the instruction is only "read this skill and act as a PAO LWAR", or

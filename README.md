@@ -4,6 +4,10 @@
 
 **Persistent Agent Orchestration** is a local orchestration system that coordinates heterogeneous long-running AI runtimes behind a single external identity model, `LWARn`, over a file-based message bus.
 
+The current release contract is **PAO v1.0.0**. It deliberately requires a
+fresh or intentionally retired pre-v1 bus so identity, attempt, provenance,
+permission, and artifact fences cannot be bypassed by legacy payloads.
+
 PAO does not force vendor CLIs into non-interactive execution. Each runtime session is started by the user, then repeatedly calls an **ADP (Agent Daemon Process)** watcher to receive work and return results inside the same conversational context.
 
 ## Architecture
@@ -132,7 +136,10 @@ its own `cwd` — any project workspace can host an OA or LWAR session.
 or `schemas/` only there, then run `python tools/sync_bundles.py` to mirror
 into `pao-oa`. The test suite byte-verifies the two bundles match. `pao info`
 diagnoses version and root resolution; `pao doctor --role oa|lwar` is a
-pre-flight check.
+pre-flight check. For a v1 major-version cutover, preserve any required old
+evidence, retire the old bus directory, and start a fresh bus. Doctor reports
+`v1_bus_contract=false` if it detects pre-v1 registration, task, or result
+records.
 On Windows, the sync tool falls back to atomic replacement of hash-different
 generated files when an open runtime prevents renaming the whole skill root.
 

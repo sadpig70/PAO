@@ -406,14 +406,14 @@ def command_control(args: argparse.Namespace) -> int:
 def artifact_verification(root: Path, artifacts: list[Any]) -> dict[str, Any]:
     """Verify the immutable snapshots recorded by `complete`.
 
-    Legacy string artifacts carry no snapshot and are skipped. The size is
-    compared before hashing so a swapped store file cannot force an unbounded
-    read (DoS guard).
+    Every v1 artifact has a snapshot. The size is compared before hashing so a
+    swapped store file cannot force an unbounded read (DoS guard).
     """
     failures = []
     checked = 0
     for item in artifacts or []:
         if not isinstance(item, dict):
+            failures.append("artifact_not_snapshot_object")
             continue
         checked += 1
         snapshot_rel = item.get("snapshot")
@@ -454,7 +454,7 @@ def command_collect(args: argparse.Namespace) -> int:
             validate_contract(result, "result.schema.json")
         except ContractError as error:
             return None, f"invalid_result_schema:{error}", None, False
-        entry = ledger.get(result["task_id"], result.get("workflow_id"))
+        entry = ledger.get(result["task_id"], result["workflow_id"])
         accepted_terminal_replay = bool(
             entry is not None
             and entry.get("status") == "completed"
@@ -468,8 +468,8 @@ def command_collect(args: argparse.Namespace) -> int:
         if not identity_matches(slot, result) and not accepted_terminal_replay:
             return entry, "stale_identity_result", None, False
         ledger_attempt = entry.get("attempt") if entry else None
-        result_attempt = result.get("attempt")
-        if ledger_attempt is not None and result_attempt is not None:
+        result_attempt = result["attempt"]
+        if ledger_attempt is not None:
             try:
                 attempt_mismatch = int(result_attempt) != int(ledger_attempt)
             except (TypeError, ValueError):
@@ -477,15 +477,13 @@ def command_collect(args: argparse.Namespace) -> int:
             if attempt_mismatch:
                 return entry, "stale_attempt_result", None, False
         if entry is not None and entry.get("task_contract") is not None:
-            claim_token = result.get("claim_token")
-            if not claim_token:
-                return entry, "missing_claim_token", None, False
+            claim_token = result["claim_token"]
             provenance = transport.provenance_task(
-                lwar_id, result["task_id"], claim_token, result.get("attempt")
+                lwar_id, result["task_id"], claim_token, result_attempt
             )
             if provenance is None:
                 return entry, "claim_token_mismatch", None, False
-            if int(provenance.get("attempt", 1)) != int(result.get("attempt", 1)):
+            if int(provenance["attempt"]) != int(result_attempt):
                 return entry, "claim_attempt_mismatch", None, False
         verification = artifact_verification(root, result.get("artifacts"))
         if not verification["verified"]:

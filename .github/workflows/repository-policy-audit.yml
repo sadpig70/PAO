@@ -25,6 +25,10 @@ jobs:
     name: Audit main protection
     runs-on: ubuntu-latest
     timeout-minutes: 5
+    permissions:
+      contents: read
+    outputs:
+      audit_outcome: ${{ steps.audit_outcome.outputs.value }}
 
     steps:
       - name: Check out repository
@@ -38,10 +42,54 @@ jobs:
           python-version: "3.13"
 
       - name: Audit live branch protection
+        id: policy_audit
+        continue-on-error: true
         env:
           GITHUB_TOKEN: ${{ secrets.REPOSITORY_POLICY_AUDIT_TOKEN }}
         run: >-
           python tools/verify_repository_policy.py
           --policy .github/repository-policy.json
           --credential-policy .github/repository-policy-credential.json
+          --repository "$GITHUB_REPOSITORY"
+
+      - name: Publish sanitized audit outcome
+        id: audit_outcome
+        if: always()
+        shell: bash
+        run: echo "value=${{ steps.policy_audit.outcome }}" >> "$GITHUB_OUTPUT"
+
+      - name: Preserve audit failure
+        if: steps.policy_audit.outcome != 'success'
+        shell: bash
+        run: exit 1
+
+  credential-lifecycle:
+    name: Reconcile credential lifecycle issue
+    needs: audit
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: "3.13"
+
+      - name: Reconcile managed lifecycle issue
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          AUDIT_OUTCOME: ${{ needs.audit.outputs.audit_outcome || needs.audit.result }}
+        run: >-
+          python tools/reconcile_credential_issue.py
+          --credential-policy .github/repository-policy-credential.json
+          --audit-outcome "$AUDIT_OUTCOME"
           --repository "$GITHUB_REPOSITORY"

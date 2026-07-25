@@ -68,12 +68,15 @@ class AttemptFenceTests(PaoTestCase):
                 "lwar_id": "LWAR1",
                 "instance_id": adopted["instance_id"],
                 "generation": adopted["generation"],
+                "registry_version": adopted["registry_version"],
                 "status": "succeeded",
                 "summary": "from a superseded claim",
                 "evidence": {"ok": True},
                 "artifacts": [],
+                "next_action": "validate",
                 "exit_code": 0,
                 "attempt": 1,
+                "claim_token": "claim-" + "0" * 32,
                 "submitted_at": "2026-01-01T00:00:00Z",
             }
             outgoing = root / "mailbox" / "LWAR1" / "outgoing" / f"{task_id}.result.json"
@@ -190,13 +193,24 @@ class VersionHandshakeTests(PaoTestCase):
             self.assertFalse(response["accepted"])
             self.assertEqual(response["reason"], "runtime_version_mismatch")
 
-    def test_absent_runtime_version_is_accepted_as_legacy(self):
+    def test_absent_runtime_version_is_quarantined_without_registry_mutation(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             request_id = self._write_request(root, None)
-            self.run_module("pao_runtime.oa_cli", "reconcile", "--root", str(root), expected=0)
-            response = self._response(root, request_id)
-            self.assertTrue(response["accepted"])
+            _, report = self.run_module(
+                "pao_runtime.oa_cli", "reconcile", "--root", str(root), expected=0
+            )
+            self.assertEqual(report["quarantined"], 1)
+            self.assertFalse(
+                (root / "control" / "registration" / "responses" / f"{request_id}.json").exists()
+            )
+            failed = root / "control" / "registration" / "failed" / f"{request_id}.json"
+            self.assertTrue(failed.is_file())
+            error = json.loads(failed.with_suffix(".error.json").read_text(encoding="utf-8"))
+            self.assertIn("missing required key 'runtime_version'", error["reason"])
+            registry = root / "var" / "registry" / "lwar_registry.json"
+            if registry.is_file():
+                self.assertEqual(json.loads(registry.read_text(encoding="utf-8"))["slots"], {})
 
 
 class DoctorTests(PaoTestCase):

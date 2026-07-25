@@ -615,6 +615,20 @@ must not duplicate their mutable command contracts.
 - the bus stays central (one registry, one `LWARn` identity space per machine) while each task executes in its own `cwd`, enabling cross-project orchestration
 - `send` rejects tasks whose `cwd` does not exist, failing fast on stale workspace paths
 
+### 15.1 v1 protocol boundary
+
+PAO v1.0.0 closes the optional-first rollout window. Registration requires an
+exact `runtime_version`; published tasks require registry and attempt fences
+plus explicit read/write/network permissions; submitted results require
+workflow, registry, attempt, and claim provenance; artifacts are immutable
+snapshot objects only. Unknown contract fields fail schema validation.
+
+The major-version transition intentionally requires a fresh or explicitly
+retired pre-v1 bus. `pao doctor` detects legacy registration, task, and result
+records and fails `v1_bus_contract`; operators preserve evidence outside the
+active bus when necessary, then create a new bus. Runtime code never silently
+upgrades or edits historical mailbox payloads.
+
 ## 16. Evolution Path
 
 Planned future steps include:

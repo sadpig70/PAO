@@ -12,6 +12,7 @@
     "requested_state",
     "profile",
     "behavior_contract",
+    "runtime_version",
     "created_at"
   ],
   "properties": {

@@ -260,11 +260,11 @@ class FileTransport:
         return {
             "schema_version": "pao.result.v1",
             "task_id": task["task_id"],
-            "workflow_id": task.get("workflow_id"),
+            "workflow_id": task["workflow_id"],
             "lwar_id": identity["lwar_id"],
             "instance_id": identity["instance_id"],
             "generation": identity["generation"],
-            "registry_version": identity.get("registry_version"),
+            "registry_version": identity["registry_version"],
             "status": "cancelled",
             "summary": (
                 f"auto-cancelled before execution by tombstone "
@@ -279,8 +279,8 @@ class FileTransport:
             "next_action": "validate",
             "exit_code": 1,
             "error": None,
-            "attempt": int(task.get("attempt", 1)),
-            "claim_token": task.get("claim_token"),
+            "attempt": int(task["attempt"]),
+            "claim_token": task["claim_token"],
             "submitted_at": utc_now(),
         }
 
@@ -336,6 +336,7 @@ class FileTransport:
             # (recover only acts on expired leases), so stamping the claim
             # token here is race-free.
             task["claim_token"] = new_id("claim")
+            validate_contract(task, "task.schema.json")
             atomic_write_json(destination, task)
             # A tombstoned task is auto-cancelled deterministically and never
             # handed to the agent: the watcher submits its terminal `cancelled`
