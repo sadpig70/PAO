@@ -103,6 +103,14 @@ ADAPTERS = {
     },
 }
 
+OPENCODE_VERIFICATION_PREAMBLE = (
+    "Work privately and do not reveal reasoning. Before emitting the requested "
+    "final JSON, independently verify every stated constraint, recompute every "
+    "reported aggregate from the selected answer, and compare all alternatives "
+    "when the problem has a finite search space. Revise the answer if any check "
+    "fails. Preserve the requested JSON schema and output no prose.\n\n"
+)
+
 
 def parse_stdout_json(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
     lines = [line for line in completed.stdout.splitlines() if line.strip()]
@@ -331,6 +339,25 @@ def read_kimi_usage(archive: Path) -> dict[str, Any] | None:
     return latest
 
 
+def build_opencode_command(
+    entrypoint: Path, provider_dir: Path, prompt: str
+) -> list[str]:
+    return [
+        str(entrypoint),
+        "run",
+        "--pure",
+        "--model",
+        "zai-coding-plan/glm-4.7",
+        "--variant",
+        "high",
+        "--format",
+        "json",
+        "--dir",
+        str(provider_dir),
+        OPENCODE_VERIFICATION_PREAMBLE + prompt,
+    ]
+
+
 def run_opencode(prompt: str, work_dir: Path) -> dict[str, Any]:
     provider_dir = work_dir / "opencode"
     provider_dir.mkdir(parents=True, exist_ok=True)
@@ -338,18 +365,7 @@ def run_opencode(prompt: str, work_dir: Path) -> dict[str, Any]:
     entrypoint = shim.parent / "node_modules" / "opencode-ai" / "bin" / "opencode.exe"
     if not entrypoint.is_file():
         raise RuntimeError(f"OpenCode entrypoint not found beside shim: {entrypoint}")
-    command = [
-        str(entrypoint),
-        "run",
-        "--pure",
-        "--model",
-        "zai-coding-plan/glm-4.7",
-        "--format",
-        "json",
-        "--dir",
-        str(provider_dir),
-        prompt,
-    ]
+    command = build_opencode_command(entrypoint, provider_dir, prompt)
     return run_provider_command("opencode", command, parse_opencode, provider_dir)
 
 
@@ -389,17 +405,27 @@ def run_provider_command(
         "PYTHONUTF8": "1",
         "NO_COLOR": "1",
     }
-    completed = subprocess.run(
-        command,
-        cwd=work_dir,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        env=child_env,
-        check=False,
-        timeout=180,
-    )
+    try:
+        completed = subprocess.run(
+            command,
+            cwd=work_dir,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            env=child_env,
+            check=False,
+            timeout=180,
+        )
+    except subprocess.TimeoutExpired:
+        return {
+            "adapter": adapter,
+            "ok": False,
+            "duration_s": round(time.monotonic() - started, 3),
+            "error": "timeout_180s",
+            "answer": "",
+            "metrics": {"telemetry_complete": False},
+        }
     duration_s = round(time.monotonic() - started, 3)
     if completed.returncode != 0:
         return {

@@ -1,13 +1,21 @@
 import hashlib
 import json
+import subprocess
 import tempfile
 import unittest
 import zipfile
 from pathlib import Path
+from unittest.mock import patch
 
 from tools.build_canary_online_suite import build_suite
+from tools.build_lwar4_remediation_suite import (
+    build_registration as build_remediation_registration,
+    build_suite as build_remediation_suite,
+    canonical_sha256,
+)
 from tools.run_heterogeneous_lwar_ab import (
     TASKS,
+    build_opencode_command,
     build_assignment,
     build_report,
     grade,
@@ -15,11 +23,60 @@ from tools.run_heterogeneous_lwar_ab import (
     read_kimi_usage,
     reported_tokens,
     routing_upper_bound,
+    run_provider_command,
     run_provider_with_retry,
 )
 
 
 class HeterogeneousABHarnessTests(unittest.TestCase):
+    def test_remediation_suite_is_unique_nonoverlapping_and_preregistered(self):
+        prior = build_suite()
+        suite = build_remediation_suite()
+        registration = build_remediation_registration(suite)
+        prompts = [task["prompt"] for task in suite["tasks"].values()]
+        prior_prompts = {
+            task["prompt"] for task in prior["tasks"].values()
+        }
+        counts = {}
+        for task in suite["tasks"].values():
+            counts[task["task_class"]] = (
+                counts.get(task["task_class"], 0) + 1
+            )
+        self.assertEqual(len(prompts), len(set(prompts)))
+        self.assertFalse(prior_prompts & set(prompts))
+        self.assertEqual(
+            counts,
+            {"bounded_optimization": 12, "constraint_ordering": 12},
+        )
+        self.assertEqual(registration["suite_sha256"], canonical_sha256(suite))
+        self.assertTrue(registration["sealed_before_provider_execution"])
+
+    def test_opencode_adapter_adds_generic_private_verification(self):
+        command = build_opencode_command(
+            Path("opencode.exe"),
+            Path("work"),
+            'Return {"answer":"<value>"}.',
+        )
+        self.assertEqual(command[command.index("--variant") + 1], "high")
+        self.assertIn("verify every stated constraint", command[-1])
+        self.assertTrue(command[-1].endswith('Return {"answer":"<value>"}.'))
+        self.assertNotIn("DBAEC", command[-1])
+
+    def test_provider_timeout_becomes_retryable_result(self):
+        with patch(
+            "tools.run_heterogeneous_lwar_ab.subprocess.run",
+            side_effect=subprocess.TimeoutExpired(["provider"], 180),
+        ):
+            result = run_provider_command(
+                "test",
+                ["provider"],
+                lambda stdout, stderr: (stdout, {}),
+                Path("."),
+            )
+        self.assertFalse(result["ok"])
+        self.assertEqual(result["error"], "timeout_180s")
+        self.assertFalse(result["metrics"]["telemetry_complete"])
+
     def test_online_canary_suite_is_balanced_and_objective(self):
         suite = build_suite()
         tasks = suite["tasks"]
