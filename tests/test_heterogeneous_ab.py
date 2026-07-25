@@ -94,6 +94,36 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
         self.assertEqual(registration["suite_sha256"], canonical_sha256(suite))
         self.assertTrue(registration["sealed_before_provider_execution"])
 
+    def test_remediation_evidence_binds_preregistered_contract(self):
+        repo = Path(__file__).parents[1]
+        registration = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-remediation-preregistration-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        evidence = json.loads(
+            (
+                repo / "benchmarks" / "lwar4-remediation-evidence-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        for field in (
+            "suite_sha256",
+            "answer_key_sha256",
+            "adapter_contract_sha256",
+        ):
+            self.assertEqual(evidence[field], registration[field])
+        self.assertEqual(evidence["blind_run"]["provider_calls"]["total"], 96)
+        self.assertEqual(evidence["blind_run"]["online_observations"], 94)
+        self.assertEqual(
+            evidence["promoted_classes"], ["constraint_ordering"]
+        )
+        self.assertEqual(
+            evidence["verdict"],
+            "constraint_ordering_promoted_bounded_optimization_blocked",
+        )
+
     def test_opencode_adapter_adds_generic_private_verification(self):
         command = build_opencode_command(
             Path("opencode.exe"),

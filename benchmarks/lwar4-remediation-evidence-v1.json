@@ -1,0 +1,76 @@
+{
+  "schema_version": "pao.lwar4-remediation-evidence.v1",
+  "evidence_id": "lwar4-remediation-blind-2026-07-26",
+  "claim_scope": "preregistered_nonoverlapping_current_generation_shadow_evidence",
+  "preregistration_commits": {
+    "suite_and_initial_adapter": "e26adac",
+    "final_adapter_contract": "770ac5a"
+  },
+  "suite_sha256": "a32bda87a352001259647c00302afb3696438c37e8544d0d1ff8d0793ba24410",
+  "answer_key_sha256": "ab003729818d06ef632de92b1c848e19c371710df6482ca8da355d53b9312e8e",
+  "adapter_contract_sha256": "1c788666dd70081aefcceaa3c83d868c692449cdb6ce2369ed1ec31ecd05bf41",
+  "profile_sha256": "cd1f42fb515eaa2472654351b57b5110f3dbf9cd03cdac3d8026750733f1af29",
+  "policy_sha256": "503f1c1db5b06446a24fe4f594f3df40d3f17d8ca8c7accf28ba5d6546d713e6",
+  "observations_sha256": "a41e3dba1e053686cfb9a2c82e5e57a7fd83ebd0172aee1be6980d56088eae8e",
+  "historical_diagnostic": {
+    "claim_scope": "known_failures_not_blind_evidence",
+    "accepted": 5,
+    "total": 5,
+    "verdict": "historical_failures_remediated"
+  },
+  "blind_run": {
+    "provider_calls": {
+      "completed": 92,
+      "total": 96
+    },
+    "objective_validation": {
+      "accepted": 92,
+      "total": 96
+    },
+    "online_observations": 94,
+    "excluded_missing_telemetry": 2,
+    "audit_status": "healthy",
+    "shutdowns_consumed": 4,
+    "circuit_resets": 0
+  },
+  "task_classes": {
+    "bounded_optimization": {
+      "incumbent_lwar_id": "LWAR1",
+      "candidate_lwar_id": "LWAR4",
+      "selected_lwar_id": "LWAR1",
+      "route_mode": "leader",
+      "reason": "shadow_insufficient_accepted",
+      "accepted_observations": {
+        "LWAR1": {"accepted": 12, "observations": 12},
+        "LWAR2": {"accepted": 12, "observations": 12},
+        "LWAR3": {"accepted": 12, "observations": 12},
+        "LWAR4": {"accepted": 8, "observations": 11}
+      },
+      "candidate_mean_reported_tokens": 27702.272727272728,
+      "incumbent_mean_reported_tokens": 19378.083333333332,
+      "candidate_wilson_lower": 0.4343497069897537,
+      "incumbent_wilson_lower": 0.7574992425007574,
+      "failed_lwar4_tasks": ["RBO03", "RBO06", "RBO07", "RBO09"]
+    },
+    "constraint_ordering": {
+      "incumbent_lwar_id": "LWAR1",
+      "candidate_lwar_id": "LWAR4",
+      "selected_lwar_id": "LWAR4",
+      "route_mode": "live",
+      "reason": "confidence_qualified_live",
+      "accepted_observations": {
+        "LWAR1": {"accepted": 12, "observations": 12},
+        "LWAR2": {"accepted": 12, "observations": 12},
+        "LWAR3": {"accepted": 11, "observations": 11},
+        "LWAR4": {"accepted": 12, "observations": 12}
+      },
+      "candidate_mean_reported_tokens": 11485.166666666666,
+      "incumbent_mean_reported_tokens": 18879.333333333332,
+      "candidate_wilson_lower": 0.7574992425007574,
+      "incumbent_wilson_lower": 0.7574992425007574
+    }
+  },
+  "promoted_classes": ["constraint_ordering"],
+  "analyzer_verdict": "current_evidence_promotes_nonleader",
+  "verdict": "constraint_ordering_promoted_bounded_optimization_blocked"
+}

@@ -77,3 +77,7 @@ python tools/run_canary_router_evidence.py \
 The tool emits canonical profile, policy, and observation-set hashes plus the
 per-class route decision. `--experiment` remains available for preregistered
 replay evidence. Neither mode infers missing telemetry.
+
+The subsequent non-overlapping LWAR4 remediation trial is documented in
+`docs/LWAR4_REMEDIATION_EVIDENCE.md`. It qualifies LWAR4 for live
+constraint-ordering routes while retaining LWAR1 for bounded optimization.
