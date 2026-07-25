@@ -31,7 +31,8 @@ Before the first orchestration action of a session, run the pre-flight check and
 python "<PAO_SKILL>/scripts/pao.py" doctor --role oa
 ```
 
-Runtime protocol v1.0.0 intentionally rejects optional-first pre-v1 records.
+Runtime protocol v1.1.0 intentionally rejects optional-first pre-v1 records
+and pre-execution-fence bundles.
 Use a fresh bus for the major-version cutover, or intentionally retire the old
 bus after preserving required evidence. Never bypass a failed
 `v1_bus_contract` doctor check by editing registry or mailbox JSON.

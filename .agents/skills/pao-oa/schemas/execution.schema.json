@@ -1,0 +1,30 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.execution.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema_version",
+    "task_id",
+    "lwar_id",
+    "instance_id",
+    "generation",
+    "claim_token",
+    "execution_id",
+    "invocation_id",
+    "execution_token",
+    "began_at"
+  ],
+  "properties": {
+    "schema_version": {"const": "pao.execution.v1"},
+    "task_id": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
+    "instance_id": {"type": "string", "pattern": "^lwar-instance-[a-f0-9]{32}$"},
+    "generation": {"type": "integer", "minimum": 1},
+    "claim_token": {"type": "string", "pattern": "^claim-[a-f0-9]{32}$"},
+    "execution_id": {"type": "string", "pattern": "^execution-[a-f0-9]{32}$"},
+    "invocation_id": {"type": "string", "pattern": "^invocation-[a-f0-9]{32}$"},
+    "execution_token": {"type": "string", "pattern": "^exec-[a-f0-9]{32}$"},
+    "began_at": {"type": "string", "format": "date-time"}
+  }
+}

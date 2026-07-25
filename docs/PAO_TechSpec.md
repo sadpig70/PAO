@@ -271,11 +271,25 @@ remains responsible for repetition and task execution.
 6. cross each 90-second idle slice boundary inside the same watcher process,
    continuously refreshing heartbeat without returning to the agent
 7. return to the agent only for a task, control event, or fatal watcher error
-8. when a task appears, atomically move it `incoming -> claimed` and emit it on stdout
-9. execute the task inside the same LWAR session
-10. atomically write the result to `outgoing`
-11. re-run the watcher
-12. stop on resumable `shutdown`, successful clean `retire`, fatal ADP error, or the documented context-exhaustion handoff
+8. when a task appears, atomically move it `incoming -> claimed`, assign a
+   stable per-claim `execution_id`, and emit it with the current invocation epoch
+9. if the host discards that stdout on a blocking-call timeout, replay the
+   owned registration request id; reconstruct the same identity and redeliver
+   its one still-leased claim without rotating the claim token
+10. atomically call `begin` before side effects; only the current invocation
+    can acquire the execution grant, while delayed/replayed losers are fenced
+11. execute the task inside the winning LWAR context
+12. atomically write the result to `outgoing` using the granted execution token
+13. re-run the watcher
+14. stop on resumable `shutdown`, successful clean `retire`, fatal ADP error, or the documented context-exhaustion handoff
+
+Every watcher entry increments a durable identity-bound invocation epoch.
+Supersession is serialized with stdout delivery. Because bytes may already have
+reached more than one host context before a timeout is observed, epoch fencing
+is paired with the `begin` command: one `(claim_token, execution_id)` grants
+exactly one `execution_token`. This guarantees one execution authority within a
+live claim. OA recovery after lease expiry is a new attempt; non-transactional
+external side effects still require task-level idempotency across attempts.
 
 OA status separates `registered_not_started`, `starting`, `active`, and `stale`.
 Only current-identity `watching`, `idle`, and `running` heartbeats are eligible
@@ -617,7 +631,8 @@ must not duplicate their mutable command contracts.
 
 ### 15.1 v1 protocol boundary
 
-PAO v1.0.0 closes the optional-first rollout window. Registration requires an
+PAO v1.1.0 closes the optional-first rollout window and rejects bundles that
+lack invocation/execution fencing. Registration requires an
 exact `runtime_version`; published tasks require registry and attempt fences
 plus explicit read/write/network permissions; submitted results require
 workflow, registry, attempt, and claim provenance; artifacts are immutable

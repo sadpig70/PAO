@@ -42,6 +42,76 @@ def validate_watch_args(args: argparse.Namespace) -> None:
         raise SystemExit("--state-wait-backoff-max must be >= --interval")
 
 
+def deliver_task(
+    root: Path,
+    transport: FileTransport,
+    identity: dict[str, Any],
+    identity_path: Path,
+    task: dict[str, Any],
+    claimed_path: Path,
+    invocation: dict[str, Any],
+    *,
+    recovered_claim: bool,
+) -> int:
+    """Emit one identity-fenced task delivery, including safe redelivery."""
+    with transport.invocation_delivery_guard(identity, invocation) as current:
+        if not current:
+            audit.record(
+                root,
+                "adp",
+                {
+                    "event": "invocation_superseded",
+                    "lwar_id": identity["lwar_id"],
+                    "task_id": task["task_id"],
+                    "invocation_id": invocation["invocation_id"],
+                },
+            )
+            emit(
+                {
+                    "event": "invocation_superseded",
+                    "lwar_id": identity["lwar_id"],
+                    "identity_file": str(identity_path),
+                    "invocation_id": invocation["invocation_id"],
+                    "invocation_epoch": invocation["epoch"],
+                    "action": "stop_this_invocation",
+                }
+            )
+            return 40
+        transport.write_heartbeat(identity, "running", task["task_id"])
+        audit.record(
+            root,
+            "adp",
+            {
+                "event": "task_redelivered" if recovered_claim else "task_received",
+                "lwar_id": identity["lwar_id"],
+                "task_id": task["task_id"],
+                "invocation_id": invocation["invocation_id"],
+                "invocation_epoch": invocation["epoch"],
+            },
+        )
+        event = {
+            "event": "task_received",
+            "lwar_id": identity["lwar_id"],
+            "task_id": task["task_id"],
+            "identity_file": str(identity_path),
+            "message_file": str(claimed_path),
+            "task": task,
+            "invocation_id": invocation["invocation_id"],
+            "invocation_epoch": invocation["epoch"],
+            "action": (
+                "begin_then_execute_then_submit_result"
+                if task.get("execution_id")
+                else "execute_then_submit_result"
+            ),
+        }
+        if task.get("execution_id"):
+            event["execution_id"] = task["execution_id"]
+        if recovered_claim:
+            event["recovered_claim"] = True
+        emit(event)
+        return 0
+
+
 def watch(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     identity_path = Path(args.identity_file).resolve()
@@ -54,6 +124,17 @@ def watch(args: argparse.Namespace) -> int:
         audit_root = root
         transport = FileTransport(root)
         identity, slot = load_verified_identity(root, identity_path)
+        invocation = transport.start_invocation(identity)
+        audit.record(
+            root,
+            "adp",
+            {
+                "event": "invocation_started",
+                "lwar_id": identity["lwar_id"],
+                "invocation_id": invocation["invocation_id"],
+                "invocation_epoch": invocation["epoch"],
+            },
+        )
     except Exception as error:
         # Never write an error record to an explicit/env root that conflicts
         # with the adopted identity. Until root binding succeeds, stdout is the
@@ -105,43 +186,73 @@ def watch(args: argparse.Namespace) -> int:
         try:
             control = transport.claim_control(identity)
             if control is not None:
-                transport.write_heartbeat(identity, "control", None)
-                # A cancel carrying a task_id is persisted as a tombstone BEFORE
-                # the event reaches the agent, so cancellation of a not-yet-
-                # claimed task no longer depends on the agent remembering it.
-                if control.get("command") == "cancel" and control.get("task_id"):
-                    transport.write_cancel_tombstone(
-                        identity, control["task_id"], control.get("control_id")
-                    )
-                audit.record(
-                    root,
-                    "adp",
-                    {
-                        "event": "control",
-                        "lwar_id": identity["lwar_id"],
-                        "command": control.get("command"),
-                        "control_id": control.get("control_id"),
-                    },
-                )
-                emit(
-                    {
-                        "event": "control",
-                        "command": control.get("command"),
-                        "identity_file": str(identity_path),
-                        "message": control,
-                    }
-                )
-                try:
-                    transport.ack_control(identity, control)
-                except (OSError, TimeoutError) as error:
-                    # Delivery already reached stdout. Leave control_claimed in
-                    # place for at-least-once redelivery on the next slice.
+                with transport.invocation_delivery_guard(identity, invocation) as current:
+                    if not current:
+                        emit(
+                            {
+                                "event": "invocation_superseded",
+                                "lwar_id": identity["lwar_id"],
+                                "identity_file": str(identity_path),
+                                "invocation_id": invocation["invocation_id"],
+                                "invocation_epoch": invocation["epoch"],
+                                "action": "stop_this_invocation",
+                            }
+                        )
+                        return 40
+                    transport.write_heartbeat(identity, "control", None)
+                    # A cancel carrying a task_id is persisted as a tombstone BEFORE
+                    # the event reaches the agent, so cancellation of a not-yet-
+                    # claimed task no longer depends on the agent remembering it.
+                    if control.get("command") == "cancel" and control.get("task_id"):
+                        transport.write_cancel_tombstone(
+                            identity, control["task_id"], control.get("control_id")
+                        )
                     audit.record(
                         root,
                         "adp",
-                        {"event": "control_ack_failed", "error": str(error), "control_id": control.get("control_id")},
+                        {
+                            "event": "control",
+                            "lwar_id": identity["lwar_id"],
+                            "command": control.get("command"),
+                            "control_id": control.get("control_id"),
+                            "invocation_id": invocation["invocation_id"],
+                        },
                     )
-                return 20
+                    emit(
+                        {
+                            "event": "control",
+                            "command": control.get("command"),
+                            "identity_file": str(identity_path),
+                            "message": control,
+                            "invocation_id": invocation["invocation_id"],
+                            "invocation_epoch": invocation["epoch"],
+                        }
+                    )
+                    try:
+                        transport.ack_control(identity, control)
+                    except (OSError, TimeoutError) as error:
+                        # Delivery already reached stdout. Leave control_claimed in
+                        # place for at-least-once redelivery on the next slice.
+                        audit.record(
+                            root,
+                            "adp",
+                            {"event": "control_ack_failed", "error": str(error), "control_id": control.get("control_id")},
+                        )
+                    return 20
+
+            resumable = transport.resumable_claim(identity)
+            if resumable is not None:
+                task, claimed_path = resumable
+                return deliver_task(
+                    root,
+                    transport,
+                    identity,
+                    identity_path,
+                    task,
+                    claimed_path,
+                    invocation,
+                    recovered_claim=True,
+                )
 
             transport.write_heartbeat(
                 identity, "watching" if slot["state"] == "on" else slot["state"], None
@@ -151,24 +262,16 @@ def watch(args: argparse.Namespace) -> int:
                 claimed = transport.claim_task(identity, args.lease_seconds)
                 if claimed is not None:
                     task, claimed_path = claimed
-                    transport.write_heartbeat(identity, "running", task["task_id"])
-                    audit.record(
+                    return deliver_task(
                         root,
-                        "adp",
-                        {"event": "task_received", "lwar_id": identity["lwar_id"], "task_id": task["task_id"]},
+                        transport,
+                        identity,
+                        identity_path,
+                        task,
+                        claimed_path,
+                        invocation,
+                        recovered_claim=False,
                     )
-                    emit(
-                        {
-                            "event": "task_received",
-                            "lwar_id": identity["lwar_id"],
-                            "task_id": task["task_id"],
-                            "identity_file": str(identity_path),
-                            "message_file": str(claimed_path),
-                            "task": task,
-                            "action": "execute_then_submit_result",
-                        }
-                    )
-                    return 0
             elif args.state_wait_backoff_max:
                 # Bounded backoff while the slot is not `on`: doubles per poll up
                 # to the cap, resets as soon as the state returns to `on`.
@@ -205,18 +308,33 @@ def watch(args: argparse.Namespace) -> int:
         # overshoot the intended --timeout and starve control messages.
         time.sleep(min(wait_s if slot["state"] != "on" else args.interval, remaining))
 
-    transport.write_heartbeat(identity, "idle" if slot["state"] == "on" else slot["state"], None)
-    emit(
-        {
-            "event": "idle_timeout" if slot["state"] == "on" else "state_wait",
-            "lwar_id": identity["lwar_id"],
-            "identity_file": str(identity_path),
-            "state": slot["state"],
-            "waited_s": args.timeout,
-            "action": "watch_again",
-        }
-    )
-    return 10
+    with transport.invocation_delivery_guard(identity, invocation) as current:
+        if not current:
+            emit(
+                {
+                    "event": "invocation_superseded",
+                    "lwar_id": identity["lwar_id"],
+                    "identity_file": str(identity_path),
+                    "invocation_id": invocation["invocation_id"],
+                    "invocation_epoch": invocation["epoch"],
+                    "action": "stop_this_invocation",
+                }
+            )
+            return 40
+        transport.write_heartbeat(identity, "idle" if slot["state"] == "on" else slot["state"], None)
+        emit(
+            {
+                "event": "idle_timeout" if slot["state"] == "on" else "state_wait",
+                "lwar_id": identity["lwar_id"],
+                "identity_file": str(identity_path),
+                "state": slot["state"],
+                "waited_s": args.timeout,
+                "invocation_id": invocation["invocation_id"],
+                "invocation_epoch": invocation["epoch"],
+                "action": "watch_again",
+            }
+        )
+        return 10
 
 
 def build_parser() -> argparse.ArgumentParser:

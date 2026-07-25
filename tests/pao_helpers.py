@@ -91,20 +91,48 @@ class PaoTestCase(unittest.TestCase):
         result_path = root / f"result_{task_id}.json"
         result_path.write_text(json.dumps(payload), encoding="utf-8")
         claim_token = None
+        execution_id = None
         claimed_dir = root / "mailbox" / identity["lwar_id"] / "claimed"
         for claimed_path in claimed_dir.glob("*.json"):
             claimed = json.loads(claimed_path.read_text(encoding="utf-8"))
             if claimed.get("task_id") == task_id:
                 claim_token = claimed.get("claim_token")
+                execution_id = claimed.get("execution_id")
                 break
         # A duplicate completion no longer has a live claimed file. Pass a
         # syntactically valid sentinel so the CLI can report its terminal-state
         # idempotency error instead of the test harness failing first.
         claim_token = claim_token or ("claim-" + "0" * 32)
+        execution_args = []
+        if execution_id is not None:
+            invocation = json.loads(
+                (root / "mailbox" / identity["lwar_id"] / "invocation.json").read_text(
+                    encoding="utf-8"
+                )
+            )
+            _, began = self.run_module(
+                "pao_runtime.lwar_cli",
+                "begin",
+                "--identity-file",
+                identity["identity_file"],
+                "--task-id",
+                task_id,
+                "--claim-token",
+                claim_token,
+                "--execution-id",
+                execution_id,
+                "--invocation-id",
+                invocation["invocation_id"],
+                "--root",
+                str(root),
+                expected=0,
+            )
+            execution_args = ["--execution-token", began["execution_token"]]
         return self.run_module(
             "pao_runtime.lwar_cli",
             "complete", "--identity-file", identity["identity_file"],
             "--task-id", task_id, "--claim-token", claim_token,
+            *execution_args,
             "--result-file", str(result_path),
             "--root", str(root),
             expected=expected,

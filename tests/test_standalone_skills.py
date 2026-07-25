@@ -16,7 +16,13 @@ GENERATED = {
 }
 REFERENCES = {
     "pao-oa": {"reconcile.md", "publish.md", "collect-validate.md", "recover-maintain.md"},
-    "pao-lwar": {"register.md", "adp-loop.md", "execute-complete.md", "lifecycle.md"},
+    "pao-lwar": {
+        "register.md",
+        "host-adapter.md",
+        "adp-loop.md",
+        "execute-complete.md",
+        "lifecycle.md",
+    },
 }
 
 
@@ -79,7 +85,8 @@ class StandaloneContractTests(unittest.TestCase):
         self.assertIn("If no goal was supplied, do not invent tasks", oa)
         self.assertIn("Presence expires after 90 seconds", oa)
         self.assertIn("writer lease is fencing, **not liveness**", oa)
-        self.assertIn("No explicit identity handle → REGISTER fresh", lwar)
+        self.assertIn("No explicit identity_file and no owned request_id → REGISTER fresh", lwar)
+        self.assertIn("recovered_claim: true", lwar)
         self.assertIn("Never scan `var/identities/`", lwar)
         self.assertIn("lwar.py oa-status", lwar)
         self.assertIn("successful `control:retire`", lwar)

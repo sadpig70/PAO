@@ -4,7 +4,7 @@
 
 **Persistent Agent Orchestration** is a local orchestration system that coordinates heterogeneous long-running AI runtimes behind a single external identity model, `LWARn`, over a file-based message bus.
 
-The current release contract is **PAO v1.0.0**. It deliberately requires a
+The current release contract is **PAO v1.1.0**. It deliberately requires a
 fresh or intentionally retired pre-v1 bus so identity, attempt, provenance,
 permission, and artifact fences cannot be bypassed by legacy payloads.
 
@@ -34,6 +34,12 @@ OA (Orchestration Agent)
   the watcher in one Python process; OA distinguishes registered-not-started
   from active-then-stale, and auto-routing waits for the first operational
   heartbeat
+- host-timeout-safe resident replay: the owned registration request id
+  reconstructs the exact identity, and ADP redelivers its one still-leased
+  claim with the original claim token before accepting new work
+- invocation-epoch delivery fencing plus an atomic `begin` execution grant:
+  delayed orphan watchers cannot start side effects after replay, and only the
+  winning `execution_token` can complete the fenced claim
 - explicit startup-failure recovery: OA reclaims an overdue `starting` slot
   only with its exact identity tuple and only when no active mailbox work exists
 - tombstone-first startup-reap commit with retry convergence after a process
@@ -180,6 +186,18 @@ python -m unittest discover -s tests -v
 python -m compileall -q .agents/skills/pao-lwar .agents/skills/pao-oa tests tools
 ```
 
+The optional live heterogeneity dogfood uses locally authenticated provider
+CLIs, creates an isolated PAO bus, and may consume provider quota:
+
+```bash
+python tools/run_heterogeneous_lwar_ab.py --root <empty-local-directory>
+```
+
+It registers four dynamic LWARs, uses Latin-square task order, requires
+`begin` before every provider call, records blind objective decisions through
+OA validation, consumes shutdown controls, and emits `experiment.json` plus
+`report.md`. Missing token telemetry remains explicit rather than estimated.
+
 GitHub Actions runs Python compilation, the full test suite, and the bundle
 byte-sync gate on both Ubuntu and Windows for pushes to `main` and pull
 requests.
@@ -188,7 +206,7 @@ can merge into `main`.
 The repository policy audit checks the live branch-protection contract on
 policy changes, a daily schedule, and manual dispatch.
 
-The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair, receipt-driven crash-boundary convergence, committed-only repair-evidence retention, hard-crash retention-tombstone convergence, read-only resumable/blocked topology classification, rotated target/key-carrier retention fencing, pre-delete rotated JSONL validation and outcome accounting, ambiguous-evidence preservation, and exact-once replay dogfooding, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
+The integration suite verifies registration, collision rejection, bounded startup classification, identity-fenced startup-slot recovery, active-work preservation, tombstone-first and post-commit crash convergence, audit-step idempotency, repeated-outage degraded-spool deduplication, post-flush process-crash recovery, active-`fsync` failure recovery, spool-aware prune/replay serialization, unreadable-segment fail-closed recovery, malformed JSONL detection and truncated-tail quarantine, read-only audit-health diagnostics, fingerprint-fenced audit repair, receipt-driven crash-boundary convergence, committed-only repair-evidence retention, hard-crash retention-tombstone convergence, read-only resumable/blocked topology classification, rotated target/key-carrier retention fencing, pre-delete rotated JSONL validation and outcome accounting, ambiguous-evidence preservation, exact-once replay dogfooding, invocation-epoch orphan suppression, single-token execution begin, concurrent `send`/reap serialization, live-lock preservation and killed-holder recovery, current-generation heartbeat fencing, full task/result flow, resident idle heartbeat continuity, compatibility idle-timeout behavior, off-state rejection, stale lease recovery, shutdown and clean-retire control, OA presence classification, generation increments, retry budget and dead-letter transitions, stale/duplicate result quarantine, lease alignment, ledger lifecycle, heartbeat staleness, validation reporting, capability/load routing, cancel and priority flows, tombstone windows, pruning, audit logging, `depends_on` gating, attempt fencing, artifact provenance, authority bounds, single-writer OA lease, the `.pao/` default root and portability, the graded-correctness axis, and the two-bundle byte sync.
 
 Preservation-release verification includes real subprocess `os._exit` crashes
 at both event-append-to-marker-unlink and marker-unlink-to-CLI-response
