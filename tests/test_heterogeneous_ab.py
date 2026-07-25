@@ -47,7 +47,14 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
         )
         self.assertEqual(
             evidence["suite_sha256"],
-            hashlib.sha256(suite_path.read_bytes()).hexdigest(),
+            hashlib.sha256(
+                json.dumps(
+                    json.loads(suite_path.read_text(encoding="utf-8")),
+                    ensure_ascii=False,
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode("utf-8")
+            ).hexdigest(),
         )
         self.assertEqual(evidence["provider_calls"]["total"], 120)
         self.assertEqual(evidence["online_observations"], 117)

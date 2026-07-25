@@ -230,6 +230,7 @@ def main() -> int:
     OUTPUT.write_text(
         json.dumps(build_suite(), indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
+        newline="\n",
     )
     print(json.dumps({"event": "canary_suite_built", "path": str(OUTPUT)}))
     return 0

@@ -2,7 +2,7 @@
   "schema_version": "pao.canary-online-evidence.v1",
   "evidence_id": "canary-online-four-provider-2026-07-25",
   "claim_scope": "current_generation_objective_side_effect_free_shadow_evidence",
-  "suite_sha256": "405f38be33e409e1215f04cfdeb5c35403aaf6ee40314211bda1c157d8b7a26d",
+  "suite_sha256": "09ce1cc97ff9728dc52400a3d003735d5aa2bea0de3c79bd6a7762dd8ebcbbf7",
   "profile_sha256": "cd1f42fb515eaa2472654351b57b5110f3dbf9cd03cdac3d8026750733f1af29",
   "policy_sha256": "503f1c1db5b06446a24fe4f594f3df40d3f17d8ca8c7accf28ba5d6546d713e6",
   "observations_sha256": "d47b53fb76fd48bffba7d3a18259131d410998f5362e90fea46cf9b2d21a4bad",
