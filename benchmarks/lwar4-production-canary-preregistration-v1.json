@@ -1,0 +1,37 @@
+{
+  "schema_version": "pao.production-canary-preregistration.v1",
+  "canary_id": "lwar4-production-constraint-ordering-01",
+  "sealed_at": "2026-07-25T23:38:05.6736567Z",
+  "sealed_before_provider_execution": true,
+  "task": {
+    "task_id": "task-lwar4-production-canary-co01",
+    "workflow_id": "workflow-lwar4-production-canary-01",
+    "task_class": "constraint_ordering",
+    "prompt_sha256": "74e4eb62a53e3b10b229ea9f8db6bd320bd6ae9181cbca58c60cfbf857a35f4a",
+    "expected_answer_sha256": "f03b70b46f467b87b2bfd8af8ce8aed8ada5308c0498a51f2849ab2e8f316f0c",
+    "permissions": {
+      "write": [],
+      "network": false
+    }
+  },
+  "routing_contract": {
+    "profile_sha256": "cd1f42fb515eaa2472654351b57b5110f3dbf9cd03cdac3d8026750733f1af29",
+    "policy_sha256": "503f1c1db5b06446a24fe4f594f3df40d3f17d8ca8c7accf28ba5d6546d713e6",
+    "prior_observations_sha256": "a41e3dba1e053686cfb9a2c82e5e57a7fd83ebd0172aee1be6980d56088eae8e",
+    "expected_lwar_id": "LWAR4",
+    "expected_route_mode": "live",
+    "expected_reason": "confidence_qualified_live"
+  },
+  "adapter_contract": {
+    "adapter_id": "opencode_zai",
+    "contract_sha256": "1c788666dd70081aefcceaa3c83d868c692449cdb6ce2369ed1ec31ecd05bf41",
+    "finite_verifier_version": "finite-json-v1",
+    "timeout_telemetry_policy": "exclude_not_estimate"
+  },
+  "decision_policy": {
+    "accept_only_if_objective_constraints_pass": true,
+    "record_all_reported_tokens": true,
+    "on_rejection": "verify_sticky_circuit_and_incumbent_fallback",
+    "on_acceptance": "verify_circuit_remains_closed"
+  }
+}
