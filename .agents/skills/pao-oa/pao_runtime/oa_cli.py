@@ -31,12 +31,19 @@ from .common import (
 from .contracts import ContractError, validate_contract
 from .ledger import TaskLedger
 from .presence import OA_PRESENCE_REFRESH_S, publish_oa_presence
+from .predictive_routing import (
+    load_routing_profile,
+    make_routing_receipt,
+    select_predictive_lwar,
+    write_routing_receipt,
+)
 from .registry import RegistryService
 from .routing import (
     STARTUP_DEADLINE_S_DEFAULT,
     STALE_AFTER_S_DEFAULT,
     auto_route,
     classify_lwar_runtime,
+    eligible_lwars,
     heartbeat_age_s,
 )
 from .transport import FileTransport
@@ -247,6 +254,16 @@ def command_send(args: argparse.Namespace) -> int:
     source = safe_load_json(Path(args.task_file).resolve())
     if source is None:
         raise SystemExit(f"task file is missing or not valid JSON: {args.task_file}")
+    task_id = validate_task_id(source.get("task_id") or new_id("task"))
+    predictive_requested = bool(args.routing_profile or args.routing_class)
+    if predictive_requested and (
+        not args.auto or not args.routing_profile or not args.routing_class
+    ):
+        raise SystemExit(
+            "--routing-profile and --routing-class must be used together with --auto"
+        )
+    routing_profile = None
+    routing_decision = None
 
     if args.auto:
         registry_path = root / "var" / "registry" / "lwar_registry.json"
@@ -256,9 +273,29 @@ def command_send(args: argparse.Namespace) -> int:
         if registry is None:
             raise SystemExit("registry is unreadable or corrupt; run `pao doctor`")
         require = set(args.require_capability)
-        lwar_id = auto_route(
-            registry, transport, require, datetime.now(timezone.utc), stale_after_s=args.stale_after
-        )
+        now = datetime.now(timezone.utc)
+        if predictive_requested:
+            candidates = eligible_lwars(
+                registry, transport, require, now, stale_after_s=args.stale_after
+            )
+            if not candidates:
+                lwar_id = None
+            else:
+                routing_profile = load_routing_profile(Path(args.routing_profile).resolve())
+                routing_decision = select_predictive_lwar(
+                    routing_profile,
+                    args.routing_class,
+                    [item[2] for item in candidates],
+                )
+                lwar_id = routing_decision["selected_lwar_id"]
+                if lwar_id is None:
+                    lwar_id = candidates[0][2]
+                    routing_decision["selected_lwar_id"] = lwar_id
+                    routing_decision["reason"] = "fallback_live_load_no_calibration_evidence"
+        else:
+            lwar_id = auto_route(
+                registry, transport, require, now, stale_after_s=args.stale_after
+            )
         if lwar_id is None:
             raise SystemExit(f"no eligible LWAR for capabilities: {sorted(require) or 'any'}")
     elif args.lwar_id:
@@ -267,7 +304,6 @@ def command_send(args: argparse.Namespace) -> int:
         raise SystemExit("either --lwar-id or --auto is required")
 
     registry, slot = load_active_slot(root, lwar_id, require_on=True)
-    task_id = validate_task_id(source.get("task_id") or new_id("task"))
     priority = _require_int(source.get("priority", 5), "priority")
     if priority < 0 or priority > 999:
         raise SystemExit("priority must be between 0 and 999")
@@ -354,6 +390,31 @@ def command_send(args: argparse.Namespace) -> int:
         raise SystemExit(
             f"task already has a ledger entry ({existing['status']}): {task_id} — use a new task_id"
         )
+    routing_receipt_path = None
+    routing_receipt_sha256 = None
+    if routing_profile is not None and routing_decision is not None:
+        receipt = make_routing_receipt(
+            task_id=task_id,
+            task_class=args.routing_class,
+            profile=routing_profile,
+            decision=routing_decision,
+        )
+        routing_receipt_path, receipt = write_routing_receipt(root, receipt)
+        routing_receipt_sha256 = sha256_file(routing_receipt_path)
+        audit.record_once(
+            root,
+            "oa",
+            {
+                "event": "routing_decided",
+                "task_id": task_id,
+                "task_class": args.routing_class,
+                "selected_lwar_id": lwar_id,
+                "profile_sha256": receipt["profile_sha256"],
+                "routing_receipt_sha256": routing_receipt_sha256,
+                "reason": receipt["reason"],
+            },
+            f"routing:{receipt['receipt_id']}",
+        )
     # Record the ledger entry BEFORE making the task claimable: a crash between
     # the two then leaves a benign `published` entry with no incoming task,
     # never an untracked live task that recovery cannot see.
@@ -371,7 +432,21 @@ def command_send(args: argparse.Namespace) -> int:
         "oa",
         {"event": "task_published", "lwar_id": lwar_id, "task_id": task_id, "workflow_id": task["workflow_id"]},
     )
-    emit({"event": "task_published", "lwar_id": lwar_id, "task_id": task_id, "message_file": str(target)})
+    output = {
+        "event": "task_published",
+        "lwar_id": lwar_id,
+        "task_id": task_id,
+        "message_file": str(target),
+    }
+    if routing_receipt_path is not None:
+        output.update(
+            {
+                "routing_reason": routing_decision["reason"],
+                "routing_receipt": str(routing_receipt_path),
+                "routing_receipt_sha256": routing_receipt_sha256,
+            }
+        )
+    emit(output)
     return 0
 
 
@@ -1406,6 +1481,8 @@ def build_parser() -> argparse.ArgumentParser:
         help="capability required by --auto routing (repeatable)",
     )
     send.add_argument("--stale-after", type=float, default=STALE_AFTER_S_DEFAULT)
+    send.add_argument("--routing-profile")
+    send.add_argument("--routing-class")
     send.add_argument("--task-file", required=True)
     send.add_argument("--root", default=None)
     send.set_defaults(handler=writer_guard(command_send))

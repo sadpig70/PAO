@@ -1,0 +1,100 @@
+{
+  "schema_version": "pao.benchmark-suite.v1",
+  "tasks": {
+    "H1": {
+      "task_class": "constraint_ordering",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Six jobs A-D, F, G obey: G is immediately before B; B is before D; D is immediately before A; A is before F; F is before C. Return {\"answer\":\"<six letters in order>\",\"reason\":\"<short proof>\"}.",
+      "expected": {
+        "answer": "GBDAFC"
+      }
+    },
+    "H2": {
+      "task_class": "constraint_ordering",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Five packages P-T obey: R is immediately after T; T is after Q; S is before Q; P is after R. Return {\"answer\":\"<five letters in order>\",\"reason\":\"<short proof>\"}.",
+      "expected": {
+        "answer": "SQTRP"
+      }
+    },
+    "H3": {
+      "task_class": "constraint_ordering",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Six steps H-M obey: J is immediately before H; M is before J; H is before K; L is immediately after K; I is before M. Return {\"answer\":\"<six letters in order>\",\"reason\":\"<short proof>\"}.",
+      "expected": {
+        "answer": "IMJHKL"
+      }
+    },
+    "H4": {
+      "task_class": "code_review",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Requirements: FIFO behavior, duplicate values must preserve position, and omitted queues must not share state. Review: def dequeue(queue=[]): if not queue: return None; item=queue[-1]; queue.remove(item); return item. Choose every real defect ID from: D1 mutable default leaks state; D2 it removes the newest item instead of FIFO; D3 remove(item) can remove an earlier equal value rather than the selected last element; D4 list access is non-deterministic; D5 an empty list raises KeyError. Return {\"defects\":[\"sorted IDs\"],\"fix\":\"<short fix>\"}.",
+      "expected": {
+        "defects": [
+          "D1",
+          "D2",
+          "D3"
+        ]
+      }
+    },
+    "H5": {
+      "task_class": "code_review",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Requirements: pct is a percentage in [0,100], price must be nonnegative, and omitted history must not share state. Review: def discount(price, pct, history=[]): history.append(price); return price - pct. Choose every real defect ID from: E1 mutable default leaks history; E2 pct is subtracted as an absolute amount instead of a percentage; E3 price and pct ranges are not validated; E4 append sorts history automatically; E5 subtraction mutates price. Return {\"defects\":[\"sorted IDs\"],\"fix\":\"<short fix>\"}.",
+      "expected": {
+        "defects": [
+          "E1",
+          "E2",
+          "E3"
+        ]
+      }
+    },
+    "H6": {
+      "task_class": "code_review",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Requirements: amount must be positive, insufficient funds must change neither account, and the transfer must be atomic if either account update fails. Review: def transfer(src, dst, amount): src['balance'] -= amount; if src['balance'] < 0: return False; dst['balance'] += amount; return True. Choose every real defect ID from: F1 insufficient funds leave src mutated negative; F2 nonpositive amount is not rejected; F3 failure while updating dst can leave a partial transfer; F4 dict subtraction is non-deterministic; F5 returning True deletes dst. Return {\"defects\":[\"sorted IDs\"],\"fix\":\"<short fix>\"}.",
+      "expected": {
+        "defects": [
+          "F1",
+          "F2",
+          "F3"
+        ]
+      }
+    },
+    "H7": {
+      "task_class": "bounded_optimization",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=11 and risk <=6 that maximizes value; tie-break by lower cost, then lower risk, then lexicographic sorted letters. Items: A(cost6,risk2,value10), B(5,4,9), C(4,3,8), D(3,2,6), E(2,1,4). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "expected": {
+        "selection": [
+          "A",
+          "D",
+          "E"
+        ],
+        "value": 20,
+        "cost": 11,
+        "risk": 5
+      }
+    },
+    "H8": {
+      "task_class": "bounded_optimization",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=13 and risk <=7 that maximizes value; tie-break by lower cost, then lower risk, then lexicographic sorted letters. Items: A(cost8,risk4,value13), B(6,3,10), C(5,2,9), D(4,3,7), E(3,1,5). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "expected": {
+        "selection": [
+          "A",
+          "C"
+        ],
+        "value": 22,
+        "cost": 13,
+        "risk": 6
+      }
+    },
+    "H9": {
+      "task_class": "bounded_optimization",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Choose a subset with total cost <=10 and risk <=5 that maximizes value; tie-break by lower cost, then lower risk, then lexicographic sorted letters. Items: A(cost6,risk3,value10), B(cost5,risk2,value9), C(cost4,risk2,value7), D(cost3,risk1,value5), E(cost2,risk1,value4). Return {\"selection\":[\"sorted letters\"],\"value\":<int>,\"cost\":<int>,\"risk\":<int>}.",
+      "expected": {
+        "selection": [
+          "B",
+          "D",
+          "E"
+        ],
+        "value": 18,
+        "cost": 10,
+        "risk": 4
+      }
+    }
+  }
+}

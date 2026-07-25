@@ -33,6 +33,7 @@ Write a task draft file first:
 ```bash
 python "<PAO_SKILL>/scripts/oa.py" send --lwar-id LWAR1 --task-file TASK_DRAFT.json
 python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --task-file TASK_DRAFT.json
+python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --routing-profile ROUTING_PROFILE.json --routing-class code_review --task-file TASK_DRAFT.json
 ```
 
 ## Rules
@@ -45,6 +46,21 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --tas
   identity-mismatched, and stale LWARs are excluded. Ties break toward the
   lowest backlog, then the lowest LWAR number. No eligible LWAR is an explicit
   error—never fall back to an arbitrary or unhealthy LWAR.
+- `--routing-profile` and `--routing-class` are an optional pair for empirical
+  predictive routing. The strict profile contains calibration observations only.
+  For a supported class, the policy selects the lowest mean reported-token LWAR
+  among candidates tied for best empirical acceptance (unless the profile
+  explicitly permits a quality drop). Unknown or under-supported classes fall
+  back to the eligible global calibration quality leader. If no eligible
+  candidate has calibration evidence, ordinary live load ranking is used.
+  Profile compilers default to five observations per alias and class; lowering
+  that gate is an explicit experimental choice, not a production default.
+- Predictive publication writes
+  `var/routing/receipts/<task_id>.json` atomically and appends a deterministic
+  `routing_decided` audit event before the ledger or mailbox publication. The
+  receipt binds the task class, eligible aliases, selected alias, decision
+  statistics, and canonical profile SHA-256. Conflicting replay fails closed;
+  an equivalent replay reuses the existing receipt.
 - Every publication uses a durable outbox sequence: ledger `publishing` → atomic mailbox publish → ledger `published`. `recover` repairs an interruption between these steps from the stored TaskContract.
 - `workflow_id` and `task_id` are schema-validated safe identifiers; values that could escape `var/tasks/` are rejected.
 - The claim lease is aligned with the task budget: `effective_lease_s = max(lease_seconds, timeout_s + 30)`.

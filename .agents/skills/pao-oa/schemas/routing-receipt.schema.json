@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.routing-receipt.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "receipt_id", "decided_at", "task_id", "task_class", "profile_sha256", "selected_lwar_id", "eligible_lwar_ids", "reason", "decision"],
+  "properties": {
+    "schema_version": {"const": "pao.routing-receipt.v1"},
+    "receipt_id": {"type": "string", "pattern": "^routing-[a-f0-9]{32}$"},
+    "decided_at": {"type": "string", "format": "date-time"},
+    "task_id": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "task_class": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+    "profile_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"},
+    "selected_lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
+    "eligible_lwar_ids": {"type": "array", "items": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"}},
+    "reason": {"type": "string", "minLength": 1},
+    "decision": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["policy", "class_stats", "global_stats"],
+      "properties": {
+        "policy": {"type": "object"},
+        "class_stats": {"type": "object"},
+        "global_stats": {"type": "object"}
+      }
+    }
+  }
+}

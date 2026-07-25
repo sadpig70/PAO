@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "pao.routing-profile.v1",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "profile_id", "created_at", "source_experiment_ids", "policy", "observations"],
+  "properties": {
+    "schema_version": {"const": "pao.routing-profile.v1"},
+    "profile_id": {"type": "string", "pattern": "^routing-profile-[A-Za-z0-9][A-Za-z0-9._-]*$"},
+    "created_at": {"type": "string", "format": "date-time"},
+    "source_experiment_ids": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "policy": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["min_observations", "max_quality_drop"],
+      "properties": {
+        "min_observations": {"type": "integer", "minimum": 1},
+        "max_quality_drop": {"type": "number", "minimum": 0}
+      }
+    },
+    "observations": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["task_id", "task_class", "lwar_id", "accepted", "reported_tokens"],
+        "properties": {
+          "task_id": {"type": "string", "pattern": "^task-[A-Za-z0-9][A-Za-z0-9._-]*$"},
+          "task_class": {"type": "string", "pattern": "^[a-z][a-z0-9_-]*$"},
+          "lwar_id": {"type": "string", "pattern": "^LWAR[1-9][0-9]*$"},
+          "accepted": {"type": "boolean"},
+          "reported_tokens": {"type": "integer", "minimum": 0}
+        }
+      }
+    }
+  }
+}

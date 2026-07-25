@@ -30,6 +30,7 @@ RUNTIME_MODULES = (
     "oa_cli.py",
     "pao_cli.py",
     "presence.py",
+    "predictive_routing.py",
     "registry.py",
     "routing.py",
     "transport.py",
