@@ -9,7 +9,7 @@ contract and GitHub's live `main` branch settings.
 
 - strict status-check evaluation
 - exactly three GitHub Actions app-bound checks:
-  - `PR Evidence`
+  - `PR Evidence Evaluator`
   - `Verify (ubuntu-latest)`
   - `Verify (windows-latest)`
 - administrator enforcement
