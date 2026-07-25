@@ -47,12 +47,10 @@ output. A missing, expired, or underprivileged secret fails closed.
 non-secret GitHub prefix and enforces a repository-owned `not_after` ceiling.
 The audit never prints or persists the token.
 
-The preferred credential is a `github_pat_` fine-grained PAT. The existing
-`gho_` OAuth bootstrap is accepted only through 2026-07-31 UTC and emits a
-rotation warning on every audit. After that ceiling it fails closed before any
-GitHub API request. The fine-grained entry is also time-bounded, so each
-rotation must update the reviewed ceiling without exceeding the provider-side
-expiration.
+The only accepted credential is a `github_pat_` fine-grained PAT. The former
+`gho_` OAuth bootstrap is rejected before any GitHub API request. The
+fine-grained entry is time-bounded, so each rotation must update the reviewed
+ceiling without exceeding the provider-side expiration.
 
 GitHub does not expose a token's personal expiration metadata to this workflow.
 The checked-in ceiling is therefore an additional local upper bound, not a
