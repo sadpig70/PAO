@@ -1,0 +1,31 @@
+{
+  "adapter_contract": {
+    "adapter_id": "opencode_zai",
+    "base_adapter_contract_sha256": "1c788666dd70081aefcceaa3c83d868c692449cdb6ce2369ed1ec31ecd05bf41",
+    "correction_feedback_source_sha256": "0b6752b1bcd9ac532a17ecee8a3921fd8db96c4b2d8527250167108864e2963c",
+    "correction_feedback_version": "finite-json-feedback-v2",
+    "finite_verifier_version": "finite-json-v1",
+    "max_internal_verification_attempts": 2,
+    "provider_receives_expected_answer": false,
+    "timeout_telemetry_policy": "exclude_not_estimate"
+  },
+  "adapter_contract_sha256": "bc11ad4908f13c83a364488262e57165975cd1f05078a83abc09051ba7538dbe",
+  "answer_key_sha256": "3fee7a7e3a370bfbeb1226f845e81c488604bfe16e28325aa5271b83508013a1",
+  "created_at": "2026-07-26T02:25:29.7401812Z",
+  "excluded_production_prompt_sha256": "74e4eb62a53e3b10b229ea9f8db6bd320bd6ae9181cbca58c60cfbf857a35f4a",
+  "execution_rule": "isolated_adapter_shadow_one_run_opencode_call_per_task",
+  "max_suite_executions": 1,
+  "preregistration_id": "lwar4-ordering-recovery-preregistration-v1",
+  "prior_suite_sha256": {
+    "canary-online-suite-v1.json": "09ce1cc97ff9728dc52400a3d003735d5aa2bea0de3c79bd6a7762dd8ebcbbf7",
+    "lwar4-remediation-suite-v1.json": "a32bda87a352001259647c00302afb3696438c37e8544d0d1ff8d0793ba24410"
+  },
+  "production_circuit_policy": "preserve_open_no_reset",
+  "prompt_overlap_with_prior": 0,
+  "schema_version": "pao.benchmark-preregistration.v1",
+  "sealed_before_provider_execution": true,
+  "suite_sha256": "e6fd6e5ba9b3108167a8e71dd7636254fa88b94865db60ed950327c00a30d301",
+  "task_counts": {
+    "constraint_ordering": 12
+  }
+}

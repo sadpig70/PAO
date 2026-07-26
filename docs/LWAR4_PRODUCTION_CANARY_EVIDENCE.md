@@ -66,3 +66,14 @@ Verdict:
 
 Portable evidence is stored in
 `benchmarks/lwar4-production-canary-evidence-v1.json`.
+
+## Subsequent adapter recovery
+
+The answer-key-free ordering correction and a fresh 12-task adapter shadow are
+documented in `docs/LWAR4_ORDERING_RECOVERY_EVIDENCE.md`. The shadow accepted
+12/12 answers, but all were accepted on the first provider call, so its live
+corrective-feedback effect remains unproven.
+
+The isolated run did not create PAO routing observations. The production
+circuit remains open with zero resets; this negative production evidence is
+unchanged.

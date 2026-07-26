@@ -86,3 +86,9 @@ That qualification was exercised by the production canary documented in
 `docs/LWAR4_PRODUCTION_CANARY_EVIDENCE.md`. The live result was rejected,
 opened the LWAR4 constraint-ordering circuit, and successfully forced the next
 same-class route to LWAR1. The current state has no promoted class.
+
+The subsequent adapter-only ordering recovery is documented in
+`docs/LWAR4_ORDERING_RECOVERY_EVIDENCE.md`. Its fresh suite passed 12/12, but
+the correction path was not triggered live and the run is not current-
+generation PAO routing evidence. The LWAR4 constraint-ordering circuit
+therefore remains open.

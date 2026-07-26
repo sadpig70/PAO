@@ -453,6 +453,48 @@ def verify_finite_json_answer(prompt: str, answer: str) -> list[str]:
     return []
 
 
+def build_finite_correction_feedback(
+    prompt: str, failures: list[str]
+) -> str:
+    """Build prompt-derived correction hints without exposing an answer key."""
+    unique_failures = sorted(set(failures))
+    details = []
+    ordering = re.search(r"Arrange A-([A-Z])", prompt)
+    if "invalid_ordering_alphabet" in unique_failures:
+        if ordering:
+            last = ordering.group(1)
+            length = ord(last) - ord("A") + 1
+            details.append(
+                'For invalid_ordering_alphabet, the "answer" value must be '
+                f"a string matching ^[A-{last}]{{{length}}}$ and must use "
+                f"every letter A through {last} exactly once. Include no "
+                "whitespace, punctuation, separators, or extra characters."
+            )
+        else:
+            details.append(
+                'For invalid_ordering_alphabet, the "answer" value must use '
+                "exactly the alphabet and length required by the original "
+                "prompt, with no whitespace or separators."
+            )
+    if "ordering_constraint_violation" in unique_failures:
+        details.append(
+            "For ordering_constraint_violation, re-check every "
+            "immediately-before relation in the original prompt."
+        )
+    feedback = (
+        "\n\nThe previous JSON failed these deterministic checks: "
+        + ", ".join(unique_failures)
+        + "."
+    )
+    if details:
+        feedback += " Specific correction requirements: " + " ".join(details)
+    return (
+        feedback
+        + " Re-solve the original problem without assuming the prior answer "
+        "is correct, then return only the corrected requested JSON."
+    )
+
+
 def combine_provider_results(
     first: dict[str, Any], second: dict[str, Any]
 ) -> dict[str, Any]:
@@ -501,12 +543,7 @@ def run_opencode(prompt: str, work_dir: Path) -> dict[str, Any]:
     failures = verify_finite_json_answer(prompt, first["answer"])
     if not failures:
         return first
-    feedback = (
-        "\n\nThe previous JSON failed these deterministic checks: "
-        + ", ".join(failures)
-        + ". Re-solve the original problem without assuming the prior answer "
-        "is correct, then return only the corrected requested JSON."
-    )
+    feedback = build_finite_correction_feedback(prompt, failures)
     second = run_provider_command(
         "opencode",
         build_opencode_command(entrypoint, provider_dir, prompt + feedback),

@@ -13,8 +13,15 @@ from tools.build_lwar4_remediation_suite import (
     build_suite as build_remediation_suite,
     canonical_sha256,
 )
+from tools.build_lwar4_ordering_recovery_suite import (
+    PRODUCTION_PROMPT_SHA256,
+    build_registration as build_ordering_recovery_registration,
+    build_suite as build_ordering_recovery_suite,
+    prompt_sha256,
+)
 from tools.run_heterogeneous_lwar_ab import (
     TASKS,
+    build_finite_correction_feedback,
     build_opencode_command,
     build_assignment,
     build_report,
@@ -26,8 +33,10 @@ from tools.run_heterogeneous_lwar_ab import (
     routing_upper_bound,
     run_provider_command,
     run_provider_with_retry,
+    run_opencode,
     verify_finite_json_answer,
 )
+from tools.run_lwar4_ordering_recovery_shadow import grade_result
 
 
 class HeterogeneousABHarnessTests(unittest.TestCase):
@@ -72,6 +81,77 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
         self.assertEqual(reported_tokens(combined["metrics"]), 30)
         self.assertTrue(combined["metrics"]["telemetry_complete"])
 
+    def test_ordering_correction_feedback_is_answer_key_free(self):
+        prompt = (
+            "Arrange A-G using all constraints: D is immediately before E; "
+            "G is immediately before C; B is immediately before F; "
+            "A is immediately before D; E is immediately before B; "
+            "C is immediately before A."
+        )
+        feedback = build_finite_correction_feedback(
+            prompt, ["invalid_ordering_alphabet"]
+        )
+        self.assertIn("^[A-G]{7}$", feedback)
+        self.assertIn("no whitespace", feedback)
+        self.assertNotIn("GCADEBF", feedback)
+
+    def test_opencode_correction_repairs_internal_ordering_whitespace(self):
+        prompt = (
+            "Return one JSON object. Arrange A-G using all constraints: "
+            "D is immediately before E; G is immediately before C; "
+            "B is immediately before F; A is immediately before D; "
+            "E is immediately before B; C is immediately before A. "
+            'Return {"answer":"<seven letters in order>"}.'
+        )
+        first = {
+            "adapter": "opencode",
+            "ok": True,
+            "duration_s": 2.0,
+            "error": None,
+            "answer": '{"answer":"GC ADEBF"}',
+            "metrics": {
+                "usage": {"total": 10},
+                "telemetry_complete": True,
+            },
+        }
+        second = {
+            **first,
+            "duration_s": 3.0,
+            "answer": '{"answer":"GCADEBF"}',
+            "metrics": {
+                "usage": {"total": 20},
+                "telemetry_complete": True,
+            },
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            shim = Path(temporary) / "opencode.cmd"
+            entrypoint = (
+                shim.parent
+                / "node_modules"
+                / "opencode-ai"
+                / "bin"
+                / "opencode.exe"
+            )
+            entrypoint.parent.mkdir(parents=True)
+            entrypoint.touch()
+            with (
+                patch(
+                    "tools.run_heterogeneous_lwar_ab.executable",
+                    return_value=str(shim),
+                ),
+                patch(
+                    "tools.run_heterogeneous_lwar_ab.run_provider_command",
+                    side_effect=[first, second],
+                ) as provider,
+            ):
+                result = run_opencode(prompt, Path(temporary) / "work")
+        correction_prompt = provider.call_args_list[1].args[1][-1]
+        self.assertIn("^[A-G]{7}$", correction_prompt)
+        self.assertNotIn("GCADEBF", correction_prompt)
+        self.assertTrue(result["ok"])
+        self.assertEqual(result["metrics"]["verification_attempt_count"], 2)
+        self.assertEqual(reported_tokens(result["metrics"]), 30)
+
     def test_remediation_suite_is_unique_nonoverlapping_and_preregistered(self):
         prior = build_suite()
         suite = build_remediation_suite()
@@ -93,6 +173,116 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
         )
         self.assertEqual(registration["suite_sha256"], canonical_sha256(suite))
         self.assertTrue(registration["sealed_before_provider_execution"])
+
+    def test_ordering_recovery_suite_is_unique_and_preregistered(self):
+        suite = build_ordering_recovery_suite()
+        registration = build_ordering_recovery_registration(suite)
+        prompts = [task["prompt"] for task in suite["tasks"].values()]
+        self.assertEqual(len(prompts), 12)
+        self.assertEqual(len(prompts), len(set(prompts)))
+        for task in suite["tasks"].values():
+            self.assertEqual(
+                verify_finite_json_answer(
+                    task["prompt"], json.dumps(task["expected"])
+                ),
+                [],
+            )
+        self.assertNotIn(
+            PRODUCTION_PROMPT_SHA256,
+            {prompt_sha256(prompt) for prompt in prompts},
+        )
+        self.assertEqual(registration["suite_sha256"], canonical_sha256(suite))
+        self.assertEqual(
+            registration["task_counts"], {"constraint_ordering": 12}
+        )
+        self.assertEqual(registration["max_suite_executions"], 1)
+        self.assertEqual(
+            registration["production_circuit_policy"],
+            "preserve_open_no_reset",
+        )
+        self.assertTrue(registration["sealed_before_provider_execution"])
+
+    def test_ordering_recovery_grader_preserves_invalid_whitespace(self):
+        task = {
+            "prompt": (
+                "Arrange A-G using all constraints: G is immediately before C; "
+                "C is immediately before A; A is immediately before D; "
+                "D is immediately before E; E is immediately before B; "
+                "B is immediately before F."
+            ),
+            "expected": {"answer": "GCADEBF"},
+        }
+        rejected = grade_result(
+            task,
+            {
+                "ok": True,
+                "answer": '{"answer":"GC ADEBF"}',
+            },
+        )
+        accepted = grade_result(
+            task,
+            {
+                "ok": True,
+                "answer": '{"answer":"GCADEBF"}',
+            },
+        )
+        self.assertFalse(rejected["accepted"])
+        self.assertEqual(
+            rejected["deterministic_failures"],
+            ["invalid_ordering_alphabet"],
+        )
+        self.assertTrue(accepted["accepted"])
+
+    def test_ordering_recovery_evidence_preserves_open_circuit_and_claim_scope(
+        self,
+    ):
+        repo = Path(__file__).parents[1]
+        registration = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-ordering-recovery-preregistration-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        evidence = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-ordering-recovery-evidence-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        for field in (
+            "suite_sha256",
+            "answer_key_sha256",
+            "adapter_contract_sha256",
+        ):
+            self.assertEqual(evidence["contract"][field], registration[field])
+        shadow = evidence["adapter_shadow"]
+        self.assertEqual(shadow["accepted"], 12)
+        self.assertEqual(shadow["first_call_accepted"], 12)
+        self.assertEqual(shadow["corrected"], 0)
+        self.assertEqual(shadow["missing_telemetry"], 0)
+        self.assertEqual(shadow["reported_tokens"], 130102)
+        correction = evidence["correction_path"]
+        self.assertEqual(correction["live_shadow_trigger_count"], 0)
+        self.assertEqual(
+            correction["claim"],
+            "deterministic_mock_validated_live_effect_unproven",
+        )
+        circuit = evidence["production_circuit"]
+        self.assertEqual(circuit["status"], "open")
+        self.assertEqual(circuit["reset_count"], 0)
+        self.assertEqual(
+            circuit["raw_sha256_before"], circuit["raw_sha256_after"]
+        )
+        self.assertEqual(
+            evidence["claim_scope"],
+            "isolated_adapter_evidence_not_current_generation_pao_routing_evidence",
+        )
+        self.assertEqual(
+            evidence["verdict"],
+            "isolated_ordering_adapter_recovery_passed_correction_path_live_unexercised",
+        )
 
     def test_remediation_evidence_binds_preregistered_contract(self):
         repo = Path(__file__).parents[1]
