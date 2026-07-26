@@ -7,6 +7,7 @@ Replace `<PAO_SKILL>` with this skill's folder (SKILL.md §0).
 ```bash
 python "<PAO_SKILL>/scripts/oa.py" recover --delivery-timeout 300
 python "<PAO_SKILL>/scripts/oa.py" recover --reap-startup --lwar-id LWAR1 --instance-id INSTANCE_ID --generation GENERATION --startup-deadline 30
+python "<PAO_SKILL>/scripts/oa.py" recover --retire-stale --lwar-id LWAR1 --instance-id INSTANCE_ID --generation GENERATION --expected-last-seen TIMESTAMP --stale-after 120 --reason "replace failed provider generation"
 python "<PAO_SKILL>/scripts/oa.py" dead
 python "<PAO_SKILL>/scripts/oa.py" dead --lwar-id LWAR1 --requeue TASK_ID
 ```
@@ -51,6 +52,20 @@ python "<PAO_SKILL>/scripts/oa.py" dead --lwar-id LWAR1 --requeue TASK_ID
   under `var/audit/.corrupt/` before the source is truncated. Malformed rotated,
   terminated, or interior lines remain unchanged and fail closed until an
   operator preserves the file and repairs the invalid line.
+- `recover --retire-stale` is the operator-directed terminal path for a runtime
+  that started successfully but can no longer perform clean retirement. Take
+  `lwar_id`, `instance_id`, `generation`, and heartbeat `last_seen` from one
+  current `status` observation. The command rechecks that exact tuple and
+  heartbeat observation under the registry lock, requires age greater than the
+  positive `--stale-after` threshold, rejects `starting`, `running`, and
+  task-bearing heartbeats, and requires all incoming, claimed, lease, outgoing,
+  control, and control-claimed channels to be empty. It then commits a
+  generation-preserving tombstone before removing the registry slot. Fresh or
+  changed heartbeats, identity drift, active work, and unsupported states fail
+  closed without mutation. Exact retry requires the same threshold and operator
+  reason, preserves registry/tombstone bytes, and restores only missing
+  deterministic `stale_identity_confirmed` and `stale_slot_retired` audit
+  events. Never use this command to replace an active or uncertain runtime.
 - Every mutating OA command holds the same command-wide process lock. Therefore
   a concurrent `send` cannot publish from a stale registry observation while
   startup reaping commits; one command completes before the other revalidates.

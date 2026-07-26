@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "start | info | doctor | presence | status | audit-health | audit-repair | audit-prune-resolve | audit-preserve-release | reconcile | send | collect | validate | routing-circuit-reset | workflow-status | recover | dead | control | prune"
 ---
 
-# PAO-OA Skill v1.35 (standalone)
+# PAO-OA Skill v1.36 (standalone)
 
 ## Definitions
 
@@ -31,7 +31,7 @@ Before the first orchestration action of a session, run the pre-flight check and
 python "<PAO_SKILL>/scripts/pao.py" doctor --role oa
 ```
 
-Runtime protocol v1.4.1 intentionally rejects optional-first pre-v1 records
+Runtime protocol v1.4.2 intentionally rejects optional-first pre-v1 records
 and pre-execution-fence bundles.
 Use a fresh bus for the major-version cutover, or intentionally retire the old
 bus after preserving required evidence. Never bypass a failed
@@ -145,6 +145,13 @@ outages retain only one degraded entry per deterministic key. Post-flush crash
 recovery filters spool keys already committed to active or rotated logs.
 Active and degraded audit appends are flushed and `fsync`-committed before the
 runtime reports durability or deletes the spool.
+When a previously active runtime is stale and cannot complete clean retirement,
+do not impersonate it or edit the registry. If it has a valid matching
+non-running heartbeat and no active mailbox work, use the explicit
+`recover --retire-stale` procedure in `recover-maintain.md` with the exact
+current tuple, observed `last_seen`, stale threshold, and operator reason.
+Fresh, changed, starting, running, task-bearing, identity-mismatched, or
+work-bearing state fails closed.
 Audit pruning shares the append lock order and preserves rotated segments that
 still carry deterministic-key evidence referenced by the degraded spool.
 Deterministic append/replay fails closed when any active or rotated audit

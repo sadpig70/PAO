@@ -320,6 +320,17 @@ approved by OA `reconcile`; ADP stops only after `lwar_retired` confirms the
 registry slot is absent. `shutdown` remains a distinct resumable stop that keeps
 the slot allocated.
 
+Administrative stale retirement is a separate fail-closed recovery path, not a
+shortcut around clean retirement. `recover --retire-stale` requires one exact
+`lwar_id + instance_id + generation + heartbeat.last_seen` observation, a
+positive stale threshold, and an operator reason. Under the registry lock it
+revalidates the tuple, current heartbeat observation and age,
+non-running/task-free heartbeat state, and empty active mailbox channels. It
+writes a generation-preserving tombstone before registry removal. Exact replay
+requires the same threshold and reason, leaves state bytes stable, and restores
+missing deterministic audit events. Any freshness, observation, identity,
+state, or work ambiguity preserves the slot.
+
 ## 13. Failure Recovery
 
 PAO must recover from:

@@ -75,7 +75,7 @@ class RegistryService:
             os.replace(request_path, archive)
 
     def _active_mailbox_work(self, lwar_id: str) -> dict[str, int]:
-        """Count work whose loss would make startup-slot reaping unsafe."""
+        """Count work whose loss would make identity reaping unsafe."""
         mailbox = self.root / "mailbox" / lwar_id
         active = {}
         for name in ("incoming", "claimed", "leases", "outgoing", "control", "control_claimed"):
@@ -83,6 +83,177 @@ class RegistryService:
             if count:
                 active[name] = count
         return active
+
+    def retire_stale(
+        self,
+        lwar_id: str,
+        instance_id: str,
+        generation: int,
+        expected_last_seen: str,
+        stale_after_s: float,
+        reason: str,
+        now: datetime | None = None,
+    ) -> dict[str, Any]:
+        """Retire one exact stale, idle identity with tombstone-first fencing."""
+        lwar_id = validate_lwar_id(lwar_id)
+        instance_id = validate_instance_id(instance_id)
+        if generation <= 0:
+            raise ValueError("generation must be positive")
+        if stale_after_s <= 0:
+            raise ValueError("stale threshold must be positive")
+        try:
+            parse_utc(expected_last_seen)
+        except (TypeError, ValueError) as error:
+            raise ValueError("expected last_seen must be a date-time") from error
+        reason = reason.strip()
+        if not reason:
+            raise ValueError("retirement reason must be non-empty")
+        if len(reason) > 500:
+            raise ValueError("retirement reason must be at most 500 characters")
+        observed_at = now or datetime.now(timezone.utc)
+
+        with FileLock(self.lock_path):
+            registry = self.load_registry()
+            tombstones = self.load_tombstones()
+            slot = registry["slots"].get(lwar_id)
+            tombstone = tombstones["entries"].get(lwar_id)
+
+            if slot is None:
+                already_retired = bool(
+                    tombstone
+                    and tombstone.get("instance_id") == instance_id
+                    and tombstone.get("last_generation") == generation
+                    and tombstone.get("retirement_mode") == "stale_idle_reap"
+                    and tombstone.get("expected_last_seen") == expected_last_seen
+                    and tombstone.get("retirement_reason") == reason
+                    and tombstone.get("stale_after_s") == stale_after_s
+                )
+                return {
+                    "accepted": already_retired,
+                    "reason": "already_retired" if already_retired else "lwar_not_registered",
+                    "stale_confirmed": already_retired,
+                    "heartbeat_age_s": (
+                        tombstone.get("heartbeat_age_s") if already_retired else None
+                    ),
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+            if slot.get("instance_id") != instance_id or slot.get("generation") != generation:
+                return {
+                    "accepted": False,
+                    "reason": "identity_mismatch",
+                    "stale_confirmed": False,
+                    "heartbeat_age_s": None,
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+            if slot.get("state") not in {"on", "draining", "off"}:
+                return {
+                    "accepted": False,
+                    "reason": "registry_state_not_retirable",
+                    "stale_confirmed": False,
+                    "heartbeat_age_s": None,
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+
+            heartbeat_path = self.root / "mailbox" / lwar_id / "heartbeat.json"
+            heartbeat = safe_load_json(heartbeat_path) if heartbeat_path.is_file() else None
+            try:
+                if heartbeat is not None:
+                    validate_contract(heartbeat, "heartbeat.schema.json")
+            except ValueError:
+                heartbeat = None
+            if heartbeat is None:
+                rejection = "heartbeat_missing_or_invalid"
+                age_s = None
+            elif (
+                heartbeat.get("instance_id") != instance_id
+                or heartbeat.get("generation") != generation
+            ):
+                rejection = "heartbeat_identity_mismatch"
+                age_s = None
+            elif heartbeat.get("last_seen") != expected_last_seen:
+                rejection = "heartbeat_observation_changed"
+                age_s = None
+            elif heartbeat.get("status") == "starting":
+                rejection = "heartbeat_starting"
+                age_s = None
+            elif heartbeat.get("status") == "running" or heartbeat.get("current_task_id") is not None:
+                rejection = "heartbeat_not_idle"
+                age_s = None
+            elif heartbeat.get("status") not in {
+                "watching",
+                "idle",
+                "on",
+                "draining",
+                "off",
+                "control",
+            }:
+                rejection = "heartbeat_state_not_retirable"
+                age_s = None
+            else:
+                try:
+                    age_s = max(
+                        0.0,
+                        (observed_at - parse_utc(heartbeat["last_seen"])).total_seconds(),
+                    )
+                except (KeyError, TypeError, ValueError):
+                    rejection = "heartbeat_missing_or_invalid"
+                    age_s = None
+                else:
+                    rejection = None if age_s > stale_after_s else "heartbeat_not_stale"
+
+            stale_confirmed = rejection is None
+            if rejection is not None:
+                return {
+                    "accepted": False,
+                    "reason": rejection,
+                    "stale_confirmed": False,
+                    "heartbeat_age_s": age_s,
+                    "registry_version": registry["registry_version"],
+                    "active_work": {},
+                }
+
+            active_work = self._active_mailbox_work(lwar_id)
+            if active_work:
+                return {
+                    "accepted": False,
+                    "reason": "active_mailbox_work",
+                    "stale_confirmed": stale_confirmed,
+                    "heartbeat_age_s": age_s,
+                    "registry_version": registry["registry_version"],
+                    "active_work": active_work,
+                }
+
+            registry["registry_version"] = int(registry["registry_version"]) + 1
+            registry["updated_at"] = utc_now()
+            del registry["slots"][lwar_id]
+            reusable_after = observed_at + timedelta(seconds=self.tombstone_retention_s)
+            tombstones["entries"][lwar_id] = {
+                "last_generation": generation,
+                "instance_id": instance_id,
+                "deregistered_at": utc_now(),
+                "reusable_after": reusable_after.isoformat().replace("+00:00", "Z"),
+                "retirement_mode": "stale_idle_reap",
+                "retirement_reason": reason,
+                "expected_last_seen": expected_last_seen,
+                "stale_after_s": stale_after_s,
+                "heartbeat_age_s": age_s,
+            }
+            tombstones["updated_at"] = utc_now()
+            # Tombstone first: a crash can retain the occupied slot but can
+            # never expose an unfenced generation for premature reuse.
+            atomic_write_json(self.tombstones_path, tombstones)
+            atomic_write_json(self.registry_path, registry)
+            return {
+                "accepted": True,
+                "reason": None,
+                "stale_confirmed": True,
+                "heartbeat_age_s": age_s,
+                "registry_version": registry["registry_version"],
+                "active_work": {},
+            }
 
     def reap_startup(
         self,

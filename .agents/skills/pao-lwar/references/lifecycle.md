@@ -77,6 +77,13 @@ repeat. Exit `4` (`retire_blocked`) means finish and submit active claims first.
 Exit `0` (`lwar_retired`) is the only clean-retirement terminator; the slot is
 then absent from the registry.
 
+If a previously active ADP is permanently stale and cannot consume
+`control:retire`, the OA may use its separate `recover --retire-stale`
+contract. That path requires the exact current identity tuple, observed
+heartbeat timestamp, stale threshold, non-running/task-free heartbeat, and
+empty mailbox. After it succeeds, this identity is stale by definition: do not
+resume its watcher or reuse the identity file.
+
 ## Context-exhaustion handoff
 
 Session context is finite; running out mid-claim would violate the terminal-result rule. Trigger this handoff only on an **objective** exhaustion signal — an explicit runtime context/token warning, or a measured token budget crossing a high threshold (e.g. ~90% of the window). Elapsed wall-clock time, many idle slices, or a subjective sense of "enough has happened" are **not** exhaustion and must not trigger it (§1.3) — that is the daemon-quitting-because-it-feels-finished bug. When a genuine exhaustion signal fires, hand off instead of dying:
