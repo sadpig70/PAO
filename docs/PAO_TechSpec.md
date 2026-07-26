@@ -728,6 +728,21 @@ recovery panels cannot open, close, or reset a circuit. The evidence may inform
 an explicit reason-bound OA reset review, but never authorizes automatic reset,
 live traffic, or promotion.
 
+### 15.5 Reset promotion epoch
+
+PAO v1.4.1 makes `reset_at` an alias/class promotion watermark in addition to
+its existing circuit-refresh fence. Selection excludes ordinary observations
+for the reset alias/class when `observed_at <= reset_at`; unaffected aliases and
+classes retain their evidence. `recovery_shadow` remains excluded regardless of
+time.
+
+This prevents a reset from immediately reusing the same pre-failure evidence
+that had previously qualified the candidate. After reset, explicit ordinary
+shadow execution must collect enough fresh accepted observations to satisfy the
+balanced support and Wilson non-inferiority gates. Until then production stays
+on the incumbent. A rejected ordinary shadow after the watermark immediately
+reopens the alias/class circuit and stops requalification.
+
 ## 16. Evolution Path
 
 Planned future steps include:

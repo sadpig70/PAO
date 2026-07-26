@@ -4,7 +4,7 @@
 
 **Persistent Agent Orchestration** is a local orchestration system that coordinates heterogeneous long-running AI runtimes behind a single external identity model, `LWARn`, over a file-based message bus.
 
-The current release contract is **PAO v1.4.0**. It deliberately requires a
+The current release contract is **PAO v1.4.1**. It deliberately requires a
 fresh or intentionally retired pre-v1 bus so identity, attempt, provenance,
 permission, and artifact fences cannot be bypassed by legacy payloads.
 
@@ -84,7 +84,8 @@ OA (Orchestration Agent)
   floor per eligible alias/class, incumbent-only production before promotion,
   explicit read-only shadow execution, and sticky drift circuit breakers
 - OA-validation-bound online routing observations and reason-bound circuit
-  reset audit evidence
+  reset audit evidence; reset is a promotion epoch watermark, so pre-reset
+  alias/class observations cannot immediately reauthorize production
 - read-only `recovery_shadow` routing to an explicit current identity behind a
   matching open circuit, isolated from automatic promotion and drift windows
 - preregistered LWAR4 blind, production-canary, and isolated ordering-recovery
@@ -194,6 +195,7 @@ two `SKILL.md` files and their bundled references are the sole operating contrac
 - [Predictive routing evidence](docs/PREDICTIVE_ROUTING_EVIDENCE.md)
 - [Canary routing evidence](docs/CANARY_ROUTING_EVIDENCE.md)
 - [Open-circuit recovery shadow](docs/ROUTING_RECOVERY_SHADOW.md)
+- [Reset and fresh-evidence requalification](docs/LWAR4_RESET_REQUALIFICATION.md)
 - [Technical specification](docs/PAO_TechSpec.md)
 - [ADP operations guide](docs/PAO_ADP_Operations.md)
 - [Skill-only bootstrap note](docs/LWAR_ADP_Bootstrap.md)

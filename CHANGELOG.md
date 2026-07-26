@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.4.1 — 2026-07-26
+
+- Treat an alias/class circuit reset as a promotion epoch watermark.
+- Exclude observations at or before `reset_at` from that alias/class's later
+  promotion statistics as well as circuit refresh.
+- Require fresh ordinary shadow evidence before a reset candidate can return
+  to `confidence_qualified_live`.
+- Add a sealed LWAR4 reset/requalification campaign with paired recovery,
+  conditional reset, post-reset Wilson requalification, and one production
+  canary.
+
 ## 1.0.0 — 2026-07-25
 
 PAO v1.0.0 is the first finite skills-only production release. Operation

@@ -80,7 +80,10 @@ Therefore neither accepted nor rejected recovery panels can:
 
 An operator may use the isolated evidence in a separate reset-readiness review.
 The existing reason-bound `routing-circuit-reset` command remains the only
-state transition that can close the circuit.
+state transition that can close the circuit. A reset is also an alias/class
+promotion epoch watermark: ordinary observations at or before `reset_at` no
+longer count for that candidate. Fresh ordinary shadows must rebuild confidence
+before a production route can be selected.
 
 ## Verification contract
 
@@ -90,6 +93,7 @@ The integration suite proves:
 - absent/mismatched circuits and policies fail closed
 - unsafe permissions fail before bus mutation
 - receipt, validation, and observation bindings survive replay validation
-- recovery-only observations do not promote after a later reset
+- recovery-only and pre-reset alias/class observations do not promote after a
+  later reset
 - recovery acceptance/rejection windows do not mutate circuit state
 - master and generated runtime bundles remain byte-identical

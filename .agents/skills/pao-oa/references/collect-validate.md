@@ -31,7 +31,12 @@ python "<PAO_SKILL>/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
 - A rejected live candidate opens its alias/class circuit immediately.
   Confidence-detected window drift also opens it. Circuits never auto-close;
   `routing-circuit-reset` requires a nonempty operator reason and `PAO_OA_ID`,
-  writes a reset watermark, and records an exact audit event.
+  writes a reset watermark, and records an exact audit event. The watermark
+  excludes that alias/class's observations at or before `reset_at` from both
+  later circuit refresh and promotion statistics. Collect fresh ordinary
+  shadow evidence after reset before authorizing another production route. A
+  rejected post-reset ordinary shadow immediately reopens the sticky circuit;
+  the operator must not continue the requalification panel.
 - A `recovery_shadow` validation records the same receipt, selected identity,
   current generation, token, and semantic-decision bindings as other online
   evidence. It remains separately scoped: selectors exclude it from automatic

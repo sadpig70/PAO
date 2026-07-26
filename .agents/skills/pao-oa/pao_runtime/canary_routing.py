@@ -266,6 +266,27 @@ def current_generation_observations(
     return current
 
 
+def promotion_epoch_observations(
+    observations: list[dict[str, Any]],
+    state: dict[str, Any],
+) -> list[dict[str, Any]]:
+    """Return promotion rows that remain valid after alias-class resets."""
+    validate_circuit_state(state)
+    current = []
+    for item in observations:
+        validate_routing_observation(item)
+        if item["route_mode"] == "recovery_shadow":
+            continue
+        key = circuit_key(item["task_class"], item["lwar_id"])
+        reset_at = state["resets"].get(key, {}).get(
+            "reset_at", EMPTY_STATE_TIME
+        )
+        if item["observed_at"] <= reset_at:
+            continue
+        current.append(item)
+    return current
+
+
 def wilson_interval(accepted: int, observations: int, z: float = 1.96) -> tuple[float, float]:
     if observations <= 0:
         return 0.0, 1.0
@@ -353,11 +374,9 @@ def select_confidence_canary(
     online_observations = current_generation_observations(
         online_observations, eligible_identities
     )
-    promotion_observations = [
-        item
-        for item in online_observations
-        if item["route_mode"] != "recovery_shadow"
-    ]
+    promotion_observations = promotion_epoch_observations(
+        online_observations, state
+    )
     incumbent, calibration_global = _global_quality_leader(profile, eligible_set)
     if incumbent is None:
         return {
@@ -687,11 +706,21 @@ def refresh_circuits(
         reason = None
         trigger = None
         if policy["trip_on_rejection"]:
+            reset_at = updated["resets"].get(key, {}).get(
+                "reset_at", EMPTY_STATE_TIME
+            )
             trigger = next(
                 (
                     item
                     for item in rows
-                    if item["route_mode"] == "live" and not item["accepted"]
+                    if not item["accepted"]
+                    and (
+                        item["route_mode"] == "live"
+                        or (
+                            item["observed_at"] > reset_at
+                            and reset_at != EMPTY_STATE_TIME
+                        )
+                    )
                 ),
                 None,
             )
