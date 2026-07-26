@@ -704,6 +704,30 @@ must contribute its tokens to the reported total, and missing token telemetry
 remains excluded rather than estimated. This verifier changes provider-stack
 evidence quality; it does not alter PAO routing or semantic acceptance policy.
 
+### 15.4 Open-circuit recovery shadow
+
+PAO v1.4.0 adds one explicit evidence path behind a sticky circuit:
+`--routing-recovery-shadow-lwar-id`. It requires predictive auto-routing, the
+canary policy whose SHA-256 matches the open alias/class circuit, and a named
+currently eligible identity. Absence of the exact open circuit or policy match
+fails closed; ordinary `--routing-shadow` modes remain suppressed by an open
+circuit.
+
+The task draft must explicitly set `permissions.write=[]` and
+`permissions.network=false`. OA validates this fence before refreshing routing
+state or writing a receipt, ledger entry, or mailbox task. A successful route
+uses the strict `recovery_shadow` mode, and its receipt binds the current
+instance, generation, registry version, complete observation set, and exact
+open-circuit state before publication.
+
+Recorded semantic validation creates a normal replay-safe,
+current-generation routing observation. Selection filters
+`recovery_shadow` rows out before computing class/global confidence and
+promotion gates. Circuit refresh also ignores them, so accepted or rejected
+recovery panels cannot open, close, or reset a circuit. The evidence may inform
+an explicit reason-bound OA reset review, but never authorizes automatic reset,
+live traffic, or promotion.
+
 ## 16. Evolution Path
 
 Planned future steps include:

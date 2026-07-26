@@ -312,6 +312,7 @@ def select_confidence_canary(
     *,
     shadow_execution: bool = False,
     shadow_lwar_id: str | None = None,
+    recovery_shadow_lwar_id: str | None = None,
 ) -> dict[str, Any]:
     validate_routing_profile(profile)
     validate_canary_policy(policy)
@@ -326,15 +327,37 @@ def select_confidence_canary(
     if not eligible:
         raise ValueError("canary routing requires at least one eligible LWAR")
     eligible_set = set(eligible)
-    if shadow_execution and shadow_lwar_id is not None:
-        raise ValueError("choose candidate shadow or an explicit shadow LWAR, not both")
+    shadow_modes = sum(
+        (
+            bool(shadow_execution),
+            shadow_lwar_id is not None,
+            recovery_shadow_lwar_id is not None,
+        )
+    )
+    if shadow_modes > 1:
+        raise ValueError(
+            "choose one candidate, explicit, or recovery shadow mode"
+        )
     if shadow_lwar_id is not None and shadow_lwar_id not in eligible_set:
         raise ValueError(f"explicit shadow LWAR is not eligible: {shadow_lwar_id}")
+    if (
+        recovery_shadow_lwar_id is not None
+        and recovery_shadow_lwar_id not in eligible_set
+    ):
+        raise ValueError(
+            "recovery shadow LWAR is not eligible: "
+            f"{recovery_shadow_lwar_id}"
+        )
     if set(eligible_identities) != eligible_set:
         raise ValueError("canary routing requires every eligible identity binding")
     online_observations = current_generation_observations(
         online_observations, eligible_identities
     )
+    promotion_observations = [
+        item
+        for item in online_observations
+        if item["route_mode"] != "recovery_shadow"
+    ]
     incumbent, calibration_global = _global_quality_leader(profile, eligible_set)
     if incumbent is None:
         return {
@@ -359,13 +382,16 @@ def select_confidence_canary(
         candidate = None
 
     class_rows = [
-        item for item in online_observations if item["task_class"] == task_class
+        item
+        for item in promotion_observations
+        if item["task_class"] == task_class
     ]
     class_stats = _with_confidence(
         _aggregate(class_rows, eligible_set), policy["confidence_z"]
     )
     global_stats = _with_confidence(
-        _aggregate(online_observations, eligible_set), policy["confidence_z"]
+        _aggregate(promotion_observations, eligible_set),
+        policy["confidence_z"],
     )
     profiled_eligible = set(calibration_global)
     minimum = policy["min_accepted_observations"]
@@ -390,7 +416,24 @@ def select_confidence_canary(
         if shadow_lwar_id is not None
         else (candidate if shadow_execution else None)
     )
-    if (
+    if recovery_shadow_lwar_id is not None:
+        recovery_key = circuit_key(task_class, recovery_shadow_lwar_id)
+        recovery_circuit = state["circuits"].get(recovery_key)
+        if recovery_circuit is None:
+            raise ValueError(
+                f"recovery shadow requires an open circuit: {recovery_key}"
+            )
+        if recovery_circuit["policy_sha256"] != canonical_sha256(policy):
+            raise ValueError(
+                "recovery shadow policy does not match open circuit: "
+                f"{recovery_key}"
+            )
+        selected, route_mode, reason = (
+            recovery_shadow_lwar_id,
+            "recovery_shadow",
+            "open_circuit_recovery_shadow",
+        )
+    elif (
         shadow_target is not None
         and circuit_key(task_class, shadow_target) in state["circuits"]
     ):

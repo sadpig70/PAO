@@ -39,7 +39,15 @@
     "generation": {"type": "integer", "minimum": 1},
     "registry_version": {"type": "integer", "minimum": 1},
     "receipt_id": {"type": "string", "pattern": "^canary-routing-[a-f0-9]{32}$"},
-    "route_mode": {"enum": ["leader", "shadow", "live", "circuit_open"]},
+    "route_mode": {
+      "enum": [
+        "leader",
+        "shadow",
+        "recovery_shadow",
+        "live",
+        "circuit_open"
+      ]
+    },
     "accepted": {"type": "boolean"},
     "reported_tokens": {"type": "integer", "minimum": 0},
     "validation_sha256": {"type": "string", "pattern": "^[a-f0-9]{64}$"}

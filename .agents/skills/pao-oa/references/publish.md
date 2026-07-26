@@ -37,6 +37,7 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --require-capability coding --rou
 python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --task-file TASK_DRAFT.json
 python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --routing-shadow --task-file READ_ONLY_TASK_DRAFT.json
 python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --routing-shadow-lwar-id LWAR3 --task-file READ_ONLY_TASK_DRAFT.json
+python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE.json --routing-class code_review --canary-policy CANARY_POLICY.json --routing-recovery-shadow-lwar-id LWAR3 --task-file READ_ONLY_TASK_DRAFT.json
 ```
 
 ## Rules
@@ -78,6 +79,14 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE
   eligible alias, allowing balanced full-panel evidence collection even when
   that alias is not the current token candidate. It is mutually exclusive with
   `--routing-shadow` and never changes the production candidate.
+- `--routing-recovery-shadow-lwar-id` is the only shadow mode allowed to
+  execute an explicitly eligible alias behind its open alias/class circuit. It
+  requires the same policy SHA-256 that opened the circuit and explicit
+  `permissions.write=[]` plus `permissions.network=false`; unsafe drafts fail
+  before circuit refresh or receipt publication. The resulting
+  `recovery_shadow` observation is current-identity evidence but is excluded
+  from promotion confidence and drift/circuit windows. It cannot close or
+  reset the circuit. All three shadow options are mutually exclusive.
 - Canary receipts bind the exact profile, policy, verified online-observation
   set, circuit state, incumbent, candidate, actual route, and route mode before
   publication. Circuit-open audit events precede the routing decision.

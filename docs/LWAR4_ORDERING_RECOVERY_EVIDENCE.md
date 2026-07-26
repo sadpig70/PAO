@@ -61,3 +61,8 @@ Verdict:
 
 Portable evidence is stored in
 `benchmarks/lwar4-ordering-recovery-evidence-v1.json`.
+
+PAO v1.4.0 subsequently added the `recovery_shadow` routing contract described
+in `docs/ROUTING_RECOVERY_SHADOW.md`. The contract creates a safe path for a
+future current-generation PAO panel behind the open circuit. It does not
+retroactively convert this adapter-only run into routing evidence.

@@ -92,3 +92,8 @@ The subsequent adapter-only ordering recovery is documented in
 the correction path was not triggered live and the run is not current-
 generation PAO routing evidence. The LWAR4 constraint-ordering circuit
 therefore remains open.
+
+PAO v1.4.0 now provides the isolated open-circuit publication contract in
+`docs/ROUTING_RECOVERY_SHADOW.md`. This capability does not itself add an LWAR4
+observation or change the open circuit; a separately preregistered recovery
+panel is still required.
