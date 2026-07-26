@@ -32,6 +32,12 @@ python "<PAO_SKILL>/scripts/oa.py" workflow-status --workflow-id WORKFLOW_ID
   Confidence-detected window drift also opens it. Circuits never auto-close;
   `routing-circuit-reset` requires a nonempty operator reason and `PAO_OA_ID`,
   writes a reset watermark, and records an exact audit event.
+- A `recovery_shadow` validation records the same receipt, selected identity,
+  current generation, token, and semantic-decision bindings as other online
+  evidence. It remains separately scoped: selectors exclude it from automatic
+  promotion statistics, and circuit refresh excludes it from drift and trip
+  windows. Treat it as evidence for an explicit operator reset review, never as
+  an automatic reset or promotion authorization.
 - Never approve success from `exit_code=0` alone. Validate `completion_criteria`, `evidence` (commands run, tests passed/failed), `artifacts`, and actual test results.
 - Do not rewrite failed validation as success. A failed or unverifiable result goes back through recovery ([recover-maintain.md](recover-maintain.md)) or is reported honestly.
 - `workflow-status` aggregates ledger state per workflow; use it before publishing `depends_on` successors.

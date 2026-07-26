@@ -83,6 +83,21 @@ def eligible_identities():
     }
 
 
+def open_circuit_state(task_class="logic", lwar_id="LWAR2"):
+    state = empty_circuit_state()
+    state["updated_at"] = "2026-07-25T00:10:00Z"
+    state["circuits"][f"{task_class}::{lwar_id}"] = {
+        "task_class": task_class,
+        "lwar_id": lwar_id,
+        "status": "open",
+        "opened_at": "2026-07-25T00:10:00Z",
+        "reason": "candidate_rejected",
+        "trigger_observation_id": "routing-observation-" + "1" * 32,
+        "policy_sha256": canonical_sha256(canary_policy()),
+    }
+    return state
+
+
 def online_observation(
     index,
     lwar_id,
@@ -189,6 +204,92 @@ class CanaryPolicyTests(unittest.TestCase):
         self.assertEqual(decision["selected_lwar_id"], "LWAR2")
         self.assertEqual(decision["route_mode"], "shadow")
         self.assertEqual(decision["reason"], "explicit_shadow_target")
+
+    def test_recovery_shadow_selects_explicit_target_behind_open_circuit(self):
+        state = open_circuit_state()
+        decision = select_confidence_canary(
+            self.profile,
+            canary_policy(),
+            [],
+            state,
+            "logic",
+            ["LWAR1", "LWAR2"],
+            eligible_identities(),
+            recovery_shadow_lwar_id="LWAR2",
+        )
+        self.assertEqual(decision["selected_lwar_id"], "LWAR2")
+        self.assertEqual(decision["route_mode"], "recovery_shadow")
+        self.assertEqual(
+            decision["reason"], "open_circuit_recovery_shadow"
+        )
+        self.assertEqual(state, open_circuit_state())
+
+    def test_recovery_shadow_requires_open_circuit_and_exclusive_mode(self):
+        with self.assertRaisesRegex(
+            ValueError, "recovery shadow requires an open circuit"
+        ):
+            select_confidence_canary(
+                self.profile,
+                canary_policy(),
+                [],
+                empty_circuit_state(),
+                "logic",
+                ["LWAR1", "LWAR2"],
+                eligible_identities(),
+                recovery_shadow_lwar_id="LWAR2",
+            )
+        with self.assertRaisesRegex(ValueError, "choose one"):
+            select_confidence_canary(
+                self.profile,
+                canary_policy(),
+                [],
+                open_circuit_state(),
+                "logic",
+                ["LWAR1", "LWAR2"],
+                eligible_identities(),
+                shadow_execution=True,
+                recovery_shadow_lwar_id="LWAR2",
+            )
+
+    def test_recovery_shadow_requires_the_circuit_policy(self):
+        state = open_circuit_state()
+        state["circuits"]["logic::LWAR2"]["policy_sha256"] = "f" * 64
+        with self.assertRaisesRegex(ValueError, "policy does not match"):
+            select_confidence_canary(
+                self.profile,
+                canary_policy(),
+                [],
+                state,
+                "logic",
+                ["LWAR1", "LWAR2"],
+                eligible_identities(),
+                recovery_shadow_lwar_id="LWAR2",
+            )
+
+    def test_recovery_shadow_observations_cannot_promote_after_reset(self):
+        rows = []
+        for index in range(1, 11):
+            rows.append(online_observation(index, "LWAR1", route_mode="leader"))
+            rows.append(
+                online_observation(
+                    index + 20,
+                    "LWAR2",
+                    route_mode="recovery_shadow",
+                )
+            )
+        decision = select_confidence_canary(
+            self.profile,
+            canary_policy(),
+            rows,
+            empty_circuit_state(),
+            "logic",
+            ["LWAR1", "LWAR2"],
+            eligible_identities(),
+        )
+        self.assertFalse(decision["confidence"]["balanced_accepted_ready"])
+        self.assertNotIn("LWAR2", decision["class_stats"])
+        self.assertEqual(decision["selected_lwar_id"], "LWAR1")
+        self.assertEqual(decision["route_mode"], "leader")
 
     def test_balanced_ten_accepted_and_confidence_promote_candidate(self):
         rows = []
@@ -300,6 +401,26 @@ class CanaryCircuitTests(unittest.TestCase):
         )
         self.assertEqual(events[0]["reason"], "confidence_drift")
         self.assertIn("logic::LWAR2", state["circuits"])
+
+    def test_recovery_shadow_window_never_changes_circuit_state(self):
+        rows = [
+            online_observation(
+                index,
+                "LWAR2",
+                accepted=index <= 10,
+                route_mode="recovery_shadow",
+            )
+            for index in range(1, 21)
+        ]
+        initial = open_circuit_state()
+        state, events = refresh_circuits(
+            canary_policy(),
+            rows,
+            initial,
+            opened_at="2026-07-25T00:30:00Z",
+        )
+        self.assertEqual(events, [])
+        self.assertEqual(state, initial)
 
     def test_explicit_reset_creates_watermark_for_historical_rejection(self):
         row = online_observation(1, "LWAR2", accepted=False, route_mode="live")
@@ -555,6 +676,136 @@ class CanaryOAIntegrationTests(PaoTestCase):
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("permissions.write=[]", completed.stderr)
+
+    def test_recovery_shadow_requires_open_circuit(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, _, profile_path, policy_path = self.prepare(root)
+            completed, _ = self.send(
+                root,
+                "task-recovery-no-circuit",
+                profile_path,
+                policy_path,
+                "--routing-recovery-shadow-lwar-id",
+                "LWAR2",
+                expected=None,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "recovery shadow requires an open circuit",
+                completed.stderr,
+            )
+            self.assertFalse((root / "var" / "routing" / "receipts").exists())
+            self.assertEqual(list((root / "var" / "tasks").glob("*/*.json")), [])
+
+    def test_unsafe_recovery_shadow_fails_before_bus_mutation(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, _, profile_path, policy_path = self.prepare(root)
+            write_circuit_state(root, open_circuit_state())
+            state_path = root / "var" / "routing" / "canary-circuits.json"
+            before = state_path.read_bytes()
+            task_path = root / "unsafe-recovery.json"
+            task_path.write_text(
+                json.dumps(
+                    {
+                        "task_id": "task-recovery-unsafe",
+                        "goal": "Unsafe recovery shadow",
+                        "permissions": {
+                            "read": [str(root)],
+                            "write": [str(root)],
+                            "network": False,
+                        },
+                    }
+                ),
+                encoding="utf-8",
+            )
+            completed, _ = self.run_module(
+                "pao_runtime.oa_cli",
+                "send",
+                "--auto",
+                "--routing-profile",
+                str(profile_path),
+                "--routing-class",
+                "logic",
+                "--canary-policy",
+                str(policy_path),
+                "--routing-recovery-shadow-lwar-id",
+                "LWAR2",
+                "--task-file",
+                str(task_path),
+                "--root",
+                str(root),
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn(
+                "explicit permissions.write=[]",
+                completed.stderr,
+            )
+            self.assertEqual(state_path.read_bytes(), before)
+            self.assertFalse((root / "var" / "routing" / "receipts").exists())
+            self.assertEqual(list((root / "var" / "tasks").glob("*/*.json")), [])
+
+    def test_validate_records_identity_bound_recovery_without_state_change(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            _, second, profile_path, policy_path = self.prepare(root)
+            write_circuit_state(root, open_circuit_state())
+            state_path = root / "var" / "routing" / "canary-circuits.json"
+            before = state_path.read_bytes()
+            _, published = self.send(
+                root,
+                "task-recovery-observed",
+                profile_path,
+                policy_path,
+                "--routing-recovery-shadow-lwar-id",
+                "LWAR2",
+            )
+            self.assertEqual(published["lwar_id"], "LWAR2")
+            self.assertEqual(
+                published["routing_mode"], "recovery_shadow"
+            )
+            self.assertEqual(state_path.read_bytes(), before)
+            self.watch_once(root, second, expected=0)
+            self.complete_task(root, second, published["task_id"])
+            self.run_module(
+                "pao_runtime.oa_cli",
+                "collect",
+                "--lwar-id",
+                "LWAR2",
+                "--root",
+                str(root),
+                expected=0,
+            )
+            _, report = self.run_module(
+                "pao_runtime.oa_cli",
+                "validate",
+                "--task-id",
+                published["task_id"],
+                "--record",
+                "--decision",
+                "accepted",
+                "--reason",
+                "objective grader passed",
+                "--routing-reported-tokens",
+                "123",
+                "--root",
+                str(root),
+                expected=0,
+            )
+            observations = load_routing_observations(root)
+            self.assertEqual(len(observations), 1)
+            observation = observations[0]
+            self.assertEqual(observation["route_mode"], "recovery_shadow")
+            self.assertEqual(observation["lwar_id"], second["lwar_id"])
+            self.assertEqual(
+                observation["instance_id"], second["instance_id"]
+            )
+            self.assertEqual(
+                observation["generation"], second["generation"]
+            )
+            self.assertIsNotNone(report["routing_observation"])
+            self.assertEqual(state_path.read_bytes(), before)
 
     def test_validate_records_shadow_observation(self):
         with tempfile.TemporaryDirectory() as directory:

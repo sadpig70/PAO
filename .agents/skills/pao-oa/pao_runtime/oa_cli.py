@@ -89,6 +89,38 @@ def _require_int(value: Any, field: str) -> int:
         raise SystemExit(f"{field} must be an integer")
 
 
+def _require_recovery_shadow_permissions(source: dict[str, Any]) -> None:
+    permissions = source.get("permissions")
+    if (
+        not isinstance(permissions, dict)
+        or permissions.get("write") != []
+        or permissions.get("network") is not False
+    ):
+        raise SystemExit(
+            "routing recovery shadow tasks require explicit "
+            "permissions.write=[] and permissions.network=false"
+        )
+    unexpected = sorted(
+        set(permissions) - {"read", "write", "network", "max_artifact_bytes"}
+    )
+    if unexpected:
+        raise SystemExit(f"permissions has unexpected keys {unexpected}")
+    reads = permissions.get("read", [])
+    if not isinstance(reads, list) or any(
+        not isinstance(entry, str) for entry in reads
+    ):
+        raise SystemExit("permissions.read must be an array of paths")
+    max_artifact_bytes = permissions.get("max_artifact_bytes")
+    if max_artifact_bytes is not None and (
+        not isinstance(max_artifact_bytes, int)
+        or isinstance(max_artifact_bytes, bool)
+        or max_artifact_bytes <= 0
+    ):
+        raise SystemExit(
+            "permissions.max_artifact_bytes must be a positive integer"
+        )
+
+
 def _refresh_routing_circuits(
     root: Path,
     policy: dict[str, Any],
@@ -298,7 +330,10 @@ def command_send(args: argparse.Namespace) -> int:
     task_id = validate_task_id(source.get("task_id") or new_id("task"))
     predictive_requested = bool(args.routing_profile or args.routing_class)
     canary_requested = bool(
-        args.canary_policy or args.routing_shadow or args.routing_shadow_lwar_id
+        args.canary_policy
+        or args.routing_shadow
+        or args.routing_shadow_lwar_id
+        or args.routing_recovery_shadow_lwar_id
     )
     if predictive_requested and (
         not args.auto or not args.routing_profile or not args.routing_class
@@ -312,10 +347,19 @@ def command_send(args: argparse.Namespace) -> int:
         raise SystemExit(
             "--canary-policy and shadow options require predictive auto routing"
         )
-    if args.routing_shadow and args.routing_shadow_lwar_id:
-        raise SystemExit(
-            "--routing-shadow and --routing-shadow-lwar-id are mutually exclusive"
+    shadow_modes = sum(
+        (
+            bool(args.routing_shadow),
+            args.routing_shadow_lwar_id is not None,
+            args.routing_recovery_shadow_lwar_id is not None,
         )
+    )
+    if shadow_modes > 1:
+        raise SystemExit(
+            "routing shadow options are mutually exclusive"
+        )
+    if args.routing_recovery_shadow_lwar_id is not None:
+        _require_recovery_shadow_permissions(source)
     routing_profile = None
     routing_decision = None
     canary_policy = None
@@ -360,12 +404,13 @@ def command_send(args: argparse.Namespace) -> int:
                     routing_observations = current_generation_observations(
                         routing_observations, eligible_identities
                     )
-                    routing_circuit_state, _ = _refresh_routing_circuits(
-                        root,
-                        canary_policy,
-                        routing_observations,
-                        routing_circuit_state,
-                    )
+                    if args.routing_recovery_shadow_lwar_id is None:
+                        routing_circuit_state, _ = _refresh_routing_circuits(
+                            root,
+                            canary_policy,
+                            routing_observations,
+                            routing_circuit_state,
+                        )
                     routing_decision = select_confidence_canary(
                         routing_profile,
                         canary_policy,
@@ -376,6 +421,9 @@ def command_send(args: argparse.Namespace) -> int:
                         eligible_identities,
                         shadow_execution=args.routing_shadow,
                         shadow_lwar_id=args.routing_shadow_lwar_id,
+                        recovery_shadow_lwar_id=(
+                            args.routing_recovery_shadow_lwar_id
+                        ),
                     )
                 else:
                     routing_decision = select_predictive_lwar(
@@ -471,7 +519,7 @@ def command_send(args: argparse.Namespace) -> int:
     if (
         canary_policy is not None
         and routing_decision is not None
-        and routing_decision["route_mode"] == "shadow"
+        and routing_decision["route_mode"] in {"shadow", "recovery_shadow"}
         and (
             task["permissions"].get("write")
             or task["permissions"].get("network") is not False
@@ -1338,14 +1386,15 @@ def command_validate(args: argparse.Namespace) -> int:
                 },
                 f"routing-observation:{observation['observation_id']}",
             )
-            observations = load_routing_observations(root)
-            state = load_circuit_state(root)
-            state, routing_circuit_events = _refresh_routing_circuits(
-                root,
-                routing_receipt["decision"]["policy"],
-                observations,
-                state,
-            )
+            if observation["route_mode"] != "recovery_shadow":
+                observations = load_routing_observations(root)
+                state = load_circuit_state(root)
+                state, routing_circuit_events = _refresh_routing_circuits(
+                    root,
+                    routing_receipt["decision"]["policy"],
+                    observations,
+                    state,
+                )
     audit.record(root, "oa", {"event": "validation_report", "task_id": args.task_id, "verdict": verdict})
     emit(
         {
@@ -1739,6 +1788,13 @@ def build_parser() -> argparse.ArgumentParser:
     send.add_argument(
         "--routing-shadow-lwar-id",
         help="execute one eligible LWAR as an explicit read-only shadow task",
+    )
+    send.add_argument(
+        "--routing-recovery-shadow-lwar-id",
+        help=(
+            "execute one eligible LWAR behind its open circuit as an "
+            "isolated read-only recovery shadow"
+        ),
     )
     send.add_argument("--task-file", required=True)
     send.add_argument("--root", default=None)
