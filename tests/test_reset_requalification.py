@@ -63,6 +63,55 @@ class ResetRequalificationSuiteTests(unittest.TestCase):
         self.assertFalse(gate["passed"])
         self.assertTrue(all(value == 0 for value in gate["active_work"].values()))
 
+    def test_v2_reopens_circuit_on_failed_fresh_shadow(self):
+        evidence = json.loads(
+            (
+                REPO
+                / "benchmarks"
+                / "lwar4-reset-requalification-evidence-v2.json"
+            ).read_text(encoding="utf-8")
+        )
+        recovery = evidence["recovery_gate"]
+        post_reset = evidence["post_reset_gate"]
+        circuit = evidence["final_circuit_state"]
+        self.assertEqual(
+            evidence["verdict"],
+            "post_reset_requalification_failed_production_not_run",
+        )
+        self.assertTrue(recovery["passed"])
+        self.assertEqual(recovery["lwar1_accepted"], 12)
+        self.assertEqual(recovery["lwar4_accepted"], 12)
+        self.assertEqual(post_reset["executed"], 2)
+        self.assertEqual(post_reset["accepted"], 1)
+        self.assertEqual(post_reset["rejected"], 1)
+        self.assertTrue(post_reset["circuit_open"])
+        self.assertFalse(post_reset["passed"])
+        self.assertIsNone(evidence["production_canary"])
+        self.assertIsNone(evidence["fallback_probe"])
+        self.assertEqual(len(evidence["records"]), 26)
+        failure = next(
+            row for row in evidence["records"] if not row["accepted"]
+        )
+        self.assertEqual(failure["task"], "RQ02")
+        self.assertEqual(failure["receipt"]["routing_mode"], "shadow")
+        self.assertEqual(
+            failure["provider"]["metrics"]["verification_attempt_count"], 2
+        )
+        key = "constraint_ordering::LWAR4"
+        self.assertEqual(circuit["circuits"][key]["status"], "open")
+        self.assertEqual(circuit["circuits"][key]["reason"], "candidate_rejected")
+        self.assertEqual(
+            circuit["resets"][key]["reset_at"], post_reset["reset_at"]
+        )
+        self.assertEqual(evidence["closeout"]["audit_status"], "healthy")
+        self.assertEqual(evidence["closeout"]["shutdowns_consumed"], 2)
+        self.assertTrue(
+            all(
+                value == 0
+                for value in evidence["closeout"]["active_work"].values()
+            )
+        )
+
     def test_generated_constraints_have_exactly_one_solution(self):
         ordering = "FADBEC"
         descriptions = unique_constraints(ordering, 123)

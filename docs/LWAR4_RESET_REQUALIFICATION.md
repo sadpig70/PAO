@@ -69,3 +69,30 @@ The answer-key-free finite verifier now checks every constraint form generated
 by the suite. A v2 campaign must use a fully nonoverlapping prompt set, bind the
 v1 closed-negative evidence, and execute at most once. v1 tasks are never
 replayed.
+
+The sealed v2 campaign reached a stricter terminal result:
+
+- paired recovery: LWAR1 12/12 and LWAR4 12/12
+- telemetry: 24/24 complete
+- pre-reset circuit fingerprint: unchanged
+- reason-bound reset: committed and audited
+- first fresh post-reset shadow: accepted
+- second fresh post-reset shadow: rejected after two verifier-accounted calls
+- sticky circuit: reopened with `candidate_rejected`
+- production canary and fallback probe: not executed
+- audit: healthy
+- active tasks, claims, leases, and outgoing results: zero
+- shutdown: 2/2 consumed
+
+The v2 evidence SHA-256 is
+`98cb516fad24326acefc9296738038aa736c00551f492529c3f11bfb97607628`.
+Machine-readable evidence is stored in
+`benchmarks/lwar4-reset-requalification-evidence-v2.json`.
+
+## Final decision
+
+`post_reset_requalification_failed_production_not_run`
+
+LWAR4 has not earned a return to `constraint_ordering` production. The circuit
+must remain open. The 12/12 recovery panel is useful evidence but does not
+override the failed fresh promotion epoch.
