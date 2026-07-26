@@ -21,9 +21,10 @@ def normalize_paths(value: Any, repo: Path) -> Any:
         return [normalize_paths(item, repo) for item in value]
     if not isinstance(value, str):
         return value
-    prefix = str(repo.resolve()) + "\\"
-    if value.lower().startswith(prefix.lower()):
-        return value[len(prefix) :].replace("\\", "/")
+    prefix = str(repo.resolve()).replace("\\", "/").rstrip("/") + "/"
+    portable_value = value.replace("\\", "/")
+    if portable_value.lower().startswith(prefix.lower()):
+        return portable_value[len(prefix) :]
     return value
 
 
