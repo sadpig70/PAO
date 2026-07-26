@@ -31,7 +31,7 @@ Before registering or starting ADP, run the pre-flight check and stop on failure
 python "<PAO_SKILL>/scripts/pao.py" doctor --role lwar
 ```
 
-Runtime protocol v1.4.0 intentionally rejects optional-first pre-v1 records
+Runtime protocol v1.4.1 intentionally rejects optional-first pre-v1 records
 and pre-execution-fence bundles.
 Use a fresh bus for the major-version cutover, or intentionally retire the old
 bus after preserving required evidence. Never bypass a failed

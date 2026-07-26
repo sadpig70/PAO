@@ -70,7 +70,10 @@ python "<PAO_SKILL>/scripts/oa.py" send --auto --routing-profile ROUTING_PROFILE
   observations per profile-known eligible alias/class. Calibration selects the
   incumbent/candidate but does not count toward promotion. Production remains
   on the incumbent until balanced accepted support and Wilson-bound
-  non-inferiority both pass.
+  non-inferiority both pass. An operator circuit reset is also a promotion
+  epoch watermark for that exact alias/class: observations at or before
+  `reset_at` no longer count toward its promotion, so reset cannot immediately
+  reuse pre-reset evidence to return the candidate to production.
 - `--routing-shadow` is explicit experimental execution of the recorded
   candidate. The final TaskContract must have `permissions.write=[]` and
   `permissions.network=false`; otherwise publication fails. An open circuit

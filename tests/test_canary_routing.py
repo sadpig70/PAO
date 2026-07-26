@@ -9,6 +9,7 @@ from pao_runtime.canary_routing import (
     load_circuit_state,
     load_routing_observations,
     make_routing_observation,
+    promotion_epoch_observations,
     refresh_circuits,
     reset_circuit,
     select_confidence_canary,
@@ -291,6 +292,94 @@ class CanaryPolicyTests(unittest.TestCase):
         self.assertEqual(decision["selected_lwar_id"], "LWAR1")
         self.assertEqual(decision["route_mode"], "leader")
 
+    def test_reset_watermark_removes_only_pre_reset_alias_class_promotion_rows(self):
+        rows = []
+        for index in range(1, 11):
+            rows.append(online_observation(index, "LWAR1", route_mode="leader"))
+            rows.append(online_observation(index + 20, "LWAR2"))
+        state = empty_circuit_state()
+        state["updated_at"] = "2026-07-25T00:00:40Z"
+        state["resets"]["logic::LWAR2"] = {
+            "task_class": "logic",
+            "lwar_id": "LWAR2",
+            "reset_at": "2026-07-25T00:00:40Z",
+            "reason": "reviewed recovery evidence",
+            "decided_by": "oa-test",
+        }
+        filtered = promotion_epoch_observations(rows, state)
+        self.assertEqual(
+            [row["lwar_id"] for row in filtered],
+            ["LWAR1"] * 10,
+        )
+        decision = select_confidence_canary(
+            self.profile,
+            canary_policy(),
+            rows,
+            state,
+            "logic",
+            ["LWAR1", "LWAR2"],
+            eligible_identities(),
+        )
+        self.assertFalse(decision["confidence"]["balanced_accepted_ready"])
+        self.assertNotIn("LWAR2", decision["class_stats"])
+        self.assertEqual(decision["selected_lwar_id"], "LWAR1")
+        self.assertEqual(decision["route_mode"], "leader")
+
+    def test_post_reset_candidate_rows_can_requalify_without_replaying_peers(self):
+        rows = []
+        for index in range(1, 11):
+            rows.append(online_observation(index, "LWAR1", route_mode="leader"))
+            rows.append(online_observation(index + 20, "LWAR2"))
+        state = empty_circuit_state()
+        state["updated_at"] = "2026-07-25T00:00:40Z"
+        state["resets"]["logic::LWAR2"] = {
+            "task_class": "logic",
+            "lwar_id": "LWAR2",
+            "reset_at": "2026-07-25T00:00:40Z",
+            "reason": "reviewed recovery evidence",
+            "decided_by": "oa-test",
+        }
+        for index in range(41, 51):
+            rows.append(online_observation(index, "LWAR2"))
+        decision = select_confidence_canary(
+            self.profile,
+            canary_policy(),
+            rows,
+            state,
+            "logic",
+            ["LWAR1", "LWAR2"],
+            eligible_identities(),
+        )
+        self.assertTrue(decision["confidence"]["balanced_accepted_ready"])
+        self.assertEqual(decision["class_stats"]["LWAR2"]["accepted"], 10)
+        self.assertEqual(decision["selected_lwar_id"], "LWAR2")
+        self.assertEqual(decision["route_mode"], "live")
+
+    def test_reset_watermark_is_alias_and_class_scoped(self):
+        rows = [
+            online_observation(1, "LWAR1", route_mode="leader"),
+            online_observation(21, "LWAR2"),
+            online_observation(
+                22,
+                "LWAR2",
+                task_class="code_review",
+            ),
+        ]
+        state = empty_circuit_state()
+        state["updated_at"] = "2026-07-25T00:00:30Z"
+        state["resets"]["logic::LWAR2"] = {
+            "task_class": "logic",
+            "lwar_id": "LWAR2",
+            "reset_at": "2026-07-25T00:00:30Z",
+            "reason": "reviewed recovery evidence",
+            "decided_by": "oa-test",
+        }
+        filtered = promotion_epoch_observations(rows, state)
+        self.assertEqual(
+            {(row["task_class"], row["lwar_id"]) for row in filtered},
+            {("logic", "LWAR1"), ("code_review", "LWAR2")},
+        )
+
     def test_balanced_ten_accepted_and_confidence_promote_candidate(self):
         rows = []
         for index in range(1, 11):
@@ -441,6 +530,31 @@ class CanaryCircuitTests(unittest.TestCase):
         refreshed, events = refresh_circuits(canary_policy(), [row], reset)
         self.assertEqual(events, [])
         self.assertNotIn("logic::LWAR2", refreshed["circuits"])
+
+    def test_rejected_post_reset_shadow_opens_circuit_immediately(self):
+        state = empty_circuit_state()
+        state["updated_at"] = "2026-07-25T00:00:20Z"
+        state["resets"]["logic::LWAR2"] = {
+            "task_class": "logic",
+            "lwar_id": "LWAR2",
+            "reset_at": "2026-07-25T00:00:20Z",
+            "reason": "reviewed recovery evidence",
+            "decided_by": "oa-test",
+        }
+        row = online_observation(
+            21,
+            "LWAR2",
+            accepted=False,
+            route_mode="shadow",
+        )
+        refreshed, events = refresh_circuits(
+            canary_policy(),
+            [row],
+            state,
+            opened_at="2026-07-25T00:00:30Z",
+        )
+        self.assertEqual(events[0]["reason"], "candidate_rejected")
+        self.assertIn("logic::LWAR2", refreshed["circuits"])
 
 
 class CanaryObservationTests(unittest.TestCase):

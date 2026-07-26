@@ -1,0 +1,1436 @@
+{
+  "completed_at": "2026-07-26T07:04:30.172741Z",
+  "portability": {
+    "normalized": true,
+    "rule": "repository_absolute_paths_to_repository_relative_posix",
+    "source_canonical_sha256": "bfacc25476b69b644117a315effcc77b4b9bbe1084730bd4bdb997e278ce2f00",
+    "source_commit": "2868b7f4ee88096114b50158a8fcac5f2c1207ea",
+    "source_file_sha256": "ad3218847999a7dbfd68ccf4d5102eb9c3b08dc441577a76f1d7dba9d972e977"
+  },
+  "preregistration_commit": "eb7aa11ced82553c69afcfd928e84084d2e7000f",
+  "records": [
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "b73f290ff53db3f8ee97353aa726c9590c9035a8fb6e73da5c1d727044f7ab01",
+        "execution_id": "execution-b46985487e0349c08837ae118c81f8a5",
+        "invocation_epoch": 32
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ACBFED",
+          "reason": "A-C\ub294 1-2\ubc88, B-F\ub294 3-4\ubc88, E\ub294 5\ubc88\uc774\ubbc0\ub85c D\ub294 6\ubc88\uc774\ub2e4."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 15.473,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18810,
+            "output_tokens": 103,
+            "reasoning_output_tokens": 55
+          }
+        },
+        "ok": true,
+        "reported_tokens": 18968
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "32881ecaa3fea49219cca4617cae5e8f5b71cd7a25de7165e93977abd91513be"
+      },
+      "response_sha256": "63c9508e65f75145f0e0d27cb14257cdc285469ad44fad8ed91f6c7a9f0fba1f",
+      "task": "RR01",
+      "task_id": "task-reset-v1-lwar1-rr01",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "8cb2495c424c7a4728e880f02593d96c1c67d2345b62585b2563f8106c934340",
+        "execution_id": "execution-cb01c25a2c4745f799ae4a5e1a0a1dbc",
+        "invocation_epoch": 32
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ACBFED",
+          "reason": "A in position 1, A immediately before C forces C in position 2, E in position 5, B immediately before F forces BF in positions 3-4, D occupies remaining position 6"
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 26.49,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 0,
+              "write": 0
+            },
+            "input": 11084,
+            "output": 65,
+            "reasoning": 478,
+            "total": 11627
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11627
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "f7a3e6412b3e5ad3d0cf06801b15c0377297346ae6bf9431d90eaef894670fec"
+      },
+      "response_sha256": "cf7837ead2408968dc6662ae98231638f2af86b6fb5ce92c051b2c9696e69189",
+      "task": "RR01",
+      "task_id": "task-reset-v1-lwar4-rr01",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr01.json",
+        "routing_observation_sha256": "cc367add461d07476b89caad19d17908bd4bf1ad45aa1c9978c64ef3d2d3ca7b",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "cf0fc8a76d47c0b66bc7b369aff2f68942049ac19e7c34423b5525bcb8092bcb",
+        "execution_id": "execution-7d524a013c0c4f3e8ccbe279f8ed74aa",
+        "invocation_epoch": 34
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "AFDEBCG",
+          "reason": "F=2; DE and CG are consecutive; D<B<G."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 13.987,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18696,
+            "output_tokens": 176,
+            "reasoning_output_tokens": 145
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19017
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "f938f47a1961e973e8467b8502eb898ffde1ce14398fed696607fabbf7b05b5b"
+      },
+      "response_sha256": "a9e2f0c98158d7ad25875cac3728ba7725b8522523498b2fe3adf68182e7e12e",
+      "task": "RR02",
+      "task_id": "task-reset-v1-lwar1-rr02",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": false,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "1c80088c45d373b1ccbf7be6de65100c19dda1832be9a800e988a4903d916356",
+        "execution_id": "execution-b7440cca4dc54bccbe179730d7bb3932",
+        "invocation_epoch": 34
+      },
+      "grade": {
+        "reason": "deterministic_verification_failed:ordering_constraint_violation",
+        "score": 0,
+        "valid_json": false
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 74.095,
+        "error": "deterministic_verification_failed:ordering_constraint_violation",
+        "metrics": {
+          "attempts": [
+            {
+              "duration_s": 36.24,
+              "error": null,
+              "metrics": {
+                "cost_usd": 0,
+                "telemetry_complete": true,
+                "usage": {
+                  "cache": {
+                    "read": 10880,
+                    "write": 0
+                  },
+                  "input": 207,
+                  "output": 105,
+                  "reasoning": 931,
+                  "total": 12123
+                }
+              },
+              "ok": true
+            },
+            {
+              "duration_s": 37.855,
+              "error": null,
+              "metrics": {
+                "cost_usd": 0,
+                "telemetry_complete": true,
+                "usage": {
+                  "cache": {
+                    "read": 8704,
+                    "write": 0
+                  },
+                  "input": 2442,
+                  "output": 96,
+                  "reasoning": 952,
+                  "total": 12194
+                }
+              },
+              "ok": true
+            }
+          ],
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 8704,
+              "write": 0
+            },
+            "input": 2442,
+            "output": 96,
+            "reasoning": 952,
+            "total": 12194
+          },
+          "verification_attempt_count": 2
+        },
+        "ok": false,
+        "reported_tokens": 24317
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "49cd125b4d2b709aeebbf935f24537c9163f852571559143d38c34155941bb91"
+      },
+      "response_sha256": "bbc1090c36f6c185c8ee60cc6383ab5f2bd8ab5ba0cf7698b155cd9709214654",
+      "task": "RR02",
+      "task_id": "task-reset-v1-lwar4-rr02",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr02.json",
+        "routing_observation_sha256": "57079a8607d15ca152868fc66262a2224fc74eb699b27229f2a14339aadfa465",
+        "semantic_verdict": "rejected"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "c55b483bdd948ae17be624e3fccbcdb12966cce517b864b83673ad104ee59fc3",
+        "execution_id": "execution-2fc02baaed284b51a40ddea5f4acdf90",
+        "invocation_epoch": 36
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "DCABFE",
+          "reason": "F5 forces E6; CAB must occupy positions 2-4, leaving D1, so B is not adjacent to D."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 10.545,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 19023,
+            "output_tokens": 124,
+            "reasoning_output_tokens": 81
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19228
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "60341cf06aca19e374024dd24a24e5a925a82f71754bed5aa295ab41fb665161"
+      },
+      "response_sha256": "7c73d7fa35620f7ca61178827beb1a1069464f5d8c54c4e32df25caad15ab507",
+      "task": "RR03",
+      "task_id": "task-reset-v1-lwar1-rr03",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "8745b6e1929a788927ae5ab3517e3db7dd67739651d4ef8f4a2a8654fad8caf9",
+        "execution_id": "execution-b12230aa90f24290b6f4d8f244e7f90a",
+        "invocation_epoch": 36
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "DCABFE",
+          "reason": "F must be at position 5. C must be immediately before A, and A immediately before B, forming sequence CAB. This sequence can only fit in positions 2-4 (not 1-3 because B and D would be adjacent, and not 3-4-6 due to gap). E must be after F, so E is at position 6. D fills position 1. Result: D C A B F E satisfies all constraints."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 21.884,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10112,
+              "write": 0
+            },
+            "input": 1004,
+            "output": 112,
+            "reasoning": 552,
+            "total": 11780
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11780
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "119a500ffed5d8b8278a79b0c1ceffe5e2d368b51b0f4c3730d093b4593d8f3e"
+      },
+      "response_sha256": "b16d400a8a14f8c1ca93db911d5173996cc41d2a9733b102c0d5b8c8a4436e39",
+      "task": "RR03",
+      "task_id": "task-reset-v1-lwar4-rr03",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr03.json",
+        "routing_observation_sha256": "06ef185b6adbf9658b02129ae3178cab66306518c59723422c0f8a16472c3b55",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "307b89252958e7a14c7a0b4c7322b5539d684716a0588deb337efc66e3874c6b",
+        "execution_id": "execution-1d89ea2a4a67439697d9a52d258ebb49",
+        "invocation_epoch": 38
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ACBDEGF",
+          "reason": "ACB is forced; D, E, G follow in order; F is seventh."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 14.149,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18701,
+            "output_tokens": 179,
+            "reasoning_output_tokens": 144
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19024
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "aae0d24ace6e65efe7c8a338c61837cdd8fb1affd31eedc378bf15ea08dd88fa"
+      },
+      "response_sha256": "60d612516065d2f3d713e114c63dfa63ce4a3e2880950524fb5d24398a913617",
+      "task": "RR04",
+      "task_id": "task-reset-v1-lwar1-rr04",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "04e771f0cfc755b2a2704be6a8f0002b7256f7b7352bc4f06b28f0f55a00447a",
+        "execution_id": "execution-7db3fc0d9b97431b8243ba58e3970a9c",
+        "invocation_epoch": 38
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ACBDEGF",
+          "reason": "From A immediately before C and C immediately before B, we get ACB in positions 1-3. F at position 7 forces G to position 6. From C before D, D before E, and E before G, D and E occupy positions 4-5 respectively, giving ACBDEGF which satisfies all constraints."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 24.332,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 212,
+            "output": 88,
+            "reasoning": 617,
+            "total": 11797
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11797
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "5fa7ff9b9a286d4578d2a88fe18b9e84e5fb5ec8a0de226f2796bb62c121c1f2"
+      },
+      "response_sha256": "9c1addf9e406e8195c742367091bf3fe30eb71ebee183e565c34329b16199989",
+      "task": "RR04",
+      "task_id": "task-reset-v1-lwar4-rr04",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr04.json",
+        "routing_observation_sha256": "a660682508d673a93c2030bfca4da18473e399aa5c5b7298bb36e2bb4645df50",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "53c7afe2ebcab317b851c535bca648cec067ec37f5240e3154cd55b505cc0e26",
+        "execution_id": "execution-384048aed50d4fb9b09f4d46cf102bb0",
+        "invocation_epoch": 40
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "DEBAFC",
+          "reason": "B3,C6 forces F5; E cannot be adjacent to F, so E2; D cannot be adjacent to B, so D1; thus A4."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 8.562,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18701,
+            "output_tokens": 130,
+            "reasoning_output_tokens": 80
+          }
+        },
+        "ok": true,
+        "reported_tokens": 18911
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "a69ed759ccde3d3cd0bae603d7bd195f08239638338c1f9e8fce8092d7b83da2"
+      },
+      "response_sha256": "3c0a611a1dfa4a7d360930eadd8f4dcf60d09ee92027207167e4dc78cc9b8d55",
+      "task": "RR05",
+      "task_id": "task-reset-v1-lwar1-rr05",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "b4e50e1334a77975a5d0fda04e36ca42764a0e608134ce213cf6f5575a465e40",
+        "execution_id": "execution-0e67aaf3729546e38b374f47884cf4df",
+        "invocation_epoch": 40
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "DEBAFC",
+          "reason": "Place B at pos 3, C at pos 6, so F at pos 5 (immediately before C). D cannot be adjacent to B, so D at pos 1. E cannot be adjacent to F, so E at pos 2. A occupies pos 4. All constraints verified."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 22.232,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10112,
+              "write": 0
+            },
+            "input": 1008,
+            "output": 79,
+            "reasoning": 583,
+            "total": 11782
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11782
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "554b13f0ae84e4b8c0427ef0a42daf517bf9df7b7397546a282c633a4fe7441f"
+      },
+      "response_sha256": "2be77b0d0a5fec1b59229c020b08f320ff6e94b49aeacac607c964591719b770",
+      "task": "RR05",
+      "task_id": "task-reset-v1-lwar4-rr05",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr05.json",
+        "routing_observation_sha256": "c7afeb0d0d4464ecd3db20b7b94f3332c5817d36e49bcf14c509a9e3249da8f6",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "7c662186a30790d24eb28f9ae3153300377e6be75e67c7cad99186e5af430495",
+        "execution_id": "execution-4a7965572aa84885ba8f607829a32ece",
+        "invocation_epoch": 42
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "GEADFCB",
+          "reason": "G1 forces E2 and A3; B7. D before nonadjacent C in slots 4\u20136 forces D4, F5, C6."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 8.703,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 12032,
+            "input_tokens": 18705,
+            "output_tokens": 103,
+            "reasoning_output_tokens": 53
+          }
+        },
+        "ok": true,
+        "reported_tokens": 18861
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "8de394d6d82e96d045e1f4769b4c570f9c8edde84960b48470c522c2f1515aa6"
+      },
+      "response_sha256": "0fc6bb91e3a29e06d435cc325e7cd35c22cd1e796c1625431df21aec8e0c1775",
+      "task": "RR06",
+      "task_id": "task-reset-v1-lwar1-rr06",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": false,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "27b14f530578e29c80782fe455db5746f7f7cb9ef0334bffd5739aeae5f3f9cd",
+        "execution_id": "execution-af41f5d8dbcf495ea487ba0b669672b5",
+        "invocation_epoch": 42
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "GEAFDCB",
+          "reason": "G at position 1 (constraint 2), GE consecutive (constraint 6), EA consecutive (constraint 5), B at position 7 (constraint 3), D before C (constraint 1), C not adjacent to D (constraint 4). Positions 4,5,6 must contain F,D,C with D before C and non-adjacent, yielding F-D-C pattern."
+        },
+        "reason": "objective_mismatch",
+        "score": 0,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 22.615,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 216,
+            "output": 97,
+            "reasoning": 488,
+            "total": 11681
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11681
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "33f5f8be0bcb0d955c7ded9cfc3fd04194e18fc29b2992baeb9f6f33a86c7831"
+      },
+      "response_sha256": "961c4b9787c58e42b0bdcc8358baf946b87be38c7e925f0f33d68da176110f6f",
+      "task": "RR06",
+      "task_id": "task-reset-v1-lwar4-rr06",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr06.json",
+        "routing_observation_sha256": "75a5ffc7d623c20a3e57eaf41b6d7f5df2636196fa5d7e587ad47390205e7c9f",
+        "semantic_verdict": "rejected"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "197a886dfd57815013a59515d5c5bc7296076e9e8bb1468d026869ea04ef6f21",
+        "execution_id": "execution-f1deb60db2d140b6b06747a44996db26",
+        "invocation_epoch": 44
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "DCFEAB",
+          "reason": "D<C<F<E<A\uc774\uba70 CF\ub294 \uc5f0\uc18d\uc774\ub2e4. B\ub294 D\u00b7E\uc640 \uc778\uc811\ud560 \uc218 \uc5c6\uc5b4 A \ub4a4\ub9cc \uac00\ub2a5\ud558\ub2e4."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 15.583,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18702,
+            "output_tokens": 254,
+            "reasoning_output_tokens": 209
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19165
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "2e5031ad6669ff58bf1a2e7261dc774dd05612036488df1196583f77e7ff4b74"
+      },
+      "response_sha256": "c052e676d5567062c88b1d99d836fc915ee66247b1b1e96181eb4c5a64b526cb",
+      "task": "RR07",
+      "task_id": "task-reset-v1-lwar1-rr07",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "184c7f699c9b441a594450a7d722e945fa7697dd5662c453664b1e4503e0cc03",
+        "execution_id": "execution-fd5a6c1ee87740d9bc3044b4025ca6ce",
+        "invocation_epoch": 44
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "DCFEAB",
+          "reason": "C immediately before F gives CF; D before C gives DCF; F before E gives DCFE; E before A gives DCFEA; B not adjacent to E requires B not at position 5, so B at position 6 gives DCFEAB"
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 54.674,
+        "error": null,
+        "metrics": {
+          "attempts": [
+            {
+              "duration_s": 24.602,
+              "error": null,
+              "metrics": {
+                "cost_usd": 0,
+                "telemetry_complete": true,
+                "usage": {
+                  "cache": {
+                    "read": 10880,
+                    "write": 0
+                  },
+                  "input": 213,
+                  "output": 80,
+                  "reasoning": 490,
+                  "total": 11663
+                }
+              },
+              "ok": true
+            },
+            {
+              "duration_s": 30.072,
+              "error": null,
+              "metrics": {
+                "cost_usd": 0,
+                "telemetry_complete": true,
+                "usage": {
+                  "cache": {
+                    "read": 10880,
+                    "write": 0
+                  },
+                  "input": 271,
+                  "output": 71,
+                  "reasoning": 740,
+                  "total": 11962
+                }
+              },
+              "ok": true
+            }
+          ],
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 271,
+            "output": 71,
+            "reasoning": 740,
+            "total": 11962
+          },
+          "verification_attempt_count": 2
+        },
+        "ok": true,
+        "reported_tokens": 23625
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "2c8bd19c1bfdc16c4d501f38cf111c1d0df7f5b3dcaf8506ddfaf0a261e37aa9"
+      },
+      "response_sha256": "f157da3d7ee64ff7ffa8b969cf8264c3267aa82a528387e8b2d2d7ff49bb2763",
+      "task": "RR07",
+      "task_id": "task-reset-v1-lwar4-rr07",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr07.json",
+        "routing_observation_sha256": "ae5b4aedf308eaa898afe03213ee9f360979987b9b9a2fe30a6b41c540e815f2",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "ce4a5ddeaa06103073d3cd0ff9068516b0e182949a5c3a0dc5a463b9f0741f59",
+        "execution_id": "execution-2a639a94cf6e48aab2e552c863a4877b",
+        "invocation_epoch": 46
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "EFCBDGA",
+          "reason": "C=3; C<D; E<F; B immediately precedes D; B<G<A."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 7.468,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 19025,
+            "output_tokens": 86,
+            "reasoning_output_tokens": 49
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19160
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "64cb11075855383160c6d2b596dfbe9b7653fab7f19a5ebbc9d692bfe67ca7ca"
+      },
+      "response_sha256": "d572474a228e685e102256e64527288fe582958e31a067935679e5e105e48bc1",
+      "task": "RR08",
+      "task_id": "task-reset-v1-lwar1-rr08",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": false,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "84f8e945b8ad0d42491a59c71644a43607477bcedbfe9da397d9538743ec80cd",
+        "execution_id": "execution-88da398a6f2244f59b73d4eb34008d57",
+        "invocation_epoch": 46
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "BDCEFGA",
+          "reason": "B immediately before D places BD at positions 1-2; C at position 3; E before F places E-F at positions 4-5; remaining letters G and A with G before A go at positions 6-7"
+        },
+        "reason": "objective_mismatch",
+        "score": 0,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 32.492,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 211,
+            "output": 61,
+            "reasoning": 773,
+            "total": 11925
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11925
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "d5e68cfbe618a0a24e4d710f9fd0ca01366599955fb8b0441b229a08a1f3a41c"
+      },
+      "response_sha256": "7ddd9ea5aeac72898788e08440c404102ad66c16a01ced73ec70f466cb16de4d",
+      "task": "RR08",
+      "task_id": "task-reset-v1-lwar4-rr08",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr08.json",
+        "routing_observation_sha256": "479066cd3ee02e4b5dcb8905d23284e01b197b5ac1d966da35f1ff891a248f02",
+        "semantic_verdict": "rejected"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "881b73317d5f0b2d534a72940201393e4eb918083c9c606cb486eb97029273e4",
+        "execution_id": "execution-fea933ef42f44afb8197700f0c7a9ae2",
+        "invocation_epoch": 48
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "CBDFEA",
+          "reason": "C=1, E=5, so A=6; D cannot be 4 and B precedes D, forcing B=2, D=3, F=4."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 7.19,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 19023,
+            "output_tokens": 114,
+            "reasoning_output_tokens": 61
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19198
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "6e18f2040d133da12dc43fc04c83fcc8502fdd978d44ed9236352fab392f8f81"
+      },
+      "response_sha256": "4086b235a81296890ae07a40af29e264a0e15f48c1fcb8f017a5a2b35a8041f1",
+      "task": "RR09",
+      "task_id": "task-reset-v1-lwar1-rr09",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": false,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "beebd8bbb8f2069c49f0ef4f31b7232a3b7ac968e840bccc5afa58c6cc2ced18",
+        "execution_id": "execution-b853c305acf4434e92a6b764351e4d06",
+        "invocation_epoch": 48
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "CBDFAE",
+          "reason": "C at pos1, E at pos5 by constraints 2 and 5. E before A means A at pos6. B before D and D not adjacent to E (pos5) means D cannot be pos4, so D must be pos2 or 3. If D pos2, B would need pos1 but C occupies it. Therefore D pos3, B pos2, leaving F pos4. Final: CBDFAE satisfies all constraints."
+        },
+        "reason": "objective_mismatch",
+        "score": 0,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 25.226,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 209,
+            "output": 110,
+            "reasoning": 562,
+            "total": 11761
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11761
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "7b62988cd9be7a343bd83f326771841f492d80dd0546b89b00b23f7fa2f554d4"
+      },
+      "response_sha256": "1be541daf270d4985203482affbe307cb88897f304ee747c7a0d7bd2d291bf5a",
+      "task": "RR09",
+      "task_id": "task-reset-v1-lwar4-rr09",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr09.json",
+        "routing_observation_sha256": "118d32caaa698a0e5d57574ba7b3f1d3872be5d5e2618c81a9c55dd9d1707b49",
+        "semantic_verdict": "rejected"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "757c13fae8bfb3b6a6cdfb4ac646589c9f0291092b1ee21e53676572b7b641d7",
+        "execution_id": "execution-c39d7ca409c24b589788069d161a5c0e",
+        "invocation_epoch": 50
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ECGDFAB",
+          "reason": "G3,D4,F5,B7; E must be 1, C must be 2, leaving A6."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 8.562,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18829,
+            "output_tokens": 121,
+            "reasoning_output_tokens": 79
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19029
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "d85df2ca3597c54bdc5feaa3b1bf82a5301c9048de70e1042c3499f11e649d85"
+      },
+      "response_sha256": "540f5ee51225b533f704dbafa8e32bfb34b8282abbbd3e6d7199504278cf9f1f",
+      "task": "RR10",
+      "task_id": "task-reset-v1-lwar1-rr10",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "9b0a030740695f9e70330350a3f7385e95fd7aefeed1c4e6f008cbffb0da347c",
+        "execution_id": "execution-d4e6d4b63c454a77bd85e17bd66fd15e",
+        "invocation_epoch": 50
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ECGDFAB",
+          "reason": "G is at position 3 (given). Since G is immediately before D and D is immediately before F, we have G-D-F at positions 3-4-5. B is at position 7 (given). E must be before F and not adjacent to G (position 3), so E must be at position 1. C must not be adjacent to F (position 5), so C cannot be at position 6, placing C at position 2. This leaves A at position 6. All constraints satisfied: G(3)\u2192D(4)\u2192F(5), B(7), E(1)<F(5), C(2) not adjacent to F(5), E(1) not adjacent to G(3)."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 25.118,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 223,
+            "output": 175,
+            "reasoning": 517,
+            "total": 11795
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11795
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "8bc66b058987aa9efbfd24522ddf384be7cf466c932d31bdf4ccde20ee6e509e"
+      },
+      "response_sha256": "e2c6744130864d73112f594e45163b77203c4647ed49c6fe6a59e2e042b03c05",
+      "task": "RR10",
+      "task_id": "task-reset-v1-lwar4-rr10",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr10.json",
+        "routing_observation_sha256": "ce35e085d9f9f85e0c525293e657ea6a0819c75df9d7ef3ce297ea7d9aa9e0d9",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "9c0dc311c28a8d0660f5a6ddc88551f6b51e5dc1fab3db2770c5904189fa5bdd",
+        "execution_id": "execution-8598579cd64742c6a3a1bbef52049e9a",
+        "invocation_epoch": 52
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "CEBDFA",
+          "reason": "F=5 and D=4. C<E<F and B<F fill positions 1-3; nonadjacent B,C forces C,E,B. A=6."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 9.215,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 18176,
+            "input_tokens": 18702,
+            "output_tokens": 157,
+            "reasoning_output_tokens": 106
+          }
+        },
+        "ok": true,
+        "reported_tokens": 18965
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "7a7c9a9c888d28260c4557047b1fbe32c296315ea86b0d7e9f35f8d15fbfb50a"
+      },
+      "response_sha256": "514270762be90793717e054e005c51f39d8f2a3b6ff72f8d2d58a851b390536f",
+      "task": "RR11",
+      "task_id": "task-reset-v1-lwar1-rr11",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "d6fe41bfb51301b509184c30473fa07240c44c6a271af0722468573a3d886101",
+        "execution_id": "execution-7844bc412a8c4931a6858bb7bec890ce",
+        "invocation_epoch": 52
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "CEBDFA",
+          "reason": "F is fixed at position 5, D immediately before F at position 4. C before E before F requires C,E in positions 1-3. B before F (not 4,5,6) also in 1-3, leaving A at 6. Of 6 permutations for positions 1-3, only CEBDFA satisfies C before E and B nonadjacent to C."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 27.876,
+        "error": null,
+        "metrics": {
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 213,
+            "output": 101,
+            "reasoning": 703,
+            "total": 11897
+          }
+        },
+        "ok": true,
+        "reported_tokens": 11897
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "2f0ce7a91e7d7f5faad7c169f2297d6c74fed211702e6f7c65cfdef6a9253ec9"
+      },
+      "response_sha256": "3518c89ffed05084f59d4c4dcdd2788cc0b10472fd09017dae73e93f54e396cf",
+      "task": "RR11",
+      "task_id": "task-reset-v1-lwar4-rr11",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr11.json",
+        "routing_observation_sha256": "3a5217892d58edd0d1cdc62e9fa296d611bf2cf0dea6795cc05ad498d4ac09e0",
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR1",
+      "execution": {
+        "claim_token_sha256": "59d62adc9a003aa5a24cc7c914071fca9c1ac3b9c251990a30d6a96133bfe1a0",
+        "execution_id": "execution-0538cb3353984ae995a9af4ec8d5c8a6",
+        "invocation_epoch": 54
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ACBGFED",
+          "reason": "AC\uc640 GF, FE\ub97c \uc5f0\uc18d \ubc30\uce58\ud558\uace0 C<B<E \ubc0f F<D\ub97c \ub9cc\uc871\ud558\ub294 \uc720\uc77c\ud55c \uc21c\uc11c"
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "codex",
+        "duration_s": 20.836,
+        "error": null,
+        "metrics": {
+          "telemetry_complete": true,
+          "usage": {
+            "cache_write_input_tokens": 0,
+            "cached_input_tokens": 0,
+            "input_tokens": 18700,
+            "output_tokens": 319,
+            "reasoning_output_tokens": 278
+          }
+        },
+        "ok": true,
+        "reported_tokens": 19297
+      },
+      "receipt": {
+        "routing_mode": "shadow",
+        "routing_reason": "explicit_shadow_target",
+        "routing_receipt_sha256": "44d491303335819bcaee3bf774c502a767a8f471dd4a516353cd79931fd4305b"
+      },
+      "response_sha256": "44b65967fce2131c520769619543609e8499868c13bd1cc4277f9f6c2b3478b9",
+      "task": "RR12",
+      "task_id": "task-reset-v1-lwar1-rr12",
+      "validation": {
+        "routing_observation": null,
+        "routing_observation_sha256": null,
+        "semantic_verdict": "accepted"
+      }
+    },
+    {
+      "accepted": true,
+      "alias": "LWAR4",
+      "execution": {
+        "claim_token_sha256": "bdb751b6856e0b50c31e5e36e11ac8c248c7f1bad17a943b700b4f4188177115",
+        "execution_id": "execution-714d3299bebf47c1b72228c869d5625a",
+        "invocation_epoch": 54
+      },
+      "grade": {
+        "alphabet_valid": true,
+        "parsed": {
+          "answer": "ACBGFED",
+          "reason": "A immediately before C \u2192 AC. C before B \u2192 ACB. G immediately before F, F immediately before E \u2192 GFE. F before D \u2192 G...FED. Combining: ACB must come before GFED since C before B, and B before E (and E is part of GFE). Final: ACBGFED. Check: A\u2713C (A imm before C), F\u2713D (F before D), B\u2713E (B before E), C\u2713B (C before B), G\u2713F (G imm before F), F\u2713E (F imm before E)."
+        },
+        "reason": "exact_match",
+        "score": 1,
+        "valid_json": true
+      },
+      "phase": "recovery_pair",
+      "provider": {
+        "adapter": "opencode",
+        "duration_s": 63.986,
+        "error": null,
+        "metrics": {
+          "attempts": [
+            {
+              "duration_s": 32.162,
+              "error": null,
+              "metrics": {
+                "cost_usd": 0,
+                "telemetry_complete": true,
+                "usage": {
+                  "cache": {
+                    "read": 10880,
+                    "write": 0
+                  },
+                  "input": 211,
+                  "output": 63,
+                  "reasoning": 790,
+                  "total": 11944
+                }
+              },
+              "ok": true
+            },
+            {
+              "duration_s": 31.824,
+              "error": null,
+              "metrics": {
+                "cost_usd": 0,
+                "telemetry_complete": true,
+                "usage": {
+                  "cache": {
+                    "read": 10880,
+                    "write": 0
+                  },
+                  "input": 298,
+                  "output": 147,
+                  "reasoning": 744,
+                  "total": 12069
+                }
+              },
+              "ok": true
+            }
+          ],
+          "cost_usd": 0,
+          "telemetry_complete": true,
+          "usage": {
+            "cache": {
+              "read": 10880,
+              "write": 0
+            },
+            "input": 298,
+            "output": 147,
+            "reasoning": 744,
+            "total": 12069
+          },
+          "verification_attempt_count": 2
+        },
+        "ok": true,
+        "reported_tokens": 24013
+      },
+      "receipt": {
+        "routing_mode": "recovery_shadow",
+        "routing_reason": "open_circuit_recovery_shadow",
+        "routing_receipt_sha256": "6903d8a009de40ee790e5ecd24748b60201992433f11c90787ce508ca7ab6bc6"
+      },
+      "response_sha256": "f255238d4410554d3a2ae2930fd0de0414b0f55d2868876032d8848bd4cbe06c",
+      "task": "RR12",
+      "task_id": "task-reset-v1-lwar4-rr12",
+      "validation": {
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr12.json",
+        "routing_observation_sha256": "cd23cf03010b22591c603399ce3b1c87d61304179b4e5c8b354e7c3fc38482d1",
+        "semantic_verdict": "accepted"
+      }
+    }
+  ],
+  "recovery_gate": {
+    "active_work": {
+      "claimed": 0,
+      "incoming": 0,
+      "leases": 0,
+      "outgoing": 0
+    },
+    "audit_healthy": true,
+    "circuit_unchanged": true,
+    "lwar1_accepted": 12,
+    "lwar4_accepted": 8,
+    "passed": false,
+    "telemetry_complete": true
+  },
+  "schema_version": "pao.reset-requalification-evidence.v1",
+  "shutdowns": [
+    {
+      "command": "shutdown",
+      "event": "control",
+      "identity_file": "_workspace/pao-lwar4-remediation-blind-01/var/identities/lwar-instance-fdd163957510459cad731c472f30fda0.json",
+      "invocation_epoch": 56,
+      "invocation_id": "invocation-648622c1027c4dc2892cd2156de57127",
+      "message": {
+        "command": "shutdown",
+        "control_id": "control-f6f724926114435b88299ebd84957ff6",
+        "created_at": "2026-07-26T07:04:28.392202Z",
+        "generation": 1,
+        "instance_id": "lwar-instance-fdd163957510459cad731c472f30fda0",
+        "lwar_id": "LWAR1",
+        "reason": null,
+        "registry_version": 4,
+        "schema_version": "pao.control.v1",
+        "task_id": null
+      }
+    },
+    {
+      "command": "shutdown",
+      "event": "control",
+      "identity_file": "_workspace/pao-lwar4-remediation-blind-01/var/identities/lwar-instance-4041727b336a419db0895a0c73f1282b.json",
+      "invocation_epoch": 56,
+      "invocation_id": "invocation-c0cf7ae6c74143f8818ad11d96935a92",
+      "message": {
+        "command": "shutdown",
+        "control_id": "control-651df00b0fef48cea7584ab394c666ce",
+        "created_at": "2026-07-26T07:04:29.767025Z",
+        "generation": 1,
+        "instance_id": "lwar-instance-4041727b336a419db0895a0c73f1282b",
+        "lwar_id": "LWAR4",
+        "reason": null,
+        "registry_version": 4,
+        "schema_version": "pao.control.v1",
+        "task_id": null
+      }
+    }
+  ],
+  "suite_sha256": "288c49a955e1c93525bbc92405779b9af93af536236010304434bc1d9a7f10fb",
+  "verdict": "recovery_gate_failed_circuit_preserved_open"
+}

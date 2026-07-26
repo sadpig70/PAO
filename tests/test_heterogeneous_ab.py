@@ -62,6 +62,24 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
             ["ordering_constraint_violation"],
         )
 
+    def test_finite_verifier_checks_all_ordering_constraint_forms(self):
+        prompt = (
+            "Arrange A-F using every letter exactly once. "
+            "C is in position 1; B is before D; E is immediately before A; "
+            "D is not adjacent to F."
+        )
+        self.assertEqual(
+            verify_finite_json_answer(prompt, '{"answer":"CBDEAF"}'),
+            [],
+        )
+        for answer in ("BCDEAF", "CDBEAF", "CBDAEF", "CBDFEA"):
+            self.assertEqual(
+                verify_finite_json_answer(
+                    prompt, json.dumps({"answer": answer})
+                ),
+                ["ordering_constraint_violation"],
+            )
+
     def test_internal_verification_attempts_preserve_total_tokens(self):
         first = {
             "adapter": "opencode",
@@ -94,6 +112,12 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
         self.assertIn("^[A-G]{7}$", feedback)
         self.assertIn("no whitespace", feedback)
         self.assertNotIn("GCADEBF", feedback)
+        constraint_feedback = build_finite_correction_feedback(
+            prompt, ["ordering_constraint_violation"]
+        )
+        self.assertIn("position", constraint_feedback)
+        self.assertIn("not-adjacent", constraint_feedback)
+        self.assertNotIn("GCADEBF", constraint_feedback)
 
     def test_opencode_correction_repairs_internal_ordering_whitespace(self):
         prompt = (

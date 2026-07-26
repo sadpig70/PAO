@@ -111,7 +111,7 @@ OPENCODE_VERIFICATION_PREAMBLE = (
     "when the problem has a finite search space. Revise the answer if any check "
     "fails. Preserve the requested JSON schema and output no prose.\n\n"
 )
-OPENCODE_FINITE_VERIFIER_VERSION = "finite-json-v1"
+OPENCODE_FINITE_VERIFIER_VERSION = "finite-json-v2"
 
 
 def parse_stdout_json(completed: subprocess.CompletedProcess[str]) -> dict[str, Any]:
@@ -429,10 +429,7 @@ def verify_finite_json_answer(prompt: str, answer: str) -> list[str]:
             failures.append("selection_not_global_optimum")
         return sorted(set(failures))
     ordering = re.search(r"Arrange A-([A-Z])", prompt)
-    constraints = re.findall(
-        r"([A-Z]) is immediately before ([A-Z])", prompt
-    )
-    if ordering and constraints:
+    if ordering:
         last = ord(ordering.group(1))
         expected_letters = [
             chr(code) for code in range(ord("A"), last + 1)
@@ -443,13 +440,36 @@ def verify_finite_json_answer(prompt: str, answer: str) -> list[str]:
             or sorted(answer_value) != expected_letters
         ):
             return ["invalid_ordering_alphabet"]
-        return sorted(
-            {
-                "ordering_constraint_violation"
-                for left, right in constraints
-                if answer_value.find(right) != answer_value.find(left) + 1
-            }
+        positions = {
+            letter: answer_value.index(letter) for letter in expected_letters
+        }
+        failures = []
+        immediate = re.findall(
+            r"([A-Z]) is immediately before ([A-Z])", prompt
         )
+        before = re.findall(r"([A-Z]) is before ([A-Z])", prompt)
+        assigned = re.findall(r"([A-Z]) is in position ([0-9]+)", prompt)
+        not_adjacent = re.findall(
+            r"([A-Z]) is not adjacent to ([A-Z])", prompt
+        )
+        if any(
+            positions[right] != positions[left] + 1
+            for left, right in immediate
+        ):
+            failures.append("ordering_constraint_violation")
+        if any(positions[left] >= positions[right] for left, right in before):
+            failures.append("ordering_constraint_violation")
+        if any(
+            positions[letter] != int(position) - 1
+            for letter, position in assigned
+        ):
+            failures.append("ordering_constraint_violation")
+        if any(
+            abs(positions[left] - positions[right]) == 1
+            for left, right in not_adjacent
+        ):
+            failures.append("ordering_constraint_violation")
+        return sorted(set(failures))
     return []
 
 
@@ -478,8 +498,9 @@ def build_finite_correction_feedback(
             )
     if "ordering_constraint_violation" in unique_failures:
         details.append(
-            "For ordering_constraint_violation, re-check every "
-            "immediately-before relation in the original prompt."
+            "For ordering_constraint_violation, re-check every position, "
+            "before, immediately-before, and not-adjacent relation in the "
+            "original prompt."
         )
     feedback = (
         "\n\nThe previous JSON failed these deterministic checks: "
