@@ -1,0 +1,91 @@
+{
+  "claim_scope": "preregistered_nonoverlapping_isolated_adapter_shadow_recovery",
+  "schema_version": "pao.benchmark-suite.v1",
+  "suite_id": "lwar4-ordering-recovery-suite-v1",
+  "tasks": {
+    "OR01": {
+      "expected": {
+        "answer": "EGBDAFC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using all constraints: D is immediately before A; A is immediately before F; F is immediately before C; E is immediately before G; G is immediately before B; B is immediately before D. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR02": {
+      "expected": {
+        "answer": "BFDAGEC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using all constraints: B is immediately before F; F is immediately before D; D is immediately before A; A is immediately before G; G is immediately before E; E is immediately before C. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR03": {
+      "expected": {
+        "answer": "DAFCGBE"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using all constraints: C is immediately before G; G is immediately before B; B is immediately before E; D is immediately before A; A is immediately before F; F is immediately before C. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR04": {
+      "expected": {
+        "answer": "CGEAFBD"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using all constraints: C is immediately before G; G is immediately before E; E is immediately before A; A is immediately before F; F is immediately before B; B is immediately before D. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR05": {
+      "expected": {
+        "answer": "HCEAGBDF"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-H using all constraints: C is immediately before E; E is immediately before A; A is immediately before G; G is immediately before B; B is immediately before D; D is immediately before F; H is immediately before C. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR06": {
+      "expected": {
+        "answer": "BDFHACEG"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-H using all constraints: A is immediately before C; C is immediately before E; E is immediately before G; B is immediately before D; D is immediately before F; F is immediately before H; H is immediately before A. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR07": {
+      "expected": {
+        "answer": "EAGCHFDB"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-H using all constraints: E is immediately before A; A is immediately before G; G is immediately before C; C is immediately before H; H is immediately before F; F is immediately before D; D is immediately before B. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR08": {
+      "expected": {
+        "answer": "GDBFAEHC"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-H using all constraints: F is immediately before A; A is immediately before E; E is immediately before H; H is immediately before C; G is immediately before D; D is immediately before B; B is immediately before F. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR09": {
+      "expected": {
+        "answer": "IFCADGBEH"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-I using all constraints: A is immediately before D; D is immediately before G; G is immediately before B; B is immediately before E; E is immediately before H; I is immediately before F; F is immediately before C; C is immediately before A. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR10": {
+      "expected": {
+        "answer": "BDHAFICEG"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-I using all constraints: C is immediately before E; E is immediately before G; B is immediately before D; D is immediately before H; H is immediately before A; A is immediately before F; F is immediately before I; I is immediately before C. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR11": {
+      "expected": {
+        "answer": "EIGCBFHAD"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-I using all constraints: I is immediately before G; G is immediately before C; C is immediately before B; B is immediately before F; F is immediately before H; H is immediately before A; A is immediately before D; E is immediately before I. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "OR12": {
+      "expected": {
+        "answer": "GACEIHDBF"
+      },
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-I using all constraints: I is immediately before H; H is immediately before D; D is immediately before B; B is immediately before F; G is immediately before A; A is immediately before C; C is immediately before E; E is immediately before I. Return {\"answer\":\"<letters in order with no spaces>\"}.",
+      "task_class": "constraint_ordering"
+    }
+  }
+}
