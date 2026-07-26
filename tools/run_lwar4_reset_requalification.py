@@ -45,9 +45,10 @@ LWAR_SCRIPT = LWAR_BUNDLE / "scripts" / "lwar.py"
 ADP_SCRIPT = LWAR_BUNDLE / "scripts" / "adp_watch.py"
 OA_SCRIPT = REPO / ".agents" / "skills" / "pao-oa" / "scripts" / "oa.py"
 OA_ID = "oa-lwar4-reset-requalification-01"
-EVIDENCE_PATH = (
+DEFAULT_EVIDENCE_PATH = (
     REPO / "benchmarks" / "lwar4-reset-requalification-evidence-v1.json"
 )
+CAMPAIGN_ID = "reset-v1"
 RUNNERS: dict[str, Callable[[str, Path], dict[str, Any]]] = {
     "LWAR1": run_codex,
     "LWAR4": run_opencode,
@@ -190,11 +191,11 @@ def activate(root: Path, identity_file: str) -> dict[str, Any]:
 
 
 def task_id(alias: str, task_name: str) -> str:
-    return f"task-reset-v1-{alias.lower()}-{task_name.lower()}"
+    return f"task-{CAMPAIGN_ID}-{alias.lower()}-{task_name.lower()}"
 
 
 def workflow_id(phase: str) -> str:
-    return f"workflow-reset-v1-{phase.replace('_', '-')}"
+    return f"workflow-{CAMPAIGN_ID}-{phase.replace('_', '-')}"
 
 
 def publish(
@@ -687,6 +688,7 @@ def verify_preregistration_commit(suite: Path, preregistration: Path) -> str:
 
 
 def main() -> int:
+    global CAMPAIGN_ID
     parser = argparse.ArgumentParser()
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--campaign-dir", type=Path, required=True)
@@ -694,18 +696,22 @@ def main() -> int:
     parser.add_argument("--preregistration", type=Path, required=True)
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--policy", type=Path, required=True)
+    parser.add_argument("--campaign-id", default=CAMPAIGN_ID)
+    parser.add_argument("--evidence", type=Path, default=DEFAULT_EVIDENCE_PATH)
     args = parser.parse_args()
 
+    CAMPAIGN_ID = args.campaign_id
     root = args.root.resolve()
     campaign_dir = args.campaign_dir.resolve()
     suite_path = args.suite.resolve()
     preregistration_path = args.preregistration.resolve()
     profile = args.profile.resolve()
     policy = args.policy.resolve()
+    evidence_path = args.evidence.resolve()
     work_dir = campaign_dir / "workspace"
     work_dir.mkdir(parents=True, exist_ok=True)
-    if EVIDENCE_PATH.exists():
-        raise SystemExit(f"evidence already exists: {EVIDENCE_PATH}")
+    if evidence_path.exists():
+        raise SystemExit(f"evidence already exists: {evidence_path}")
 
     preregistration_commit = verify_preregistration_commit(
         suite_path, preregistration_path
@@ -798,7 +804,7 @@ def main() -> int:
             "shutdowns": shutdowns,
             "verdict": "recovery_gate_failed_circuit_preserved_open",
         }
-        write_json(EVIDENCE_PATH, evidence)
+        write_json(evidence_path, evidence)
         print(json.dumps({"verdict": evidence["verdict"]}, sort_keys=True))
         return 2
 
@@ -966,11 +972,11 @@ def main() -> int:
         },
         "verdict": verdict,
     }
-    write_json(EVIDENCE_PATH, evidence)
+    write_json(evidence_path, evidence)
     print(
         json.dumps(
             {
-                "evidence": str(EVIDENCE_PATH),
+                "evidence": str(evidence_path),
                 "records": len(records),
                 "verdict": verdict,
             },

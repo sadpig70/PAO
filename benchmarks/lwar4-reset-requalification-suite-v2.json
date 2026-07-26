@@ -1,0 +1,223 @@
+{
+  "claim_scope": "preregistered_current_generation_reset_requalification_campaign",
+  "schema_version": "pao.benchmark-suite.v1",
+  "suite_id": "lwar4-reset-requalification-suite-v2",
+  "tasks": {
+    "FB01": {
+      "expected": {
+        "answer": "EBDCFA"
+      },
+      "phase": "fallback_probe",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. B is before D; C is in position 4; B is not adjacent to F; A is in position 6; E is in position 1. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "PC01": {
+      "expected": {
+        "answer": "FDAGCBE"
+      },
+      "phase": "production_canary",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. G is in position 4; B is not adjacent to D; F is before C; D is in position 2; D is immediately before A; B is not adjacent to G; B is before E. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ01": {
+      "expected": {
+        "answer": "ECAFDB"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. C is immediately before A; E is before C; D is immediately before B; C is in position 2; F is before D. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ02": {
+      "expected": {
+        "answer": "DCABGEF"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. E is in position 6; B is not adjacent to E; A is not adjacent to G; F is in position 7; C is before A; D is before C; A is not adjacent to E. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ03": {
+      "expected": {
+        "answer": "ABDCEF"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. B is in position 2; C is not adjacent to F; A is immediately before B; D is before F; D is not adjacent to F; D is before C. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ04": {
+      "expected": {
+        "answer": "GCDFEBA"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. G is before B; C is in position 2; E is in position 5; D is immediately before F; E is immediately before B. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ05": {
+      "expected": {
+        "answer": "CADEFB"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. A is immediately before D; F is in position 5; E is immediately before F; C is before D. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ06": {
+      "expected": {
+        "answer": "BAFECGD"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. A is not adjacent to E; E is before D; A is before C; B is before A; E is immediately before C; G is immediately before D. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ07": {
+      "expected": {
+        "answer": "BFECAD"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. C is immediately before A; A is before D; E is in position 3; F is immediately before E. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ08": {
+      "expected": {
+        "answer": "GABCEFD"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. A is before B; C is in position 4; B is in position 3; D is in position 7; G is in position 1; E is before F. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ09": {
+      "expected": {
+        "answer": "FAEDBC"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. E is before B; E is not adjacent to F; C is not adjacent to D; D is in position 4; D is before C; E is immediately before D. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ10": {
+      "expected": {
+        "answer": "GCEDFBA"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. C is not adjacent to F; G is in position 1; C is immediately before E; B is in position 6; D is immediately before F. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ11": {
+      "expected": {
+        "answer": "CEDBAF"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. E is in position 2; C is before F; D is immediately before B; A is in position 5. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ12": {
+      "expected": {
+        "answer": "GFDCBAE"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. E is not adjacent to G; D is immediately before C; B is before E; F is in position 2; D is before B; B is not adjacent to E. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RQ13": {
+      "expected": {
+        "answer": "BFCDEA"
+      },
+      "phase": "post_reset_shadow",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. E is before A; C is before D; B is not adjacent to D; E is in position 5; F is in position 2. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR01": {
+      "expected": {
+        "answer": "FEDBCA"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. D is before B; B is immediately before C; F is immediately before E; A is not adjacent to D; E is in position 2. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR02": {
+      "expected": {
+        "answer": "CDGEBAF"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. G is in position 3; B is in position 5; D is in position 2; F is in position 7; C is not adjacent to F; E is in position 4. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR03": {
+      "expected": {
+        "answer": "DAFEBC"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. A is in position 2; B is in position 5; D is in position 1; E is in position 4; F is before B. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR04": {
+      "expected": {
+        "answer": "BCEDAFG"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. E is in position 3; B is immediately before C; E is immediately before D; F is immediately before G; G is in position 7. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR05": {
+      "expected": {
+        "answer": "BDCFAE"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. F is before E; D is not adjacent to F; D is in position 2; B is before C; A is in position 5. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR06": {
+      "expected": {
+        "answer": "FDEACBG"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. F is in position 1; E is before B; A is before B; C is not adjacent to E; B is before G; C is in position 5; D is before E. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR07": {
+      "expected": {
+        "answer": "DFCABE"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. A is before B; C is not adjacent to D; D is before C; A is not adjacent to D; C is in position 3; E is in position 6. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR08": {
+      "expected": {
+        "answer": "CBEDGAF"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. B is before D; C is in position 1; D is before G; B is not adjacent to D; G is before A; A is before F. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR09": {
+      "expected": {
+        "answer": "ACEBDF"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. D is before F; E is immediately before B; E is before D; C is in position 2. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR10": {
+      "expected": {
+        "answer": "FAEDGCB"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. E is in position 3; G is immediately before C; D is immediately before G; C is immediately before B; E is not adjacent to F. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR11": {
+      "expected": {
+        "answer": "BCDFAE"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-F using every letter exactly once. A is in position 5; A is immediately before E; C is in position 2; C is immediately before D; B is not adjacent to D. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    },
+    "RR12": {
+      "expected": {
+        "answer": "GBACDEF"
+      },
+      "phase": "recovery_pair",
+      "prompt": "Do not use tools. Return one JSON object and no prose. Arrange A-G using every letter exactly once. D is not adjacent to G; B is not adjacent to D; C is in position 4; D is before E; E is before F; B is before A; G is in position 1. Return {\"answer\":\"<letters with no spaces>\",\"reason\":\"<short proof>\"}.",
+      "task_class": "constraint_ordering"
+    }
+  }
+}

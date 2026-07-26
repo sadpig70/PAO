@@ -25,6 +25,7 @@ from pao_runtime.predictive_routing import canonical_sha256, load_routing_profil
 from tools.run_heterogeneous_lwar_ab import (
     OPENCODE_FINITE_VERIFIER_VERSION,
     build_finite_correction_feedback,
+    verify_finite_json_answer,
 )
 
 SUITE_PATH = (
@@ -152,7 +153,11 @@ def build_task(name: str, ordering: str, phase: str, seed: int) -> dict[str, Any
     }
 
 
-def build_suite() -> dict[str, Any]:
+def build_suite(
+    *,
+    campaign_version: int = 1,
+    seed_offset: int = 0,
+) -> dict[str, Any]:
     tasks: dict[str, dict[str, Any]] = {}
     cursor = 0
     for phase, count in PHASE_COUNTS.items():
@@ -165,13 +170,13 @@ def build_suite() -> dict[str, Any]:
         for index in range(1, count + 1):
             size = 6 + (cursor % 2)
             symbols = [chr(ord("A") + offset) for offset in range(size)]
-            random.Random(8100 + cursor).shuffle(symbols)
+            random.Random(8100 + seed_offset + cursor).shuffle(symbols)
             ordering = "".join(symbols)
             tasks[f"{prefix}{index:02d}"] = build_task(
                 f"{prefix}{index:02d}",
                 ordering,
                 phase,
-                9100 + cursor,
+                9100 + seed_offset + cursor,
             )
             cursor += 1
     prompts = [task["prompt"] for task in tasks.values()]
@@ -179,7 +184,9 @@ def build_suite() -> dict[str, Any]:
         raise RuntimeError("campaign contains duplicate prompts")
     return {
         "schema_version": "pao.benchmark-suite.v1",
-        "suite_id": "lwar4-reset-requalification-suite-v1",
+        "suite_id": (
+            f"lwar4-reset-requalification-suite-v{campaign_version}"
+        ),
         "claim_scope": (
             "preregistered_current_generation_reset_requalification_campaign"
         ),
@@ -187,11 +194,13 @@ def build_suite() -> dict[str, Any]:
     }
 
 
-def prior_prompt_hashes() -> tuple[set[str], dict[str, str]]:
+def prior_prompt_hashes(
+    *, excluded_path: Path = SUITE_PATH
+) -> tuple[set[str], dict[str, str]]:
     hashes: set[str] = set()
     sources = {}
     for path in sorted((REPO / "benchmarks").glob("*suite*.json")):
-        if path == SUITE_PATH:
+        if path == excluded_path:
             continue
         value = json.loads(path.read_text(encoding="utf-8"))
         tasks = value.get("tasks")
@@ -216,6 +225,9 @@ def build_preregistration(
     root: Path,
     profile_path: Path,
     policy_path: Path,
+    campaign_version: int = 1,
+    suite_path: Path = SUITE_PATH,
+    predecessor_evidence_path: Path | None = None,
 ) -> dict[str, Any]:
     profile = load_routing_profile(profile_path)
     policy = load_canary_policy(policy_path)
@@ -226,7 +238,9 @@ def build_preregistration(
         raise RuntimeError(f"required circuit is not open: {circuit_key}")
     if circuit["policy_sha256"] != canonical_sha256(policy):
         raise RuntimeError("open circuit policy does not match campaign policy")
-    prior_hashes, prior_sources = prior_prompt_hashes()
+    prior_hashes, prior_sources = prior_prompt_hashes(
+        excluded_path=suite_path
+    )
     campaign_hashes = {
         prompt_sha256(task["prompt"]) for task in suite["tasks"].values()
     }
@@ -237,10 +251,14 @@ def build_preregistration(
         name: task["expected"] for name, task in suite["tasks"].items()
     }
     correction_source = inspect.getsource(build_finite_correction_feedback)
+    verifier_source = inspect.getsource(verify_finite_json_answer)
     adapter_contract = {
         "adapter_id": "opencode_zai",
         "base_adapter_contract_sha256": BASE_ADAPTER_CONTRACT_SHA256,
         "finite_verifier_version": OPENCODE_FINITE_VERIFIER_VERSION,
+        "finite_verifier_source_sha256": hashlib.sha256(
+            verifier_source.encode("utf-8")
+        ).hexdigest(),
         "correction_feedback_version": "finite-json-feedback-v2",
         "correction_feedback_source_sha256": hashlib.sha256(
             correction_source.encode("utf-8")
@@ -250,10 +268,16 @@ def build_preregistration(
         "timeout_telemetry_policy": "exclude_not_estimate",
     }
     circuit_path = root / "var" / "routing" / "canary-circuits.json"
-    return {
+    preregistration = {
         "schema_version": "pao.reset-requalification-preregistration.v1",
-        "preregistration_id": "lwar4-reset-requalification-v1",
-        "created_at": CAMPAIGN_CREATED_AT,
+        "preregistration_id": (
+            f"lwar4-reset-requalification-v{campaign_version}"
+        ),
+        "created_at": (
+            CAMPAIGN_CREATED_AT
+            if campaign_version == 1
+            else "2026-07-26T07:10:00Z"
+        ),
         "sealed_before_provider_execution": True,
         "max_campaign_executions": 1,
         "suite_sha256": canonical_sha256(suite),
@@ -308,6 +332,17 @@ def build_preregistration(
             "fallback_probes": PHASE_COUNTS["fallback_probe"],
         },
     }
+    if predecessor_evidence_path is not None:
+        predecessor = json.loads(
+            predecessor_evidence_path.read_text(encoding="utf-8")
+        )
+        preregistration["predecessor_evidence"] = {
+            "path": predecessor_evidence_path.name,
+            "sha256": canonical_sha256(predecessor),
+            "verdict": predecessor["verdict"],
+            "reuse_allowed": False,
+        }
+    return preregistration
 
 
 def write_json(path: Path, value: Any) -> None:
@@ -323,22 +358,53 @@ def main() -> int:
     parser.add_argument("--root", type=Path, required=True)
     parser.add_argument("--profile", type=Path, required=True)
     parser.add_argument("--policy", type=Path, required=True)
+    parser.add_argument("--campaign-version", type=int, choices=(1, 2), default=1)
     args = parser.parse_args()
-    suite = build_suite()
+    version = args.campaign_version
+    suite_path = (
+        SUITE_PATH
+        if version == 1
+        else REPO
+        / "benchmarks"
+        / "lwar4-reset-requalification-suite-v2.json"
+    )
+    preregistration_path = (
+        PREREGISTRATION_PATH
+        if version == 1
+        else REPO
+        / "benchmarks"
+        / "lwar4-reset-requalification-preregistration-v2.json"
+    )
+    predecessor = (
+        None
+        if version == 1
+        else REPO
+        / "benchmarks"
+        / "lwar4-reset-requalification-evidence-v1.json"
+    )
+    if predecessor is not None and not predecessor.is_file():
+        raise SystemExit(f"v2 requires preserved v1 evidence: {predecessor}")
+    suite = build_suite(
+        campaign_version=version,
+        seed_offset=0 if version == 1 else 1000,
+    )
     preregistration = build_preregistration(
         suite,
         root=args.root.resolve(),
         profile_path=args.profile.resolve(),
         policy_path=args.policy.resolve(),
+        campaign_version=version,
+        suite_path=suite_path,
+        predecessor_evidence_path=predecessor,
     )
-    write_json(SUITE_PATH, suite)
-    write_json(PREREGISTRATION_PATH, preregistration)
+    write_json(suite_path, suite)
+    write_json(preregistration_path, preregistration)
     print(
         json.dumps(
             {
-                "suite": str(SUITE_PATH),
+                "suite": str(suite_path),
                 "suite_sha256": canonical_sha256(suite),
-                "preregistration": str(PREREGISTRATION_PATH),
+                "preregistration": str(preregistration_path),
                 "tasks": len(suite["tasks"]),
             },
             sort_keys=True,

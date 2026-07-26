@@ -10,6 +10,9 @@
 - Add a sealed LWAR4 reset/requalification campaign with paired recovery,
   conditional reset, post-reset Wilson requalification, and one production
   canary.
+- Generalize the answer-key-free ordering verifier to positions, relative
+  order, immediate order, and non-adjacency after preserving the v1 recovery
+  gate's 8/12 closed-negative result.
 
 ## 1.0.0 — 2026-07-25
 
