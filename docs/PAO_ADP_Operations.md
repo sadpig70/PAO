@@ -171,6 +171,13 @@ this overview.
   release events or delete blocked markers.
 - `shutdown` retains a resumable slot; `retire` completes the lifecycle through
   deregistration and returns the slot.
+- When a previously active ADP is permanently stale and cannot consume
+  `control:retire`, first take one `oa status` observation and verify every
+  active mailbox channel is empty. Then use `recover --retire-stale` with the
+  exact `lwar_id`, `instance_id`, `generation`, heartbeat `last_seen`, a
+  positive stale threshold, and an operator reason. The command refuses fresh,
+  changed, starting, running, task-bearing, identity-mismatched, or work-bearing
+  state and commits the tombstone before registry removal.
 
 For execution, read the applicable role skill. No separate ADP bootstrap prompt
 is valid.

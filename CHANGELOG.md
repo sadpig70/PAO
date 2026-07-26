@@ -1,5 +1,17 @@
 # Changelog
 
+## 1.4.2 — 2026-07-26
+
+- Add explicit OA retirement for a previously active but permanently stale
+  idle identity.
+- Fence retirement with the exact identity tuple, observed heartbeat
+  `last_seen`, positive stale threshold, operator reason, non-running state,
+  and empty active mailbox channels.
+- Commit the generation tombstone before registry removal and make exact retry
+  state-stable with deterministic confirmation and retirement audit events.
+- Reject fresh, changed, starting, running, task-bearing,
+  identity-mismatched, and work-bearing retirement attempts without mutation.
+
 ## 1.4.1 — 2026-07-26
 
 - Treat an alias/class circuit reset as a promotion epoch watermark.

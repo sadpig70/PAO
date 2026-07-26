@@ -6,7 +6,7 @@ bundle it lives in (`Path(__file__).resolve().parents[1]`), so no pip install,
 no `PYTHONPATH`, and no plugin are required — the wrapper works from any working
 directory.
 
-Runtime v1.4.1 validates bundled JSON contracts at all trust boundaries. v1
+Runtime v1.4.2 validates bundled JSON contracts at all trust boundaries. v1
 requires a fresh or intentionally retired pre-v1 bus: registration stamps,
 attempt fences, claim provenance, explicit permissions, and snapshot artifacts
 are mandatory. `pao doctor` rejects detected pre-v1 protocol records. OA
@@ -33,6 +33,11 @@ work. OA can explicitly reclaim an overdue orphaned startup slot
 only through identity-fenced `recover --reap-startup`; active mailbox work
 blocks the reclaim. Accepted startup-reap audit events use deterministic keys,
 so crash replay restores missing audit steps without duplicating committed ones.
+An operator may separately retire one previously active but stale idle identity
+through `recover --retire-stale`. The command binds the exact identity tuple,
+the observed heartbeat `last_seen`, a positive stale threshold, an operator
+reason, non-running state, and empty active mailbox channels before committing
+a generation tombstone ahead of registry removal.
 Repeated active-log failures also deduplicate the degraded spool under its own
 lock. If a process stops after active-log flush but before spool deletion,
 recovery filters already-committed keys and promotes each event only once.

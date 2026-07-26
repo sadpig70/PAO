@@ -861,6 +861,68 @@ def command_collect(args: argparse.Namespace) -> int:
 def command_recover(args: argparse.Namespace) -> int:
     root = resolve_root(args.root)
     ensure_oa_writer(root)
+    if args.retire_stale:
+        if not args.lwar_id or not args.instance_id or args.generation is None:
+            raise SystemExit(
+                "--retire-stale requires --lwar-id, --instance-id, and --generation"
+            )
+        if not args.expected_last_seen or not args.reason:
+            raise SystemExit(
+                "--retire-stale requires --expected-last-seen and --reason"
+            )
+        stale_after = (
+            args.stale_after
+            if args.stale_after is not None
+            else STALE_AFTER_S_DEFAULT
+        )
+        if stale_after <= 0:
+            raise SystemExit("--stale-after must be positive")
+        service = RegistryService(root)
+        outcome = service.retire_stale(
+            args.lwar_id,
+            args.instance_id,
+            args.generation,
+            args.expected_last_seen,
+            stale_after,
+            args.reason,
+        )
+        audit_operation = (
+            f"stale-retire:{args.lwar_id}:{args.instance_id}:{args.generation}:"
+            f"{args.expected_last_seen}"
+        )
+        if outcome.get("stale_confirmed"):
+            audit.record_once(
+                root,
+                "oa",
+                {
+                    "event": "stale_identity_confirmed",
+                    "lwar_id": args.lwar_id,
+                    "instance_id": args.instance_id,
+                    "generation": args.generation,
+                    "expected_last_seen": args.expected_last_seen,
+                    "heartbeat_age_s": outcome.get("heartbeat_age_s"),
+                    "stale_after_s": stale_after,
+                    "reason": args.reason,
+                },
+                f"{audit_operation}:stale_identity_confirmed",
+            )
+        event = "stale_slot_retired" if outcome["accepted"] else "stale_slot_retire_rejected"
+        audit_payload = {
+            "event": event,
+            "lwar_id": args.lwar_id,
+            "instance_id": args.instance_id,
+            "generation": args.generation,
+            "expected_last_seen": args.expected_last_seen,
+            "reason": None if outcome["accepted"] else outcome.get("reason"),
+            "operator_reason": args.reason,
+            "active_work": outcome.get("active_work", {}),
+        }
+        if outcome["accepted"]:
+            audit.record_once(root, "oa", audit_payload, f"{audit_operation}:{event}")
+        else:
+            audit.record(root, "oa", audit_payload)
+        emit({"event": event, "lwar_id": args.lwar_id, **outcome})
+        return 0 if outcome["accepted"] else 2
     if args.reap_startup:
         if not args.lwar_id or not args.instance_id or args.generation is None:
             raise SystemExit(
@@ -907,8 +969,17 @@ def command_recover(args: argparse.Namespace) -> int:
             audit.record(root, "oa", audit_payload)
         emit({"event": event, "lwar_id": args.lwar_id, **outcome})
         return 0 if outcome["accepted"] else 2
-    if args.instance_id or args.generation is not None:
-        raise SystemExit("--instance-id and --generation are valid only with --reap-startup")
+    if (
+        args.instance_id
+        or args.generation is not None
+        or args.expected_last_seen
+        or args.stale_after is not None
+        or args.reason
+    ):
+        raise SystemExit(
+            "identity and stale-retirement arguments require "
+            "--reap-startup or --retire-stale"
+        )
     if args.delivery_timeout <= 0:
         raise SystemExit("--delivery-timeout must be positive")
     transport = FileTransport(root)
@@ -1818,14 +1889,23 @@ def build_parser() -> argparse.ArgumentParser:
 
     recover = subparsers.add_parser("recover")
     recover.add_argument("--lwar-id")
-    recover.add_argument(
+    recovery_mode = recover.add_mutually_exclusive_group()
+    recovery_mode.add_argument(
         "--reap-startup",
         action="store_true",
         help="reclaim one deadline-missed starting slot using exact identity fencing",
     )
+    recovery_mode.add_argument(
+        "--retire-stale",
+        action="store_true",
+        help="retire one exact stale idle slot using observed heartbeat fencing",
+    )
     recover.add_argument("--instance-id")
     recover.add_argument("--generation", type=int)
     recover.add_argument("--startup-deadline", type=float, default=STARTUP_DEADLINE_S_DEFAULT)
+    recover.add_argument("--expected-last-seen")
+    recover.add_argument("--stale-after", type=float)
+    recover.add_argument("--reason")
     recover.add_argument(
         "--delivery-timeout",
         type=float,

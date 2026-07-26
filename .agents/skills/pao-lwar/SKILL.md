@@ -5,7 +5,7 @@ user-invocable: true
 argument-hint: "start | info | doctor | oa-status | register [number] | response --resident | adp | status | on | drain | off | retire | unregister"
 ---
 
-# PAO-LWAR Skill v1.10 (standalone)
+# PAO-LWAR Skill v1.11 (standalone)
 
 ## Definitions
 
@@ -31,7 +31,7 @@ Before registering or starting ADP, run the pre-flight check and stop on failure
 python "<PAO_SKILL>/scripts/pao.py" doctor --role lwar
 ```
 
-Runtime protocol v1.4.1 intentionally rejects optional-first pre-v1 records
+Runtime protocol v1.4.2 intentionally rejects optional-first pre-v1 records
 and pre-execution-fence bundles.
 Use a fresh bus for the major-version cutover, or intentionally retire the old
 bus after preserving required evidence. Never bypass a failed
@@ -123,6 +123,10 @@ not a separate Python subcommand.
    are all submitted the same way. A crash or forced termination is recovered
    by lease expiry and OA `recover`; it is never inferred as success.
 6. ADP terminates on exactly the four conditions in Rule 3 and nothing else. For `retire`, stop only after `lwar.py retire` reports `lwar_retired`; `retire_waiting` means OA reconciliation is still required. For the handoff: only on an **objective** exhaustion signal (an explicit runtime context/token warning, not elapsed time or a feeling of being done), execute the procedure in [references/lifecycle.md](references/lifecycle.md). Never just stop.
+   An OA may administratively retire an exact stale idle identity through the
+   tuple-, heartbeat-observation-, age-, and empty-mailbox-fenced
+   `recover --retire-stale` contract. Once that succeeds, the identity is
+   permanently stale and must never resume or reuse its identity file.
 7. Do not modify registry, incoming, or lease files by hand; act only through the bundled CLI.
 8. Do not pollute context by restating idle stdout messages at length.
 9. On an unknown watcher event or exit code, fail closed **on the slice, not the daemon**: end only the current slice; if a task is claimed, submit a `protocol_error` terminal result for it; then run the next watch slice. Never retry the unknown event blindly, and never treat it as a reason to terminate ADP (only Rule 3's four conditions do that).
