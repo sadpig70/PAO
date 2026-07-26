@@ -233,6 +233,57 @@ class HeterogeneousABHarnessTests(unittest.TestCase):
         )
         self.assertTrue(accepted["accepted"])
 
+    def test_ordering_recovery_evidence_preserves_open_circuit_and_claim_scope(
+        self,
+    ):
+        repo = Path(__file__).parents[1]
+        registration = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-ordering-recovery-preregistration-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        evidence = json.loads(
+            (
+                repo
+                / "benchmarks"
+                / "lwar4-ordering-recovery-evidence-v1.json"
+            ).read_text(encoding="utf-8")
+        )
+        for field in (
+            "suite_sha256",
+            "answer_key_sha256",
+            "adapter_contract_sha256",
+        ):
+            self.assertEqual(evidence["contract"][field], registration[field])
+        shadow = evidence["adapter_shadow"]
+        self.assertEqual(shadow["accepted"], 12)
+        self.assertEqual(shadow["first_call_accepted"], 12)
+        self.assertEqual(shadow["corrected"], 0)
+        self.assertEqual(shadow["missing_telemetry"], 0)
+        self.assertEqual(shadow["reported_tokens"], 130102)
+        correction = evidence["correction_path"]
+        self.assertEqual(correction["live_shadow_trigger_count"], 0)
+        self.assertEqual(
+            correction["claim"],
+            "deterministic_mock_validated_live_effect_unproven",
+        )
+        circuit = evidence["production_circuit"]
+        self.assertEqual(circuit["status"], "open")
+        self.assertEqual(circuit["reset_count"], 0)
+        self.assertEqual(
+            circuit["raw_sha256_before"], circuit["raw_sha256_after"]
+        )
+        self.assertEqual(
+            evidence["claim_scope"],
+            "isolated_adapter_evidence_not_current_generation_pao_routing_evidence",
+        )
+        self.assertEqual(
+            evidence["verdict"],
+            "isolated_ordering_adapter_recovery_passed_correction_path_live_unexercised",
+        )
+
     def test_remediation_evidence_binds_preregistered_contract(self):
         repo = Path(__file__).parents[1]
         registration = json.loads(

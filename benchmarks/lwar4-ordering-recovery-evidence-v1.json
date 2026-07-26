@@ -1,0 +1,149 @@
+{
+  "schema_version": "pao.ordering-recovery-evidence.v1",
+  "completed_at": "2026-07-26T02:31:15.842005Z",
+  "preregistration_commit": "c1a5067",
+  "contract": {
+    "suite_sha256": "e6fd6e5ba9b3108167a8e71dd7636254fa88b94865db60ed950327c00a30d301",
+    "answer_key_sha256": "3fee7a7e3a370bfbeb1226f845e81c488604bfe16e28325aa5271b83508013a1",
+    "adapter_contract_sha256": "bc11ad4908f13c83a364488262e57165975cd1f05078a83abc09051ba7538dbe",
+    "base_adapter_contract_sha256": "1c788666dd70081aefcceaa3c83d868c692449cdb6ce2369ed1ec31ecd05bf41",
+    "correction_feedback_source_sha256": "0b6752b1bcd9ac532a17ecee8a3921fd8db96c4b2d8527250167108864e2963c",
+    "provider_receives_expected_answer": false,
+    "max_internal_verification_attempts": 2,
+    "execution_rule": "isolated_adapter_shadow_one_run_opencode_call_per_task",
+    "max_suite_executions": 1
+  },
+  "adapter_shadow": {
+    "execution_scope": "isolated_adapter_shadow",
+    "experiment_sha256": "94e91e3b48643536d62c4111d3ede70289195db68355c8c5677475ee140a8b7a",
+    "total": 12,
+    "accepted": 12,
+    "exact_match": 12,
+    "first_call_accepted": 12,
+    "corrected": 0,
+    "missing_telemetry": 0,
+    "reported_tokens": 130102,
+    "raw_verdict": "isolated_ordering_adapter_recovery_passed"
+  },
+  "task_results": [
+    {
+      "task": "OR01",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10952,
+      "response_sha256": "63b23fc82f71fc624e3e2ee54e61ab86500b15b533cd68f22c3a28f1fd15f878"
+    },
+    {
+      "task": "OR02",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10748,
+      "response_sha256": "7d13a81152611179a7f5a9ad7d416a2ec57ff2041a5d94cb23ffb3564442c6b8"
+    },
+    {
+      "task": "OR03",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10721,
+      "response_sha256": "2f88096ba8e0576a8c4893249a70c56e771f23c775a0b729050c2480024cddba"
+    },
+    {
+      "task": "OR04",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10800,
+      "response_sha256": "157ca8050181ec2e5788d7a51541988b2d479ad5d449a89a0f3e43cbe9d2f0c1"
+    },
+    {
+      "task": "OR05",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10723,
+      "response_sha256": "cb7286219894f7c861a88f778570ff27774db3ba2eff99a7d3d57108f4a9e5b4"
+    },
+    {
+      "task": "OR06",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10930,
+      "response_sha256": "ed147e807e226a325d5a8d41e473a25ff2289d6e06b0c9652a53514532367c4f"
+    },
+    {
+      "task": "OR07",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10833,
+      "response_sha256": "3fcdf5431604297c5f66c4d38bda4b02989d641b4cec78c1574245a4144c954b"
+    },
+    {
+      "task": "OR08",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10807,
+      "response_sha256": "e61ee8ef6ad5cf0a999ed0764e76372cab5939b9f9a02670ad964a17ef027a14"
+    },
+    {
+      "task": "OR09",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10829,
+      "response_sha256": "336368aacabe884a039b9c4c68427d0ca53e1dd411f12460f0e2bf9a8fbdc325"
+    },
+    {
+      "task": "OR10",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10802,
+      "response_sha256": "38b3715bb8b7e90190aa80e969d46e58b5f8781fa77ffd820e90005b9d9b345b"
+    },
+    {
+      "task": "OR11",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10998,
+      "response_sha256": "d95caddd4cbb3b345bf0f0dcf567538035f05008d21ba3e9003fefe03386d74b"
+    },
+    {
+      "task": "OR12",
+      "accepted": true,
+      "internal_attempts": 1,
+      "corrected": false,
+      "reported_tokens": 10959,
+      "response_sha256": "2e7ccafb2e60fe2b398380038a779b1e45499fc77cc3bc616f5a8f48fb131aa4"
+    }
+  ],
+  "correction_path": {
+    "deterministic_mock_reproduction": "invalid_ordering_alphabet_then_accepted",
+    "mock_attempts": 2,
+    "mock_total_reported_tokens": 30,
+    "live_shadow_trigger_count": 0,
+    "claim": "deterministic_mock_validated_live_effect_unproven"
+  },
+  "production_circuit": {
+    "key": "constraint_ordering::LWAR4",
+    "status": "open",
+    "reason": "candidate_rejected",
+    "trigger_observation_id": "routing-observation-8a429b2eee1a064a9746ba186c8eaf9d",
+    "reset_count": 0,
+    "raw_sha256_before": "696ff1a166f403bc51ecda266048e9f0553fde709a6526b135b50d0d2e905c15",
+    "raw_sha256_after": "696ff1a166f403bc51ecda266048e9f0553fde709a6526b135b50d0d2e905c15",
+    "mutation": "none"
+  },
+  "closeout": {
+    "audit_status": "healthy",
+    "sealed_contract_changed_after_provider_execution": false
+  },
+  "claim_scope": "isolated_adapter_evidence_not_current_generation_pao_routing_evidence",
+  "verdict": "isolated_ordering_adapter_recovery_passed_correction_path_live_unexercised"
+}

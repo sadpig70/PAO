@@ -85,8 +85,9 @@ OA (Orchestration Agent)
   explicit read-only shadow execution, and sticky drift circuit breakers
 - OA-validation-bound online routing observations and reason-bound circuit
   reset audit evidence
-- preregistered LWAR4 blind and production-canary evidence, including automatic
-  sticky fallback after a live constraint-ordering rejection
+- preregistered LWAR4 blind, production-canary, and isolated ordering-recovery
+  evidence, preserving sticky fallback and the open circuit after a live
+  constraint-ordering rejection
 - `depends_on` task gating for simple workflow DAGs
 - append-only audit log (`var/audit/events.jsonl`) and fail-closed archive and
   committed-repair-evidence pruning (`prune`)
