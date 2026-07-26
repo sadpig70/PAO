@@ -9,6 +9,7 @@ from tools.build_lwar4_reset_requalification_suite import (
 )
 from tools.run_heterogeneous_lwar_ab import verify_finite_json_answer
 from tools.run_lwar4_reset_requalification import grade
+from tools.normalize_reset_requalification_evidence import normalize_evidence
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -62,6 +63,11 @@ class ResetRequalificationSuiteTests(unittest.TestCase):
         self.assertTrue(gate["audit_healthy"])
         self.assertFalse(gate["passed"])
         self.assertTrue(all(value == 0 for value in gate["active_work"].values()))
+        self.assertTrue(evidence["portability"]["normalized"])
+        self.assertEqual(
+            evidence["portability"]["source_canonical_sha256"],
+            "bfacc25476b69b644117a315effcc77b4b9bbe1084730bd4bdb997e278ce2f00",
+        )
 
     def test_v2_reopens_circuit_on_failed_fresh_shadow(self):
         evidence = json.loads(
@@ -111,6 +117,31 @@ class ResetRequalificationSuiteTests(unittest.TestCase):
                 for value in evidence["closeout"]["active_work"].values()
             )
         )
+        self.assertTrue(evidence["portability"]["normalized"])
+        self.assertEqual(
+            evidence["portability"]["source_commit"],
+            "7663a61361f017adcdaf44c48d723a087f303275",
+        )
+
+    def test_evidence_normalizer_rewrites_only_repository_absolute_paths(self):
+        source = {
+            "inside": str(REPO / "_workspace" / "result.json"),
+            "outside": "C:\\external\\result.json",
+            "nested": [{"path": str(REPO / "benchmarks" / "evidence.json")}],
+        }
+        normalized = normalize_evidence(
+            source,
+            repo=REPO,
+            source_file_sha256="a" * 64,
+            source_canonical_sha256="b" * 64,
+            source_commit="c" * 40,
+        )
+        self.assertEqual(normalized["inside"], "_workspace/result.json")
+        self.assertEqual(
+            normalized["nested"][0]["path"], "benchmarks/evidence.json"
+        )
+        self.assertEqual(normalized["outside"], "C:\\external\\result.json")
+        self.assertTrue(normalized["portability"]["normalized"])
 
     def test_generated_constraints_have_exactly_one_solution(self):
         ordering = "FADBEC"

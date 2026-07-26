@@ -1,5 +1,12 @@
 {
   "completed_at": "2026-07-26T07:04:30.172741Z",
+  "portability": {
+    "normalized": true,
+    "rule": "repository_absolute_paths_to_repository_relative_posix",
+    "source_canonical_sha256": "bfacc25476b69b644117a315effcc77b4b9bbe1084730bd4bdb997e278ce2f00",
+    "source_commit": "2868b7f4ee88096114b50158a8fcac5f2c1207ea",
+    "source_file_sha256": "ad3218847999a7dbfd68ccf4d5102eb9c3b08dc441577a76f1d7dba9d972e977"
+  },
   "preregistration_commit": "eb7aa11ced82553c69afcfd928e84084d2e7000f",
   "records": [
     {
@@ -101,7 +108,7 @@
       "task": "RR01",
       "task_id": "task-reset-v1-lwar4-rr01",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr01.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr01.json",
         "routing_observation_sha256": "cc367add461d07476b89caad19d17908bd4bf1ad45aa1c9978c64ef3d2d3ca7b",
         "semantic_verdict": "accepted"
       }
@@ -241,7 +248,7 @@
       "task": "RR02",
       "task_id": "task-reset-v1-lwar4-rr02",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr02.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr02.json",
         "routing_observation_sha256": "57079a8607d15ca152868fc66262a2224fc74eb699b27229f2a14339aadfa465",
         "semantic_verdict": "rejected"
       }
@@ -345,7 +352,7 @@
       "task": "RR03",
       "task_id": "task-reset-v1-lwar4-rr03",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr03.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr03.json",
         "routing_observation_sha256": "06ef185b6adbf9658b02129ae3178cab66306518c59723422c0f8a16472c3b55",
         "semantic_verdict": "accepted"
       }
@@ -449,7 +456,7 @@
       "task": "RR04",
       "task_id": "task-reset-v1-lwar4-rr04",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr04.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr04.json",
         "routing_observation_sha256": "a660682508d673a93c2030bfca4da18473e399aa5c5b7298bb36e2bb4645df50",
         "semantic_verdict": "accepted"
       }
@@ -553,7 +560,7 @@
       "task": "RR05",
       "task_id": "task-reset-v1-lwar4-rr05",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr05.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr05.json",
         "routing_observation_sha256": "c7afeb0d0d4464ecd3db20b7b94f3332c5817d36e49bcf14c509a9e3249da8f6",
         "semantic_verdict": "accepted"
       }
@@ -657,7 +664,7 @@
       "task": "RR06",
       "task_id": "task-reset-v1-lwar4-rr06",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr06.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr06.json",
         "routing_observation_sha256": "75a5ffc7d623c20a3e57eaf41b6d7f5df2636196fa5d7e587ad47390205e7c9f",
         "semantic_verdict": "rejected"
       }
@@ -802,7 +809,7 @@
       "task": "RR07",
       "task_id": "task-reset-v1-lwar4-rr07",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr07.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr07.json",
         "routing_observation_sha256": "ae5b4aedf308eaa898afe03213ee9f360979987b9b9a2fe30a6b41c540e815f2",
         "semantic_verdict": "accepted"
       }
@@ -906,7 +913,7 @@
       "task": "RR08",
       "task_id": "task-reset-v1-lwar4-rr08",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr08.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr08.json",
         "routing_observation_sha256": "479066cd3ee02e4b5dcb8905d23284e01b197b5ac1d966da35f1ff891a248f02",
         "semantic_verdict": "rejected"
       }
@@ -1010,7 +1017,7 @@
       "task": "RR09",
       "task_id": "task-reset-v1-lwar4-rr09",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr09.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr09.json",
         "routing_observation_sha256": "118d32caaa698a0e5d57574ba7b3f1d3872be5d5e2618c81a9c55dd9d1707b49",
         "semantic_verdict": "rejected"
       }
@@ -1114,7 +1121,7 @@
       "task": "RR10",
       "task_id": "task-reset-v1-lwar4-rr10",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr10.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr10.json",
         "routing_observation_sha256": "ce35e085d9f9f85e0c525293e657ea6a0819c75df9d7ef3ce297ea7d9aa9e0d9",
         "semantic_verdict": "accepted"
       }
@@ -1218,7 +1225,7 @@
       "task": "RR11",
       "task_id": "task-reset-v1-lwar4-rr11",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr11.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr11.json",
         "routing_observation_sha256": "3a5217892d58edd0d1cdc62e9fa296d611bf2cf0dea6795cc05ad498d4ac09e0",
         "semantic_verdict": "accepted"
       }
@@ -1363,7 +1370,7 @@
       "task": "RR12",
       "task_id": "task-reset-v1-lwar4-rr12",
       "validation": {
-        "routing_observation": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\routing\\observations\\task-reset-v1-lwar4-rr12.json",
+        "routing_observation": "_workspace/pao-lwar4-remediation-blind-01/var/routing/observations/task-reset-v1-lwar4-rr12.json",
         "routing_observation_sha256": "cd23cf03010b22591c603399ce3b1c87d61304179b4e5c8b354e7c3fc38482d1",
         "semantic_verdict": "accepted"
       }
@@ -1388,7 +1395,7 @@
     {
       "command": "shutdown",
       "event": "control",
-      "identity_file": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\identities\\lwar-instance-fdd163957510459cad731c472f30fda0.json",
+      "identity_file": "_workspace/pao-lwar4-remediation-blind-01/var/identities/lwar-instance-fdd163957510459cad731c472f30fda0.json",
       "invocation_epoch": 56,
       "invocation_id": "invocation-648622c1027c4dc2892cd2156de57127",
       "message": {
@@ -1407,7 +1414,7 @@
     {
       "command": "shutdown",
       "event": "control",
-      "identity_file": "D:\\PAO\\_workspace\\pao-lwar4-remediation-blind-01\\var\\identities\\lwar-instance-4041727b336a419db0895a0c73f1282b.json",
+      "identity_file": "_workspace/pao-lwar4-remediation-blind-01/var/identities/lwar-instance-4041727b336a419db0895a0c73f1282b.json",
       "invocation_epoch": 56,
       "invocation_id": "invocation-c0cf7ae6c74143f8818ad11d96935a92",
       "message": {

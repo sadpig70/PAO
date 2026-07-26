@@ -84,8 +84,11 @@ The sealed v2 campaign reached a stricter terminal result:
 - active tasks, claims, leases, and outgoing results: zero
 - shutdown: 2/2 consumed
 
-The v2 evidence SHA-256 is
+The sealed execution artifact SHA-256 is
 `98cb516fad24326acefc9296738038aa736c00551f492529c3f11bfb97607628`.
+The portable tracked artifact SHA-256 is
+`e8f9432ccec5471e2359be7c8230dd9cbca54822bc0db994c07ce2afbd6e2125`;
+its `portability` block binds the sealed source hash and commit.
 Machine-readable evidence is stored in
 `benchmarks/lwar4-reset-requalification-evidence-v2.json`.
 
