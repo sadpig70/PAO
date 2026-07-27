@@ -53,3 +53,14 @@ does not authorize production promotion or a token-efficiency claim.
 The adopted profile proves a different adapter and provider family. Because the
 session reports `Unreported Model`, it does not by itself prove exact-model
 heterogeneity.
+
+## Campaign result
+
+The committed generation-2 campaign stopped at RR01. Its objective answer was
+correct, but the provider reported using a prohibited Python verification tool
+and reported token telemetry as unavailable. OA therefore recorded a semantic
+rejection, preserved the open circuit, and did not execute RR02-RR12, reset,
+post-reset shadows, production canary, or fallback.
+
+The terminal evidence is
+`benchmarks/lwar4-generation2-calibration-evidence-v1.json`.

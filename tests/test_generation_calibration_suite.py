@@ -18,6 +18,11 @@ from tools.run_heterogeneous_lwar_ab import verify_finite_json_answer
 
 
 REPO = Path(__file__).resolve().parents[1]
+EVIDENCE = (
+    REPO
+    / "benchmarks"
+    / "lwar4-generation2-calibration-evidence-v1.json"
+)
 
 
 class GenerationCalibrationSuiteTests(unittest.TestCase):
@@ -184,6 +189,38 @@ class GenerationCalibrationSuiteTests(unittest.TestCase):
                 profile_sha256=tracked["source_bus"]["profile_sha256"],
                 policy_sha256=tracked["source_bus"]["policy_sha256"],
             )
+
+    def test_terminal_evidence_preserves_the_negative_gate(self):
+        evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+        preregistration = json.loads(
+            PREREGISTRATION_TARGET.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            evidence["preregistration_sha256"],
+            canonical_sha256(preregistration),
+        )
+        self.assertEqual(
+            evidence["suite_sha256"],
+            canonical_sha256(build_generation2_suite()),
+        )
+        self.assertFalse(evidence["recovery_gate"]["passed"])
+        self.assertEqual(evidence["recovery_gate"]["executed"], 1)
+        self.assertEqual(evidence["task"]["semantic_verdict"], "rejected")
+        self.assertTrue(evidence["task"]["objective_answer_match"])
+        self.assertEqual(evidence["task"]["token_telemetry"], "unavailable")
+        self.assertEqual(
+            evidence["routing_safety"]["circuit_file_sha256_before"],
+            evidence["routing_safety"]["circuit_file_sha256_after"],
+        )
+        self.assertEqual(evidence["routing_safety"]["circuit_status"], "open")
+        self.assertFalse(
+            evidence["routing_safety"]["routing_observation_recorded"]
+        )
+        self.assertEqual(evidence["closeout"]["audit_status"], "healthy")
+        self.assertTrue(evidence["closeout"]["shutdown_consumed"])
+        self.assertTrue(
+            all(value == 0 for value in evidence["closeout"]["active_work"].values())
+        )
 
 
 if __name__ == "__main__":
