@@ -1,0 +1,96 @@
+{
+  "claim_boundary": {
+    "exact_model_heterogeneity": "unproven_model_unreported",
+    "provider_family_heterogeneity": "observed",
+    "production_qualification": "not_authorized",
+    "token_efficiency": "unproven_telemetry_unavailable"
+  },
+  "closeout": {
+    "active_work": {
+      "claimed": 0,
+      "control": 0,
+      "control_claimed": 0,
+      "incoming": 0,
+      "leases": 0,
+      "outgoing": 0
+    },
+    "audit_status": "healthy",
+    "lwar4_runtime_status": "inactive",
+    "shutdown_consumed": true
+  },
+  "completed_at": "2026-07-27T03:13:20Z",
+  "preregistration_commit": "84bb3384427eae51e4860e025115d3c2d499a892",
+  "preregistration_sha256": "28a20f6b98e70b4231b13715ad648fdd00b57e18b2cb5fe56ae86df7ec6aead3",
+  "recovery_gate": {
+    "exact_token_reports": 0,
+    "executed": 1,
+    "objective_answer_matches": 1,
+    "passed": false,
+    "required_exact_token_reports": 12,
+    "required_lwar4_accepted": 12,
+    "semantic_accepted": 0,
+    "stop_reasons": [
+      "provider_reported_prohibited_tool_use",
+      "exact_token_telemetry_unavailable"
+    ]
+  },
+  "remaining_execution": {
+    "circuit_reset": "not_executed",
+    "fallback_probe": "not_executed",
+    "production_canary": "not_executed",
+    "recovery_tasks": [
+      "RR02",
+      "RR03",
+      "RR04",
+      "RR05",
+      "RR06",
+      "RR07",
+      "RR08",
+      "RR09",
+      "RR10",
+      "RR11",
+      "RR12"
+    ],
+    "shadow_tasks": [
+      "RQ01",
+      "RQ02",
+      "RQ03",
+      "RQ04",
+      "RQ05",
+      "RQ06",
+      "RQ07",
+      "RQ08",
+      "RQ09",
+      "RQ10",
+      "RQ11",
+      "RQ12",
+      "RQ13"
+    ]
+  },
+  "routing_safety": {
+    "circuit_file_sha256_after": "061d75f6229f668f39c46013219be4d18cd2649d8225ffc56786708d2aa2bb5f",
+    "circuit_file_sha256_before": "061d75f6229f668f39c46013219be4d18cd2649d8225ffc56786708d2aa2bb5f",
+    "circuit_status": "open",
+    "routing_observation_recorded": false
+  },
+  "schema_version": "pao.generation-calibration-evidence.v1",
+  "suite_sha256": "b253145eb965d9d7fb27d98d1b1fa99c20b91104d9df481ca738e08d19c222a8",
+  "task": {
+    "claim_token_sha256": "f2c3e8f1d60ce7c8e4ba7d653195c19f3d93e4b81b9b76fa6e0343355cb0e721",
+    "generation": 2,
+    "instance_id": "lwar-instance-1d4fab84a2d04473886facaa02d90cbd",
+    "name": "RR01",
+    "objective_answer_match": true,
+    "provider_answer": "EADBCF",
+    "reported_tool_command": "python rr01_solve.py",
+    "result_sha256": "2d520c9b050cbaf24459844faf95b151d0466775351174d8383eb220353cf103",
+    "routing_mode": "recovery_shadow",
+    "routing_receipt_sha256": "b2f268adcdc13601849a0c19475b6616d70e302443abe9bd4625c1cf375df025",
+    "semantic_reason": "objective answer matched but provider reported prohibited tool use and exact token telemetry was unavailable; preregistered recovery gate failed closed",
+    "semantic_verdict": "rejected",
+    "submitted_status": "succeeded",
+    "task_id": "task-gen2-lwar4-rr01",
+    "token_telemetry": "unavailable"
+  },
+  "verdict": "generation2_recovery_failed_tool_contract_and_telemetry_gate_circuit_preserved_open"
+}

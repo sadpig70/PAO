@@ -6,6 +6,10 @@ from tools.build_lwar4_generation2_calibration_suite import (
     TARGET,
     build_generation2_suite,
 )
+from tools.build_lwar4_generation2_preregistration import (
+    TARGET as PREREGISTRATION_TARGET,
+    build_preregistration,
+)
 from tools.build_lwar4_reset_requalification_suite import (
     canonical_sha256,
     prompt_sha256,
@@ -14,6 +18,11 @@ from tools.run_heterogeneous_lwar_ab import verify_finite_json_answer
 
 
 REPO = Path(__file__).resolve().parents[1]
+EVIDENCE = (
+    REPO
+    / "benchmarks"
+    / "lwar4-generation2-calibration-evidence-v1.json"
+)
 
 
 class GenerationCalibrationSuiteTests(unittest.TestCase):
@@ -79,6 +88,139 @@ class GenerationCalibrationSuiteTests(unittest.TestCase):
             "post_reset_requalification_failed_production_not_run",
         )
         self.assertFalse(suite["predecessor_evidence"]["reuse_allowed"])
+
+    def test_final_preregistration_binds_generation2_and_fails_closed(self):
+        preregistration = json.loads(
+            PREREGISTRATION_TARGET.read_text(encoding="utf-8")
+        )
+        identity = preregistration["target_identity"]
+        self.assertEqual(identity["lwar_id"], "LWAR4")
+        self.assertEqual(identity["generation"], 2)
+        self.assertEqual(identity["profile"]["adapter_id"], "qwen_code")
+        self.assertEqual(identity["profile"]["vendor_family"], "alibaba")
+        self.assertEqual(identity["profile"]["model"], "Unreported Model")
+        self.assertEqual(
+            preregistration["replacement_evidence"]["claim_boundary"],
+            "provider_family_heterogeneity_only_until_exact_model_reported",
+        )
+        self.assertEqual(
+            preregistration["suite_sha256"],
+            canonical_sha256(build_generation2_suite()),
+        )
+        self.assertTrue(preregistration["sealed_before_provider_execution"])
+        self.assertEqual(preregistration["max_campaign_executions"], 1)
+        self.assertEqual(
+            preregistration["adapter_contract"]["token_telemetry"][
+                "accepted_source"
+            ],
+            "exact_runtime_report_only",
+        )
+        self.assertEqual(
+            preregistration["recovery_gate"]["on_missing_token_report"],
+            "preserve_open_and_stop_before_circuit_reset",
+        )
+        self.assertEqual(
+            preregistration["source_bus"]["circuit_status"], "open"
+        )
+
+    def test_final_preregistration_is_reproducible_from_bound_snapshot(self):
+        tracked = json.loads(
+            PREREGISTRATION_TARGET.read_text(encoding="utf-8")
+        )
+        identity = dict(tracked["target_identity"])
+        identity_file_sha256 = identity.pop("identity_file_sha256")
+        registry = {
+            "registry_version": tracked["source_bus"]["registry_version"],
+            "slots": {
+                "LWAR4": {
+                    key: identity[key]
+                    for key in (
+                        "instance_id",
+                        "generation",
+                        "state",
+                        "profile",
+                    )
+                }
+            },
+        }
+        circuit = {
+            "circuits": {
+                tracked["source_bus"]["circuit_key"]: {
+                    "status": tracked["source_bus"]["circuit_status"],
+                    "reason": tracked["source_bus"]["circuit_reason"],
+                    "policy_sha256": tracked["source_bus"][
+                        "circuit_policy_sha256"
+                    ],
+                }
+            }
+        }
+        rebuilt = build_preregistration(
+            identity=identity,
+            registry=registry,
+            circuit_state=circuit,
+            suite=build_generation2_suite(),
+            identity_file_sha256=identity_file_sha256,
+            registry_file_sha256=tracked["source_bus"][
+                "registry_file_sha256"
+            ],
+            circuit_file_sha256=tracked["source_bus"]["circuit_file_sha256"],
+            profile_sha256=tracked["source_bus"]["profile_sha256"],
+            policy_sha256=tracked["source_bus"]["policy_sha256"],
+            created_at=tracked["created_at"],
+        )
+        self.assertEqual(rebuilt, tracked)
+
+        duplicate_provider = json.loads(json.dumps(identity))
+        duplicate_provider["profile"]["vendor_family"] = "z_ai"
+        registry["slots"]["LWAR4"]["profile"] = duplicate_provider["profile"]
+        with self.assertRaisesRegex(RuntimeError, "not the truthful Qwen"):
+            build_preregistration(
+                identity=duplicate_provider,
+                registry=registry,
+                circuit_state=circuit,
+                suite=build_generation2_suite(),
+                identity_file_sha256=identity_file_sha256,
+                registry_file_sha256=tracked["source_bus"][
+                    "registry_file_sha256"
+                ],
+                circuit_file_sha256=tracked["source_bus"][
+                    "circuit_file_sha256"
+                ],
+                profile_sha256=tracked["source_bus"]["profile_sha256"],
+                policy_sha256=tracked["source_bus"]["policy_sha256"],
+            )
+
+    def test_terminal_evidence_preserves_the_negative_gate(self):
+        evidence = json.loads(EVIDENCE.read_text(encoding="utf-8"))
+        preregistration = json.loads(
+            PREREGISTRATION_TARGET.read_text(encoding="utf-8")
+        )
+        self.assertEqual(
+            evidence["preregistration_sha256"],
+            canonical_sha256(preregistration),
+        )
+        self.assertEqual(
+            evidence["suite_sha256"],
+            canonical_sha256(build_generation2_suite()),
+        )
+        self.assertFalse(evidence["recovery_gate"]["passed"])
+        self.assertEqual(evidence["recovery_gate"]["executed"], 1)
+        self.assertEqual(evidence["task"]["semantic_verdict"], "rejected")
+        self.assertTrue(evidence["task"]["objective_answer_match"])
+        self.assertEqual(evidence["task"]["token_telemetry"], "unavailable")
+        self.assertEqual(
+            evidence["routing_safety"]["circuit_file_sha256_before"],
+            evidence["routing_safety"]["circuit_file_sha256_after"],
+        )
+        self.assertEqual(evidence["routing_safety"]["circuit_status"], "open")
+        self.assertFalse(
+            evidence["routing_safety"]["routing_observation_recorded"]
+        )
+        self.assertEqual(evidence["closeout"]["audit_status"], "healthy")
+        self.assertTrue(evidence["closeout"]["shutdown_consumed"])
+        self.assertTrue(
+            all(value == 0 for value in evidence["closeout"]["active_work"].values())
+        )
 
 
 if __name__ == "__main__":
