@@ -37,3 +37,19 @@ before the first provider call.
 
 No calibration task is authorized while
 `identity_and_adapter_binding=pending_before_provider_execution`.
+
+## Generation-2 binding
+
+After the replacement identity is adopted, build and commit
+`benchmarks/lwar4-generation2-calibration-preregistration-v1.json`. It binds
+the exact identity tuple and profile, the resident begin/complete adapter
+contract, the sealed suite, and the current open-circuit bytes.
+
+Only exact runtime-reported token counts may enter routing observations. If
+Qwen does not expose an exact count, record it as unavailable, preserve the
+open circuit, and stop before reset. Correctness evidence remains valid, but it
+does not authorize production promotion or a token-efficiency claim.
+
+The adopted profile proves a different adapter and provider family. Because the
+session reports `Unreported Model`, it does not by itself prove exact-model
+heterogeneity.
