@@ -1,6 +1,7 @@
 # PAO command wrappers
 
-These four thin wrappers (`pao.py`, `oa.py`, `lwar.py`, `adp_watch.py`) are the
+These five thin wrappers (`pao.py`, `oa.py`, `lwar.py`, `adp_watch.py`,
+`host_adapter.py`) are the
 entry points for the PAO tools. Each one bootstraps its own import path from the
 bundle it lives in (`Path(__file__).resolve().parents[1]`), so no pip install,
 no `PYTHONPATH`, and no plugin are required — the wrapper works from any working
@@ -167,7 +168,13 @@ python "<PAO_SKILL>/scripts/pao.py"  --help
 python "<PAO_SKILL>/scripts/oa.py"   --help
 python "<PAO_SKILL>/scripts/lwar.py" --help
 python "<PAO_SKILL>/scripts/adp_watch.py" --help
+python "<PAO_SKILL>/scripts/host_adapter.py" --help
 ```
+
+`host_adapter.py qwen-probe --live` proves the installed Qwen CLI can enforce
+zero tool calls and return exact provider-native token telemetry.
+`host_adapter.py qwen-run` requires an identity-bound task host contract and
+writes an accepted or fail-closed `pao.host-execution-receipt.v1`.
 
 Before identity adoption, root resolution is explicit `--root` > `PAO_ROOT` >
 `<cwd>/.pao`. Adopted identity-bearing LWAR commands derive the canonical bus

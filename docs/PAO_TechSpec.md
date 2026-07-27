@@ -291,6 +291,24 @@ exactly one `execution_token`. This guarantees one execution authority within a
 live claim. OA recovery after lease expiry is a new attempt; non-transactional
 external side effects still require task-level idempotency across attempts.
 
+### Host capability enforcement
+
+Task text cannot prove that an external runtime avoided tools or reported exact
+tokens. A provider-specific host supervisor must enforce those properties at
+the child-process boundary before its output becomes PAO evidence. The bundled
+Qwen supervisor runs minimal `--bare` mode with JSON output, a zero tool-call
+limit, and a wall-time limit. It accepts only one successful terminal record
+whose provider-call count is at most one, tool-call count is zero, and
+input/output/total token fields are present and arithmetically consistent.
+
+The task binds these requirements through
+`adapter_options.host_contract`. The supervisor emits
+`pao.host-execution-receipt.v1`; every missing field, mismatch, timeout, extra
+provider call, or observed tool call produces a rejected receipt and exit 4.
+Capability discovery is execution-eligible only after a live probe establishes
+the same invariants. This makes host support evidence-based and fail-closed
+without adding provider-specific fields to the core TaskContract.
+
 OA status separates `registered_not_started`, `starting`, `active`, and `stale`.
 Only current-identity `watching`, `idle`, and `running` heartbeats are eligible
 for automatic routing; therefore an old-generation or startup marker cannot
@@ -759,7 +777,8 @@ reopens the alias/class circuit and stops requalification.
 Planned future steps include:
 
 - alternative transports such as MCP or SQLite-backed queues
-- richer runtime capability models
+- additional provider-specific host supervisors beyond the machine-enforced
+  Qwen zero-tool and exact-token contract
 - provider-normalized monetary cost evidence
 - stronger validation pipelines
 - higher-level delegation policies across multiple LWAR classes
