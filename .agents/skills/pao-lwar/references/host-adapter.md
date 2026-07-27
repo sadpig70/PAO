@@ -5,6 +5,47 @@ may impose a maximum blocking duration shorter than the resident ADP lifetime.
 A host timeout is an interruption of result delivery, not proof that the LWAR,
 identity, claim, or task failed.
 
+## Capability fence
+
+Prompt instructions are not enforcement. Before a provider run that requires
+zero tools or exact token telemetry, the host adapter MUST prove both properties
+at its process boundary. The bundled Qwen supervisor provides that boundary:
+
+```bash
+python "<PAO_SKILL>/scripts/host_adapter.py" qwen-probe --live
+python "<PAO_SKILL>/scripts/host_adapter.py" qwen-run \
+  --task-file task.json \
+  --prompt-file prompt.txt \
+  --receipt-file receipt.json
+```
+
+The live probe is eligible only when Qwen supports `--bare`,
+`--output-format json`, `--max-tool-calls 0`, and `--max-wall-time`, then
+actually returns zero tool calls, exact input/output/total tokens, and at most
+one provider call. A static probe without `--live` is intentionally ineligible.
+
+`qwen-run` requires this exact TaskContract extension:
+
+```json
+{
+  "adapter_options": {
+    "host_contract": {
+      "adapter_id": "qwen_code",
+      "tool_policy": "deny_all",
+      "token_telemetry": "exact_provider_report",
+      "max_provider_calls": 1
+    }
+  }
+}
+```
+
+The supervisor always adds `--bare --output-format json --max-tool-calls 0`,
+checks provider-call and token totals against the terminal statistics, and
+writes a `pao.host-execution-receipt.v1`. Missing telemetry, any tool call, a
+second provider call, malformed output, timeout, non-zero exit, or task-contract
+drift writes a rejected receipt and exits 4. Only an accepted receipt may feed
+calibration or routing evidence.
+
 ## Durable handles
 
 Before invoking `lwar.py response REQUEST_ID --resident`, the adapter MUST retain:
@@ -53,4 +94,6 @@ so a superseded token cannot publish a second terminal result.
 - concurrent/replayed begin calls expose only one execution token
 - new tasks are not claimed while a resumable claim exists
 - expired, mismatched, or ambiguous claims are never adopted speculatively
+- capability discovery without a live probe is never execution-eligible
+- any tool call or missing/inconsistent token telemetry rejects the host receipt
 - exactly one terminal result reaches OA collection
