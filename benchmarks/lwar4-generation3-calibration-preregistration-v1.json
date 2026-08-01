@@ -1,0 +1,103 @@
+{
+  "adapter_contract": {
+    "adapter_id": "kimi_cli",
+    "execution_mode": "resident_agent_begin_complete",
+    "finite_verifier_source_sha256": "8d01aaba10389083d0059d47cb9f671cd0fdb608a0a4b7972cfe90653583da38",
+    "finite_verifier_version": "finite-json-v2",
+    "max_provider_calls_per_task": 1,
+    "provider_receives_expected_answer": false,
+    "result_submission_contract": "lwar-runtime.v2-adp",
+    "token_telemetry": {
+      "accepted_source": "exact_runtime_report_only",
+      "missing_policy": "exclude_not_estimate",
+      "required_before_circuit_reset": true
+    }
+  },
+  "adapter_contract_sha256": "16af3591dec4950df49e335e29cb7117d5638f132b7a1d975c8a89dd7e4cade3",
+  "answer_key_sha256": "8915ba6b624c6400e0da46ba38a3855442aa15475ae4b1dcb7fe8e7a2553974b",
+  "authority": {
+    "network": false,
+    "write": []
+  },
+  "created_at": "2026-08-01T11:00:00Z",
+  "max_campaign_executions": 1,
+  "post_reset_gate": {
+    "allowed_candidate_rejected": 0,
+    "pre_reset_candidate_observations_count": false,
+    "required_fresh_candidate_accepted": 13,
+    "required_reason": "confidence_qualified_live",
+    "required_route_mode": "live"
+  },
+  "preregistration_id": "lwar4-generation3-calibration-v1",
+  "production_gate": {
+    "fallback_probes": 1,
+    "max_live_canaries": 1,
+    "on_acceptance": "verify_circuit_closed",
+    "on_rejection": "verify_sticky_circuit_and_incumbent_fallback"
+  },
+  "recovery_gate": {
+    "incumbent_provider_calls": 0,
+    "objective_reference": "answer_key_free_finite_verifier",
+    "on_missing_token_report": "preserve_open_and_stop_before_circuit_reset",
+    "required_active_claims": 0,
+    "required_active_leases": 0,
+    "required_audit_status": "healthy",
+    "required_circuit_mutation": "none",
+    "required_exact_token_reports": 12,
+    "required_lwar4_accepted": 12,
+    "tasks": 12
+  },
+  "replacement_evidence": {
+    "claim_boundary": "provider_family_heterogeneity_only_until_exact_model_reported",
+    "profile_rule": "adapter_and_vendor_differ_exact_model_unreported",
+    "retired_adapter_contract_sha256": "3ed799d43b8dc9067a8c365c0ba34affa58d7aacce4b2a3461c8a4e1051b2a47",
+    "retired_profile": {
+      "adapter_id": "qwen_code",
+      "model": "Unreported Model",
+      "runtime_name": "Qwen Code",
+      "vendor_family": "alibaba"
+    },
+    "retired_profile_sha256": "1757fac11a70d65e619c16abffcdb887e9c09be52abb0eeeb52f39cecba7d15d"
+  },
+  "reset_action": {
+    "command": "routing-circuit-reset",
+    "lwar_id": "LWAR4",
+    "reason": "LWAR4 generation 3 passed 12/12 sealed recovery tasks with exact telemetry and unchanged safety invariants",
+    "task_class": "constraint_ordering"
+  },
+  "schema_version": "pao.generation-calibration-preregistration.v1",
+  "sealed_before_provider_execution": true,
+  "source_bus": {
+    "circuit_file_sha256": "061d75f6229f668f39c46013219be4d18cd2649d8225ffc56786708d2aa2bb5f",
+    "circuit_key": "constraint_ordering::LWAR4",
+    "circuit_policy_sha256": "503f1c1db5b06446a24fe4f594f3df40d3f17d8ca8c7accf28ba5d6546d713e6",
+    "circuit_reason": "candidate_rejected",
+    "circuit_status": "open",
+    "policy_sha256": "503f1c1db5b06446a24fe4f594f3df40d3f17d8ca8c7accf28ba5d6546d713e6",
+    "profile_sha256": "cd1f42fb515eaa2472654351b57b5110f3dbf9cd03cdac3d8026750733f1af29",
+    "registry_file_sha256": "fa9bb519a9c90380743be66077e2e04449db233714e7a938f4732c95e2f36960",
+    "registry_version": 8,
+    "root_name": "pao-lwar4-remediation-blind-01"
+  },
+  "suite_reused_from": "lwar4-generation2-calibration-v1",
+  "suite_sha256": "b253145eb965d9d7fb27d98d1b1fa99c20b91104d9df481ca738e08d19c222a8",
+  "target_identity": {
+    "behavior_contract": "lwar-runtime.v2-adp",
+    "generation": 3,
+    "identity_file_sha256": "7bd1f480a388708acaa2362d3f603f0408213694cf32bd85c3533766fa5aa42e",
+    "instance_id": "lwar-instance-904d5b1a6c9141caa18d03dd9d770409",
+    "lwar_id": "LWAR4",
+    "profile": {
+      "adapter_id": "kimi_cli",
+      "capabilities": [
+        "blind-evaluation"
+      ],
+      "interface": "cli",
+      "model": "kimi-for-coding",
+      "runtime_name": "Kimi Code CLI",
+      "vendor_family": "moonshot"
+    },
+    "registry_version": 8,
+    "state": "on"
+  }
+}

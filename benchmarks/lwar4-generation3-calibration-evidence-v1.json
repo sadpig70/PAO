@@ -1,0 +1,169 @@
+{
+  "claim_boundary": {
+    "host_contract_compliance": "full_zero_tool_exact_telemetry_12_of_12",
+    "production_qualification": "not_authorized",
+    "provider_family_heterogeneity": "observed_moonshot",
+    "recovery_objective_accuracy": "11_of_12"
+  },
+  "completed_at": "2026-08-02T00:00:00Z",
+  "integrity_notes": [
+    "RR02 attempt 1 was a transient host process crash (empty_answer, host_process_nonzero); re-measured as RR02b to a correct answer. Re-measuring a crashed measurement does not touch answer-key-free integrity.",
+    "RR06 was a genuine objective miss under a contract-compliant receipt; an incorrect answer is never re-attempted."
+  ],
+  "per_task": [
+    {
+      "answer": "EADBCF",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR01",
+      "task_id": "task-gen3-lwar4-rr01",
+      "tool_calls": 0,
+      "total_tokens": 13496
+    },
+    {
+      "answer": "AGDCEBF",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR02",
+      "task_id": "task-gen3-lwar4-rr02b",
+      "tool_calls": 0,
+      "total_tokens": 14016
+    },
+    {
+      "answer": "EACDBF",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR03",
+      "task_id": "task-gen3-lwar4-rr03",
+      "tool_calls": 0,
+      "total_tokens": 13566
+    },
+    {
+      "answer": "GDBAFEC",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR04",
+      "task_id": "task-gen3-lwar4-rr04",
+      "tool_calls": 0,
+      "total_tokens": 13474
+    },
+    {
+      "answer": "ACBEDF",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR05",
+      "task_id": "task-gen3-lwar4-rr05",
+      "tool_calls": 0,
+      "total_tokens": 13201
+    },
+    {
+      "answer": "DFGCEBA",
+      "objective_answer_match": false,
+      "receipt_status": "accepted",
+      "task": "RR06",
+      "task_id": "task-gen3-lwar4-rr06",
+      "tool_calls": 0,
+      "total_tokens": 13784,
+      "verifier_failures": [
+        "ordering_constraint_violation"
+      ]
+    },
+    {
+      "answer": "DEFACB",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR07",
+      "task_id": "task-gen3-lwar4-rr07",
+      "tool_calls": 0,
+      "total_tokens": 13320
+    },
+    {
+      "answer": "GEBCDFA",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR08",
+      "task_id": "task-gen3-lwar4-rr08",
+      "tool_calls": 0,
+      "total_tokens": 13856
+    },
+    {
+      "answer": "AFCBDE",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR09",
+      "task_id": "task-gen3-lwar4-rr09",
+      "tool_calls": 0,
+      "total_tokens": 13378
+    },
+    {
+      "answer": "GCABFDE",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR10",
+      "task_id": "task-gen3-lwar4-rr10",
+      "tool_calls": 0,
+      "total_tokens": 13632
+    },
+    {
+      "answer": "ABCEFD",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR11",
+      "task_id": "task-gen3-lwar4-rr11",
+      "tool_calls": 0,
+      "total_tokens": 13530
+    },
+    {
+      "answer": "GADFECB",
+      "objective_answer_match": true,
+      "receipt_status": "accepted",
+      "task": "RR12",
+      "task_id": "task-gen3-lwar4-rr12",
+      "tool_calls": 0,
+      "total_tokens": 13562
+    }
+  ],
+  "preregistration_id": "lwar4-generation3-calibration-v1",
+  "preregistration_sha256": "97a164cd9dd879ff88ffddfc9b50ac67ed73472ae893e3220cee199a9447ac1e",
+  "recovery_gate": {
+    "exact_token_reports": 12,
+    "executed": 12,
+    "objective_answer_matches": 11,
+    "passed": false,
+    "receipt_accepted": 12,
+    "required_exact_token_reports": 12,
+    "required_lwar4_accepted": 12,
+    "stop_reasons": [
+      "objective_answer_mismatch:RR06"
+    ],
+    "tasks": 12,
+    "tool_calls_zero": 12
+  },
+  "routing_safety": {
+    "circuit_file_sha256_after": "061d75f6229f668f39c46013219be4d18cd2649d8225ffc56786708d2aa2bb5f",
+    "circuit_file_sha256_before": "061d75f6229f668f39c46013219be4d18cd2649d8225ffc56786708d2aa2bb5f",
+    "circuit_key": "constraint_ordering::LWAR4",
+    "circuit_reset": "not_executed",
+    "circuit_status": "open",
+    "routing_observation_recorded": false
+  },
+  "schema_version": "pao.generation-calibration-evidence.v1",
+  "suite_reused_from": "lwar4-generation2-calibration-v1",
+  "suite_sha256": "b253145eb965d9d7fb27d98d1b1fa99c20b91104d9df481ca738e08d19c222a8",
+  "target_identity": {
+    "generation": 3,
+    "instance_id": "lwar-instance-904d5b1a6c9141caa18d03dd9d770409",
+    "lwar_id": "LWAR4",
+    "profile": {
+      "adapter_id": "kimi_cli",
+      "capabilities": [
+        "blind-evaluation"
+      ],
+      "interface": "cli",
+      "model": "kimi-for-coding",
+      "runtime_name": "Kimi Code CLI",
+      "vendor_family": "moonshot"
+    }
+  },
+  "verdict": "generation3_contract_compliant_recovery_incomplete_single_objective_miss_circuit_preserved_open"
+}
