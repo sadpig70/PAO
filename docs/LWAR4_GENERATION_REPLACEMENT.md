@@ -64,3 +64,31 @@ post-reset shadows, production canary, or fallback.
 
 The terminal evidence is
 `benchmarks/lwar4-generation2-calibration-evidence-v1.json`.
+
+## Generation 3 campaign result (Kimi)
+
+A generation-3 Kimi Code CLI provider (adapter `kimi_cli`, vendor `moonshot`,
+model `kimi-for-coding`) replaced the retired generation 2. It registered the
+exact `LWAR4` slot, received generation 3, adopted, and executed all 12 sealed
+recovery tasks (RR01-RR12) through the machine-enforced Kimi host adapter
+(`kimi-run`), reusing the generation-2 sealed suite.
+
+Every executed task was fully contract-compliant: **12/12 with zero tool calls
+and exact input/output/total token telemetry** — the tool-use and
+telemetry failures that stopped generation 2 did not recur. The answer-key-free
+finite verifier accepted **11/12**; RR06 was a genuine objective miss (a valid
+constraint ordering was not produced under a contract-compliant receipt). RR02's
+first attempt was a transient host process crash (empty answer, non-zero exit)
+and was re-measured to a correct answer; an incorrect answer is never
+re-attempted.
+
+Because the recovery gate requires 12/12, it did not pass. OA recorded the
+result, executed no circuit reset, and preserved the open
+`constraint_ordering::LWAR4` circuit unchanged (before == after). The failure
+mode shifted from generation 2's contract violation to a single reasoning miss,
+and provider-family heterogeneity (`moonshot`) was observed, but production
+qualification remains unauthorized.
+
+The terminal evidence is
+`benchmarks/lwar4-generation3-calibration-evidence-v1.json`
+(preregistration `benchmarks/lwar4-generation3-calibration-preregistration-v1.json`).
