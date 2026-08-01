@@ -4,6 +4,7 @@ import json
 import subprocess
 import tempfile
 import unittest
+import zipfile
 from pathlib import Path
 
 from pao_helpers import REPO
@@ -11,8 +12,12 @@ from pao_helpers import REPO
 from pao_runtime.contracts import validate_contract
 from pao_runtime.host_adapter import (
     AdapterRejected,
+    kimi_arguments,
     main,
+    normalize_kimi_usage,
+    parse_kimi_stream,
     qwen_arguments,
+    read_kimi_usage,
     verify_qwen_output,
 )
 
@@ -231,6 +236,172 @@ class HostAdapterCliTests(unittest.TestCase):
             self.assertIn(
                 "host_contract_unexpected_fields", payload["reason_codes"]
             )
+
+
+class KimiHostAdapterUnitTests(unittest.TestCase):
+    def test_kimi_arguments_deny_tools_and_stream_json(self):
+        arguments = kimi_arguments("answer", Path("work"))
+        self.assertEqual(
+            arguments[arguments.index("--max-steps-per-turn") + 1], "1"
+        )
+        self.assertEqual(arguments[arguments.index("--output-format") + 1], "stream-json")
+        self.assertEqual(arguments[arguments.index("-p") + 1], "answer")
+
+    def test_parse_stream_extracts_text_and_session(self):
+        stdout = "\n".join(
+            [
+                json.dumps({"role": "assistant", "content": [{"type": "text", "text": "EAD"}]}),
+                json.dumps({"role": "assistant", "content": [{"type": "text", "text": "BCF"}]}),
+                "To resume this session: kimi -r 12345678-1234-1234-1234-123456789abc",
+            ]
+        )
+        answer, session, tool, nontext = parse_kimi_stream(stdout)
+        self.assertEqual(answer, "EADBCF")
+        self.assertEqual(session, "12345678-1234-1234-1234-123456789abc")
+        self.assertFalse(tool)
+        self.assertEqual(nontext, [])
+
+    def test_parse_stream_flags_tool_content_part(self):
+        stdout = json.dumps(
+            {"role": "assistant", "content": [{"type": "tool_use", "name": "python"}]}
+        )
+        _, _, tool, nontext = parse_kimi_stream(stdout)
+        self.assertTrue(tool)
+        self.assertIn("tool_use", nontext)
+
+    def test_parse_stream_flags_tool_role_event(self):
+        stdout = json.dumps({"role": "tool", "content": [{"type": "text", "text": "x"}]})
+        _, _, tool, _ = parse_kimi_stream(stdout)
+        self.assertTrue(tool)
+
+    def test_normalize_usage_folds_input_components(self):
+        usage = normalize_kimi_usage(
+            {"input_other": 100, "input_cache_read": 200, "output": 30}
+        )
+        self.assertEqual(usage, {"input_tokens": 300, "output_tokens": 30, "total_tokens": 330})
+
+    def test_normalize_usage_rejects_unclassified_key(self):
+        with self.assertRaises(AdapterRejected) as caught:
+            normalize_kimi_usage({"input_other": 1, "mystery": 2})
+        self.assertIn("unclassified_token_component", caught.exception.reason_codes)
+
+    def test_normalize_usage_rejects_absent_or_noninteger(self):
+        with self.assertRaises(AdapterRejected):
+            normalize_kimi_usage({})
+        with self.assertRaises(AdapterRejected) as caught:
+            normalize_kimi_usage({"input_other": "10"})
+        self.assertIn("exact_token_telemetry_missing", caught.exception.reason_codes)
+
+    def test_read_usage_takes_latest_nonempty_wire_status(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            archive = Path(temporary) / "session.zip"
+            events = [
+                {"message": {"type": "StatusUpdate", "payload": {"token_usage": None}}},
+                {"message": {"type": "StatusUpdate", "payload": {"token_usage": {"input_other": 5, "output": 2}}}},
+            ]
+            with zipfile.ZipFile(archive, "w") as bundle:
+                bundle.writestr(
+                    "wire.jsonl", "".join(json.dumps(e) + "\n" for e in events)
+                )
+                bundle.writestr("logs/kimi.log", "ignored")
+            self.assertEqual(read_kimi_usage(archive), {"input_other": 5, "output": 2})
+
+
+class KimiHostAdapterCliTests(unittest.TestCase):
+    ASSISTANT_TEXT = [{"role": "assistant", "content": [{"type": "text", "text": "EADBCF"}]}]
+    TOOL_STREAM = [{"role": "assistant", "content": [{"type": "tool_use", "name": "python"}]}]
+    USAGE = {"input_other": 100, "input_cache_read": 200, "output": 30}
+
+    def write_fake_kimi(self, root: Path, stream_events, usage) -> Path:
+        path = root / "fake_kimi.py"
+        script = f"""
+import json, sys, zipfile
+argv = sys.argv[1:]
+if "--version" in argv:
+    print("kimi 1.2.3"); sys.exit(0)
+if "--help" in argv:
+    print("--print --output-format --max-steps-per-turn --work-dir --model -p"); sys.exit(0)
+if argv and argv[0] == "export":
+    out = argv[argv.index("--output") + 1]
+    with zipfile.ZipFile(out, "w") as z:
+        event = {{"message": {{"type": "StatusUpdate", "payload": {{"token_usage": {json.dumps(usage)}}}}}}}
+        z.writestr("wire.jsonl", json.dumps(event) + "\\n")
+    sys.exit(0)
+for event in {json.dumps(stream_events)}:
+    print(json.dumps(event))
+print("To resume this session: kimi -r 12345678-1234-1234-1234-123456789abc")
+"""
+        path.write_text(script, encoding="utf-8")
+        return path
+
+    def task(self):
+        return {
+            "task_id": "task-kimi-gen3",
+            "adapter_options": {
+                "host_contract": {
+                    "adapter_id": "kimi_cli",
+                    "tool_policy": "deny_all",
+                    "token_telemetry": "exact_provider_report",
+                    "max_provider_calls": 1,
+                }
+            },
+        }
+
+    def run_kimi_cli(self, root: Path, fake: Path) -> dict:
+        task = root / "task.json"
+        prompt = root / "prompt.txt"
+        receipt = root / "receipt.json"
+        task.write_text(json.dumps(self.task()), encoding="utf-8")
+        prompt.write_text("Return the ordering only.", encoding="utf-8")
+        with contextlib.redirect_stdout(io.StringIO()):
+            code = main(
+                [
+                    "kimi-run",
+                    "--command",
+                    str(fake),
+                    "--task-file",
+                    str(task),
+                    "--prompt-file",
+                    str(prompt),
+                    "--receipt-file",
+                    str(receipt),
+                ]
+            )
+        payload = json.loads(receipt.read_text(encoding="utf-8"))
+        validate_contract(payload, "host-execution-receipt.schema.json")
+        return code, payload
+
+    def test_probe_and_run_accept_native_answer_with_exact_telemetry(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake = self.write_fake_kimi(root, self.ASSISTANT_TEXT, self.USAGE)
+            capability = root / "capability.json"
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                code = main(
+                    ["kimi-probe", "--command", str(fake), "--live", "--output", str(capability)]
+                )
+            self.assertEqual(code, 0, output.getvalue())
+            payload = json.loads(capability.read_text(encoding="utf-8"))
+            validate_contract(payload, "host-capability.schema.json")
+            self.assertTrue(payload["eligible"])
+            self.assertEqual(payload["adapter_id"], "kimi_cli")
+
+            code, receipt = self.run_kimi_cli(root, fake)
+            self.assertEqual(code, 0)
+            self.assertEqual(receipt["status"], "accepted")
+            self.assertEqual(receipt["adapter_id"], "kimi_cli")
+            self.assertEqual(receipt["usage"]["total_tokens"], 330)
+            self.assertEqual(receipt["tool_calls"], 0)
+
+    def test_run_rejects_tool_use(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            fake = self.write_fake_kimi(root, self.TOOL_STREAM, self.USAGE)
+            code, receipt = self.run_kimi_cli(root, fake)
+            self.assertEqual(code, 4)
+            self.assertEqual(receipt["status"], "rejected")
+            self.assertIn("tool_call_observed", receipt["reason_codes"])
 
 
 class HostAdapterBundleSurfaceTests(unittest.TestCase):

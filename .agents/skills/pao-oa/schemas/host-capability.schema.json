@@ -19,8 +19,8 @@
   ],
   "properties": {
     "schema_version": {"const": "pao.host-capability.v1"},
-    "adapter_id": {"const": "qwen_code"},
-    "runtime_name": {"const": "Qwen Code"},
+    "adapter_id": {"enum": ["qwen_code", "kimi_cli"]},
+    "runtime_name": {"enum": ["Qwen Code", "Kimi Code CLI"]},
     "runtime_version": {"type": "string", "minLength": 1},
     "command": {"type": "string", "minLength": 1},
     "discovered_at": {"type": "string", "format": "date-time"},
@@ -39,9 +39,10 @@
       "additionalProperties": false,
       "required": ["bare_mode", "max_tool_calls", "output_format", "required_flags"],
       "properties": {
-        "bare_mode": {"const": true},
+        "bare_mode": {"type": "boolean"},
         "max_tool_calls": {"const": 0},
-        "output_format": {"const": "json"},
+        "output_format": {"enum": ["json", "stream-json"]},
+        "max_steps_per_turn": {"type": "integer", "minimum": 1},
         "required_flags": {
           "type": "object",
           "additionalProperties": {"type": "boolean"}

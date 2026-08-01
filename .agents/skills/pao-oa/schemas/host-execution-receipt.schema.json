@@ -13,7 +13,7 @@
   ],
   "properties": {
     "schema_version": {"const": "pao.host-execution-receipt.v1"},
-    "adapter_id": {"const": "qwen_code"},
+    "adapter_id": {"enum": ["qwen_code", "kimi_cli"]},
     "task_id": {"type": "string"},
     "created_at": {"type": "string", "format": "date-time"},
     "status": {"enum": ["accepted", "rejected"]},
