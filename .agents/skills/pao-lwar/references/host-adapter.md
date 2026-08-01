@@ -46,6 +46,40 @@ second provider call, malformed output, timeout, non-zero exit, or task-contract
 drift writes a rejected receipt and exits 4. Only an accepted receipt may feed
 calibration or routing evidence.
 
+## Kimi Code CLI adapter
+
+A second supervisor enforces the same `deny_all` / `exact_provider_report`
+contract for the Kimi Code CLI (`adapter_id: kimi_cli`, vendor `moonshot`,
+model `kimi-code/kimi-for-coding`):
+
+```bash
+python "<PAO_SKILL>/scripts/host_adapter.py" kimi-probe --live
+python "<PAO_SKILL>/scripts/host_adapter.py" kimi-run \
+  --task-file task.json --prompt-file prompt.txt --receipt-file receipt.json
+```
+
+The task `host_contract` is identical except `adapter_id` is `kimi_cli`. The
+supervisor always runs
+`--print --output-format stream-json --max-steps-per-turn 1 --model kimi-code/kimi-for-coding`.
+Tool discipline is structural: one step per turn cannot both call a tool and
+emit a final answer, and any assistant non-text tool part or tool-role stream
+event additionally rejects as `tool_call_observed`. Token telemetry is read only
+from the current session's exported `wire.jsonl` (`kimi export SESSION --yes`):
+the latest non-empty `StatusUpdate.token_usage` is folded into
+input/output/total, where every component must be a non-negative integer whose
+key starts with `input` or `output` (an unclassifiable key fails closed).
+
+Two adapter-scoped limitations are recorded honestly and must be confirmed
+before the limitation matters:
+
+1. **No provider-call count.** Kimi `token_usage` exposes no per-call request
+   count, so the receipt omits `provider_calls`; `max_provider_calls=1` is
+   enforced structurally by the single turn, not observed from telemetry.
+2. **Tool-signal token set is an assumption.** Tool detection matches content
+   part types / event roles containing `tool` or `function`. A real Kimi
+   tool-use sample must confirm this token set (and that legitimate non-text
+   reasoning parts, if any, are not misread) before the first calibration call.
+
 ## Durable handles
 
 Before invoking `lwar.py response REQUEST_ID --resident`, the adapter MUST retain:
