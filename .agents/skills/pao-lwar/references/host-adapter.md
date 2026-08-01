@@ -46,6 +46,26 @@ second provider call, malformed output, timeout, non-zero exit, or task-contract
 drift writes a rejected receipt and exits 4. Only an accepted receipt may feed
 calibration or routing evidence.
 
+## Blind-safe receipt evidence
+
+A host receipt identifies its own adapter (`adapter_id`, `model_ids`,
+`runtime_version`) — those are the LWAR's registered identity terms, and
+`lwar.py complete` fails closed if any of them appear in `summary` or `evidence`
+(`result metadata exposes runtime identity terms: ...`). This keeps blind
+evaluation blind, so a calibration task must NOT ask the LWAR to submit the full
+receipt. Instruct it to submit only the blind-safe subset:
+
+- `status`, `reason_codes`
+- `tool_calls`
+- `usage` (`input_tokens` / `output_tokens` / `total_tokens`)
+- `output` (the provider answer)
+- `session_id`, `raw_output_sha256`, `host_contract_sha256`
+
+Drop `adapter_id`, `model_ids`, and `runtime_version`, and never restate the
+runtime name, model, or vendor in `summary`/`evidence`. The dropped fields carry
+no gate signal — acceptance rests on `status == accepted`, `tool_calls == 0`,
+and exact `usage`, all of which are identity-free.
+
 ## Kimi Code CLI adapter
 
 A second supervisor enforces the same `deny_all` / `exact_provider_report`
