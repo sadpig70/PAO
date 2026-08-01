@@ -69,6 +69,11 @@ the latest non-empty `StatusUpdate.token_usage` is folded into
 input/output/total, where every component must be a non-negative integer whose
 key starts with `input` or `output` (an unclassifiable key fails closed).
 
+Static flag discovery runs the `--help`/`--version` probe with `COLUMNS=200`
+because Kimi renders help in a bordered table that otherwise truncates long
+flag names (`--max-steps-per-turn` -> `--max-steps-per`) and defeats a naive
+substring check.
+
 Two adapter-scoped limitations are recorded honestly and must be confirmed
 before the limitation matters:
 
@@ -76,9 +81,12 @@ before the limitation matters:
    count, so the receipt omits `provider_calls`; `max_provider_calls=1` is
    enforced structurally by the single turn, not observed from telemetry.
 2. **Tool-signal token set is an assumption.** Tool detection matches content
-   part types / event roles containing `tool` or `function`. A real Kimi
-   tool-use sample must confirm this token set (and that legitimate non-text
-   reasoning parts, if any, are not misread) before the first calibration call.
+   part types / event roles containing `tool` or `function`. A live probe on
+   Kimi 1.38.0 (a finite ordering task) confirmed the assistant emits only
+   `text` and `think` content parts and solves natively with zero tools, so
+   reasoning (`think`) parts are correctly not misread as tools. An actual
+   Kimi tool-use part type name remains unobserved; `--max-steps-per-turn 1`
+   structurally prevents a tool round-trip and a final answer in one turn.
 
 ## Durable handles
 
