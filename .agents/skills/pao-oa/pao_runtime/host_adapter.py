@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -70,6 +71,9 @@ def resolve_command(command: str) -> list[str]:
 def run_command(
     command: Sequence[str], arguments: Sequence[str], timeout_s: int
 ) -> subprocess.CompletedProcess[str]:
+    # A wide COLUMNS keeps boxed CLI help (e.g. Kimi) from truncating long flag
+    # names, so static flag discovery is not defeated by the terminal width.
+    env = {**os.environ, "COLUMNS": "200"}
     try:
         return subprocess.run(
             [*command, *arguments],
@@ -79,6 +83,7 @@ def run_command(
             encoding="utf-8",
             errors="replace",
             timeout=timeout_s,
+            env=env,
         )
     except subprocess.TimeoutExpired as error:
         raise AdapterRejected(
