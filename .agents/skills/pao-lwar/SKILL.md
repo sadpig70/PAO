@@ -43,7 +43,7 @@ If the instruction is only "read this skill and act as a PAO LWAR", or
 `/pao-lwar` is invoked with no action, treat that as an executable `start`
 command. Do not summarize this skill, ask for a second bootstrap prompt, or wait
 for the operator to restate the procedure. Resolve `<PAO_SKILL>` from this
-`SKILL.md`, read all five bundled reference documents in full, execute the
+`SKILL.md`, read all six bundled reference documents in full, execute the
 Session Bootstrap, and remain inside ADP until a documented terminator occurs.
 
 The files under this skill folder are the complete operating contract. No
@@ -153,7 +153,8 @@ Before performing an action for the first time this session, read its reference 
 
 | Action | Read first |
 |---|---|
-| `start` / no explicit action | all five references below, then §0.5 |
+| orientation — how OA and LWAR collaborate | [references/collaboration-principles.md](references/collaboration-principles.md) |
+| `start` / no explicit action | all six references below, then §0.5 |
 | `register [number]`, `response`, identity adoption | [references/register.md](references/register.md) |
 | host supervision, blocking-call timeout recovery | [references/host-adapter.md](references/host-adapter.md) |
 | `adp` — the watch loop, stdout events, control commands | [references/adp-loop.md](references/adp-loop.md) |

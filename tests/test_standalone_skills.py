@@ -15,13 +15,20 @@ GENERATED = {
     "pao-lwar": ("pao_runtime", "scripts", "schemas"),
 }
 REFERENCES = {
-    "pao-oa": {"reconcile.md", "publish.md", "collect-validate.md", "recover-maintain.md"},
+    "pao-oa": {
+        "reconcile.md",
+        "publish.md",
+        "collect-validate.md",
+        "recover-maintain.md",
+        "collaboration-principles.md",
+    },
     "pao-lwar": {
         "register.md",
         "host-adapter.md",
         "adp-loop.md",
         "execute-complete.md",
         "lifecycle.md",
+        "collaboration-principles.md",
     },
 }
 
