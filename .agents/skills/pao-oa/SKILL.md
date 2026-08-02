@@ -254,7 +254,8 @@ Before performing an action for the first time this session, read its reference 
 
 | Action | Read first |
 |---|---|
-| `start` / no explicit action | all four references below; `reconcile.md` before bootstrap mutations |
+| orientation — how OA and LWAR collaborate | [references/collaboration-principles.md](references/collaboration-principles.md) |
+| `start` / no explicit action | all five references below; `reconcile.md` before bootstrap mutations |
 | `presence`, `reconcile`, registration and lifecycle approval, `status`, state transitions | [references/reconcile.md](references/reconcile.md) |
 | `send`, task drafting, `--auto` routing, canary/shadow routing, `depends_on` | [references/publish.md](references/publish.md) |
 | `collect`, `validate`, `routing-circuit-reset`, `workflow-status`, result acceptance | [references/collect-validate.md](references/collect-validate.md) |
